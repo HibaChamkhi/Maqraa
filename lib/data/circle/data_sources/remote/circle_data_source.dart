@@ -58,7 +58,7 @@ class CircleRemoteDataSource {
     }
     final teacherName = (profile?['name'] ?? '') as String;
 
-    final inviteCode = await _generateUniqueInviteCode();
+    final inviteCode = _generateInviteCode();
     final docRef = _circles.doc();
     final circle = Circle(
       id: docRef.id,
@@ -246,18 +246,12 @@ class CircleRemoteDataSource {
     return (doc.data()?['name'] ?? '') as String;
   }
 
-  Future<String> _generateUniqueInviteCode() async {
+  /// Generates a random 6-char invite code. A no-query approach (6 chars from a
+  /// 31-char alphabet ≈ 887M combinations) keeps circle creation to plain doc
+  /// writes — avoiding a collection query that hangs on Flutter web.
+  String _generateInviteCode() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     final rand = Random.secure();
-    for (var attempt = 0; attempt < 8; attempt++) {
-      final code = List.generate(
-        6,
-        (_) => chars[rand.nextInt(chars.length)],
-      ).join();
-      final existing =
-          await _circles.where('inviteCode', isEqualTo: code).limit(1).get();
-      if (existing.docs.isEmpty) return code;
-    }
-    throw BadRequestException(message: 'تعذّر توليد رمز دعوة، حاولي مرة أخرى');
+    return List.generate(6, (_) => chars[rand.nextInt(chars.length)]).join();
   }
 }
