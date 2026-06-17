@@ -108,19 +108,50 @@ class _HomePageState extends State<HomePage> {
   }
 
   PreferredSizeWidget _appBar(BuildContext context) => AppBar(
-        title: const Text('وِرد'),
+        titleSpacing: 8,
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Text('ورد'),
+            SizedBox(width: 6),
+            Icon(Icons.spa_outlined, color: AppColors.primary),
+          ],
+        ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.person_outline),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const ProfilePage()),
+              onPressed: () {}, icon: const Icon(Icons.notifications_outlined)),
+          IconButton(
+              onPressed: () {}, icon: const Icon(Icons.chat_bubble_outline)),
+          PopupMenuButton<String>(
+            onSelected: (v) {
+              if (v == 'profile') {
+                Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const ProfilePage()));
+              } else if (v == 'logout') {
+                context.read<AuthBloc>().add(const AuthLogoutRequested());
+              }
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'profile', child: Text('الملف الشخصي')),
+              PopupMenuItem(value: 'logout', child: Text('تسجيل الخروج')),
+            ],
+            child: const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircleAvatar(
+                    radius: 15,
+                    backgroundColor: AppColors.sky,
+                    child: Icon(Icons.person, size: 18, color: AppColors.primary),
+                  ),
+                  SizedBox(width: 2),
+                  Icon(Icons.keyboard_arrow_down, size: 18),
+                ],
+              ),
             ),
           ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () =>
-                context.read<AuthBloc>().add(const AuthLogoutRequested()),
-          ),
+          const SizedBox(width: 6),
         ],
       );
 }

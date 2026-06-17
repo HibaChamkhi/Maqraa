@@ -29,7 +29,10 @@ class WardDrawer extends StatelessWidget {
             ('الطالبات', Icons.people_outline),
             ('الجدول', Icons.calendar_month_outlined),
             ('الاختبارات والتقارير', Icons.assignment_outlined),
+            ('التقارير', Icons.bar_chart_outlined),
             ('الإشعارات', Icons.notifications_outlined),
+            ('الإعدادات', Icons.settings_outlined),
+            ('المساعدة', Icons.help_outline),
           ]
         : const [
             ('الرئيسية', Icons.home_outlined),
@@ -37,6 +40,8 @@ class WardDrawer extends StatelessWidget {
             ('واجب اليوم', Icons.today_outlined),
             ('تقدّمي', Icons.timeline_outlined),
             ('الإشعارات', Icons.notifications_outlined),
+            ('الإعدادات', Icons.settings_outlined),
+            ('المساعدة', Icons.help_outline),
           ];
 
     return Drawer(
@@ -72,14 +77,20 @@ class WardDrawer extends StatelessWidget {
                 ],
               ),
             ),
-            for (final item in items)
-              _DrawerItem(
-                label: item.$1,
-                icon: item.$2,
-                active: item.$1 == current,
-                onTap: () => _go(context, item.$1),
+            Expanded(
+              child: ListView(
+                padding: EdgeInsets.zero,
+                children: [
+                  for (final item in items)
+                    _DrawerItem(
+                      label: item.$1,
+                      icon: item.$2,
+                      active: item.$1 == current,
+                      onTap: () => _go(context, item.$1),
+                    ),
+                ],
               ),
-            const Spacer(),
+            ),
             const Divider(color: Colors.white24, height: 1),
             _DrawerItem(
               label: 'الملف الشخصي',

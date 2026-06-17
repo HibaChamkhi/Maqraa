@@ -1,4 +1,6 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 
@@ -9,9 +11,7 @@ import '../../../domain/calendar/repositories/calendar_repository.dart';
 import '../../../domain/circle/models/circle.dart';
 import '../../../domain/circle/repositories/circle_repository.dart';
 
-/// الرئيسية — overview dashboard aggregated across ALL the teacher's circles,
-/// laid out to match the «ورْد» reference (welcome, stat cards, progress chart,
-/// circle-status donut, today's tasks). Responsive: 3-column on wide screens.
+/// الرئيسية — overview dashboard matching the «ورْد» reference.
 class TeacherOverviewPage extends StatefulWidget {
   final AppUser user;
   final List<Circle> circles;
@@ -33,11 +33,11 @@ class _Data {
   final int memorizedJuz;
   final int circleCount;
   final _Status circleStatus;
-  final List<double> week; // recitations per weekday (Sun..Sat)
+  final List<double?> thisWeek;
+  final List<double?> lastWeek;
   final List<({String title, String circle, DateTime at})> tasks;
-
   _Data(this.totalStudents, this.avgPercent, this.memorizedJuz,
-      this.circleCount, this.circleStatus, this.week, this.tasks);
+      this.circleCount, this.circleStatus, this.thisWeek, this.lastWeek, this.tasks);
 }
 
 class _TeacherOverviewPageState extends State<TeacherOverviewPage> {
@@ -51,7 +51,10 @@ class _TeacherOverviewPageState extends State<TeacherOverviewPage> {
   Future<_Data> _load() async {
     final circleRepo = getIt<CircleRepository>();
     final calRepo = getIt<CalendarRepository>();
+    final fs = getIt<FirebaseFirestore>();
+    final uid = getIt<FirebaseAuth>().currentUser?.uid;
     final circles = widget.circles;
+
     final members =
         await Future.wait(circles.map((c) => circleRepo.getMembers(c.id)));
     final sessions =
@@ -59,16 +62,11 @@ class _TeacherOverviewPageState extends State<TeacherOverviewPage> {
 
     var totalStudents = 0, totalPercent = 0, totalPages = 0;
     final status = _Status();
-    final week = List<double>.filled(7, 0);
     final tasks = <({String title, String circle, DateTime at})>[];
-    final now = DateTime.now();
-    final weekStart = DateTime(now.year, now.month, now.day)
-        .subtract(Duration(days: now.weekday % 7));
 
     for (var i = 0; i < circles.length; i++) {
       final students = members[i]
-          .where((m) =>
-              m.role == UserRole.student && m.status == MemberStatus.active)
+          .where((m) => m.role == UserRole.student && m.status == MemberStatus.active)
           .toList();
       totalStudents += students.length;
       var sum = 0;
@@ -76,10 +74,6 @@ class _TeacherOverviewPageState extends State<TeacherOverviewPage> {
         totalPercent += s.memorizedPercent;
         totalPages += s.memorizedPages;
         sum += s.memorizedPercent;
-        final last = s.lastRecitationAt;
-        if (last != null && !last.isBefore(weekStart)) {
-          week[last.weekday % 7] += 1;
-        }
       }
       final avg = students.isEmpty ? 0 : (sum / students.length).round();
       if (avg >= 85) {
@@ -93,21 +87,47 @@ class _TeacherOverviewPageState extends State<TeacherOverviewPage> {
       }
       for (final ses in sessions[i]) {
         if (_isToday(ses.scheduledAt)) {
-          tasks.add(
-              (title: ses.title, circle: circles[i].name, at: ses.scheduledAt));
+          tasks.add((title: ses.title, circle: circles[i].name, at: ses.scheduledAt));
         }
       }
     }
     tasks.sort((a, b) => a.at.compareTo(b.at));
-    return _Data(
-      totalStudents,
-      totalStudents == 0 ? 0 : (totalPercent / totalStudents).round(),
-      (totalPages / 20).round(),
-      circles.length,
-      status,
-      week,
-      tasks,
-    );
+    final avgPercent = totalStudents == 0 ? 0 : (totalPercent / totalStudents).round();
+
+    // --- daily history snapshot (real week-over-week data) ---
+    final thisWeek = List<double?>.filled(7, null);
+    final lastWeek = List<double?>.filled(7, null);
+    if (uid != null) {
+      final now = DateTime.now();
+      final weekStart = DateTime(now.year, now.month, now.day)
+          .subtract(Duration(days: now.weekday % 7));
+      final lastWeekStart = weekStart.subtract(const Duration(days: 7));
+      final col = fs.collection('users').doc(uid).collection('dailyStats');
+      try {
+        // write today's snapshot
+        final todayId = DateFormat('yyyy-MM-dd').format(now);
+        await col.doc(todayId).set(
+            {'avg': avgPercent, 'date': Timestamp.fromDate(now)},
+            SetOptions(merge: true));
+        // read history (one tiny doc per day)
+        final snap = await col.get();
+        for (final doc in snap.docs) {
+          final ts = (doc.data()['date'] as Timestamp?)?.toDate();
+          final avgV = (doc.data()['avg'] as num?)?.toDouble();
+          if (ts == null || avgV == null) continue;
+          final day = DateTime(ts.year, ts.month, ts.day);
+          final idx = day.weekday % 7;
+          if (!day.isBefore(weekStart)) {
+            thisWeek[idx] = avgV;
+          } else if (!day.isBefore(lastWeekStart)) {
+            lastWeek[idx] = avgV;
+          }
+        }
+      } catch (_) {/* history is best-effort */}
+    }
+
+    return _Data(totalStudents, avgPercent, (totalPages / 20).round(),
+        circles.length, status, thisWeek, lastWeek, tasks);
   }
 
   @override
@@ -120,11 +140,9 @@ class _TeacherOverviewPageState extends State<TeacherOverviewPage> {
         }
         final d = snap.data!;
         final wide = MediaQuery.of(context).size.width >= 900;
-        final charts = [
-          _ProgressCard(week: d.week),
-          _StatusDonut(status: d.circleStatus, circleCount: d.circleCount),
-          _TasksCard(tasks: d.tasks),
-        ];
+        final progress = _ProgressCard(thisWeek: d.thisWeek, lastWeek: d.lastWeek);
+        final donut = _StatusDonut(status: d.circleStatus, circleCount: d.circleCount);
+        final tasks = _TasksCard(tasks: d.tasks);
         return ListView(
           padding: const EdgeInsets.all(AppSpacing.md),
           children: [
@@ -137,20 +155,20 @@ class _TeacherOverviewPageState extends State<TeacherOverviewPage> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Expanded(flex: 2, child: charts[0]),
+                    Expanded(flex: 2, child: progress),
                     const SizedBox(width: 12),
-                    Expanded(child: charts[1]),
+                    Expanded(child: donut),
                     const SizedBox(width: 12),
-                    Expanded(child: charts[2]),
+                    Expanded(child: tasks),
                   ],
                 ),
               )
             else ...[
-              charts[0],
+              progress,
               const SizedBox(height: AppSpacing.md),
-              charts[1],
+              donut,
               const SizedBox(height: AppSpacing.md),
-              charts[2],
+              tasks,
             ],
           ],
         );
@@ -159,41 +177,72 @@ class _TeacherOverviewPageState extends State<TeacherOverviewPage> {
   }
 }
 
-// ---- Welcome row (light, with plant) ----
+// ---------- shared card shell with soft shadow ----------
+class _Shell extends StatelessWidget {
+  final Widget child;
+  final EdgeInsets padding;
+  const _Shell({required this.child, this.padding = const EdgeInsets.all(AppSpacing.md)});
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        boxShadow: const [
+          BoxShadow(color: Color(0x0F1F2937), blurRadius: 14, offset: Offset(0, 4)),
+        ],
+      ),
+      child: child,
+    );
+  }
+}
+
+class _CardShell extends StatelessWidget {
+  final String title;
+  final Widget child;
+  const _CardShell({required this.title, required this.child});
+  @override
+  Widget build(BuildContext context) {
+    return _Shell(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: AppSpacing.md),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+// ---------- welcome ----------
 class _Welcome extends StatelessWidget {
   final String name;
   const _Welcome({required this.name});
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: AppColors.border),
-      ),
+    return _Shell(
       child: Row(
         children: [
-          Container(
-            width: 54,
-            height: 54,
-            decoration: BoxDecoration(
-                color: AppColors.sky, borderRadius: BorderRadius.circular(AppRadius.md)),
-            child: const Icon(Icons.spa_outlined, color: AppColors.primary, size: 30),
-          ),
-          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('مرحبًا $name',
-                    style: theme.textTheme.titleLarge),
-                const SizedBox(height: 4),
-                Text('استمر في متابعة طلابك وتحفيزهم',
-                    style: theme.textTheme.bodySmall),
+                Text('مرحبًا $name', style: theme.textTheme.headlineSmall),
+                const SizedBox(height: 6),
+                Text('استمر في متابعة طلابك وتحفيزهم', style: theme.textTheme.bodyMedium),
               ],
             ),
+          ),
+          Container(
+            width: 58,
+            height: 58,
+            decoration: BoxDecoration(
+                color: AppColors.sky, borderRadius: BorderRadius.circular(AppRadius.md)),
+            child: const Icon(Icons.spa_outlined, color: AppColors.primary, size: 32),
           ),
         ],
       ),
@@ -201,27 +250,26 @@ class _Welcome extends StatelessWidget {
   }
 }
 
-// ---- 4 stat tiles ----
+// ---------- stat cards ----------
 class _StatsRow extends StatelessWidget {
   final _Data d;
   const _StatsRow({required this.d});
   @override
   Widget build(BuildContext context) {
     final tiles = [
-      _StatTile(icon: Icons.groups_2_outlined, value: '${d.totalStudents}', unit: 'طالب', label: 'إجمالي الطلاب', delta: 'في كل الحلقات'),
+      _StatTile(icon: Icons.groups_2_outlined, value: '${d.totalStudents}', unit: 'طالب', label: 'إجمالي الطلاب', delta: 'هذا الأسبوع'),
       _StatTile(icon: Icons.speed_outlined, value: '${d.avgPercent}%', unit: '', label: 'معدل الحفظ', delta: 'المتوسط العام'),
       _StatTile(icon: Icons.menu_book_outlined, value: '${d.memorizedJuz}', unit: 'جزءًا', label: 'الأجزاء المحفوظة', delta: 'مجموع الطلاب'),
       _StatTile(icon: Icons.workspaces_outline, value: '${d.circleCount}', unit: 'حلقات', label: 'الحلقات النشطة', delta: 'نشطة الآن'),
     ];
     return LayoutBuilder(builder: (context, c) {
-      final cols = c.maxWidth >= 900 ? 4 : 2;
       return GridView.count(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
-        crossAxisCount: cols,
+        crossAxisCount: c.maxWidth >= 900 ? 4 : 2,
         mainAxisSpacing: 12,
         crossAxisSpacing: 12,
-        mainAxisExtent: 124, // fixed compact height regardless of width
+        mainAxisExtent: 128,
         children: tiles,
       );
     });
@@ -235,20 +283,22 @@ class _StatTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: AppColors.border),
-      ),
+    return _Shell(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Expanded(child: Text(label, style: theme.textTheme.bodySmall)),
-              Icon(icon, size: 18, color: AppColors.primary),
+              Expanded(
+                  child: Text(label,
+                      style: theme.textTheme.bodyMedium
+                          ?.copyWith(color: AppColors.textMuted))),
+              Container(
+                padding: const EdgeInsets.all(7),
+                decoration: BoxDecoration(
+                    color: AppColors.sky, borderRadius: BorderRadius.circular(AppRadius.sm)),
+                child: Icon(icon, size: 18, color: AppColors.primary),
+              ),
             ],
           ),
           const Spacer(),
@@ -256,72 +306,107 @@ class _StatTile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
-              Text(value, style: theme.textTheme.headlineMedium),
+              Text(value,
+                  style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w700)),
               if (unit.isNotEmpty) ...[
                 const SizedBox(width: 4),
                 Text(unit, style: theme.textTheme.bodySmall),
               ],
             ],
           ),
-          const SizedBox(height: 2),
-          Text(delta,
-              style: theme.textTheme.bodySmall?.copyWith(color: AppColors.primary)),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              const Icon(Icons.arrow_upward, size: 13, color: AppColors.primary),
+              const SizedBox(width: 3),
+              Text(delta, style: theme.textTheme.bodySmall?.copyWith(color: AppColors.primary)),
+            ],
+          ),
         ],
       ),
     );
   }
 }
 
-// ---- Progress line/area chart ----
+// ---------- progress chart (two area lines) ----------
 class _ProgressCard extends StatelessWidget {
-  final List<double> week;
-  const _ProgressCard({required this.week});
+  final List<double?> thisWeek;
+  final List<double?> lastWeek;
+  const _ProgressCard({required this.thisWeek, required this.lastWeek});
   static const _days = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+
+  List<FlSpot> _spots(List<double?> a) =>
+      [for (var i = 0; i < 7; i++) if (a[i] != null) FlSpot(i.toDouble(), a[i]!)];
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final maxY = (week.fold<double>(4, (m, v) => v > m ? v : m)).ceilToDouble();
+    final thisSpots = _spots(thisWeek);
+    final lastSpots = _spots(lastWeek);
     return _CardShell(
-      title: 'نشاط التسميع هذا الأسبوع',
-      child: SizedBox(
-        height: 200,
-        child: LineChart(
-          LineChartData(
-            minY: 0,
-            maxY: maxY,
-            gridData: FlGridData(show: true, drawVerticalLine: false, horizontalInterval: (maxY / 4).clamp(1, 1000)),
-            borderData: FlBorderData(show: false),
-            titlesData: FlTitlesData(
-              topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-              rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-              leftTitles: AxisTitles(
-                  sideTitles: SideTitles(showTitles: true, reservedSize: 28, interval: (maxY / 4).clamp(1, 1000),
-                      getTitlesWidget: (v, _) => Text('${v.toInt()}', style: const TextStyle(fontSize: 10, color: AppColors.textMuted)))),
-              bottomTitles: AxisTitles(
-                  sideTitles: SideTitles(showTitles: true, reservedSize: 26, getTitlesWidget: (v, _) {
-                final i = v.toInt();
-                if (i < 0 || i > 6) return const SizedBox.shrink();
-                return Padding(padding: const EdgeInsets.only(top: 6), child: Text(_days[i], style: const TextStyle(fontSize: 9, color: AppColors.ink)));
-              })),
-            ),
-            lineBarsData: [
-              LineChartBarData(
-                spots: [for (var i = 0; i < 7; i++) FlSpot(i.toDouble(), week[i])],
-                isCurved: true,
-                color: AppColors.primary,
-                barWidth: 3,
-                dotData: const FlDotData(show: true),
-                belowBarData: BarAreaData(show: true, color: AppColors.primary.withValues(alpha: 0.12)),
-              ),
+      title: 'تقدّم الحفظ (جميع الحلقات)',
+      child: Column(
+        children: [
+          Row(
+            children: [
+              _legend(AppColors.primary, 'هذا الأسبوع'),
+              const SizedBox(width: 16),
+              _legend(AppColors.teal, 'الأسبوع الماضي'),
             ],
           ),
-        ),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 200,
+            child: (thisSpots.isEmpty && lastSpots.isEmpty)
+                ? Center(child: Text('سيظهر التقدّم بعد تسجيل الحفظ يوميًا', style: theme.textTheme.bodySmall))
+                : LineChart(LineChartData(
+                    minY: 0,
+                    maxY: 100,
+                    gridData: const FlGridData(show: true, drawVerticalLine: false, horizontalInterval: 25),
+                    borderData: FlBorderData(show: false),
+                    titlesData: FlTitlesData(
+                      topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                      rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                      leftTitles: AxisTitles(
+                          sideTitles: SideTitles(showTitles: true, interval: 25, reservedSize: 34,
+                              getTitlesWidget: (v, _) => Text('${v.toInt()}%', style: const TextStyle(fontSize: 10, color: AppColors.textMuted)))),
+                      bottomTitles: AxisTitles(
+                          sideTitles: SideTitles(showTitles: true, reservedSize: 26, getTitlesWidget: (v, _) {
+                        final i = v.toInt();
+                        if (i < 0 || i > 6) return const SizedBox.shrink();
+                        return Padding(padding: const EdgeInsets.only(top: 6), child: Text(_days[i], style: const TextStyle(fontSize: 9, color: AppColors.ink)));
+                      })),
+                    ),
+                    lineBarsData: [
+                      if (lastSpots.isNotEmpty)
+                        _bar(lastSpots, AppColors.teal),
+                      if (thisSpots.isNotEmpty)
+                        _bar(thisSpots, AppColors.primary),
+                    ],
+                  )),
+          ),
+        ],
       ),
     );
   }
+
+  LineChartBarData _bar(List<FlSpot> spots, Color color) => LineChartBarData(
+        spots: spots,
+        isCurved: true,
+        color: color,
+        barWidth: 3,
+        dotData: const FlDotData(show: true),
+        belowBarData: BarAreaData(show: true, color: color.withValues(alpha: 0.12)),
+      );
+
+  Widget _legend(Color c, String label) => Row(mainAxisSize: MainAxisSize.min, children: [
+        Container(width: 10, height: 10, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
+        const SizedBox(width: 6),
+        Text(label, style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+      ]);
 }
 
-// ---- Circle status donut ----
+// ---------- donut ----------
 class _StatusDonut extends StatelessWidget {
   final _Status status;
   final int circleCount;
@@ -339,49 +424,52 @@ class _StatusDonut extends StatelessWidget {
       title: 'حالة الحلقات',
       child: status.total == 0
           ? Text('لا توجد حلقات بعد', style: theme.textTheme.bodySmall)
-          : Column(
+          : Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 SizedBox(
-                  height: 150,
-                  child: Stack(
-                    alignment: Alignment.center,
+                  height: 140,
+                  width: 140,
+                  child: Stack(alignment: Alignment.center, children: [
+                    PieChart(PieChartData(
+                      centerSpaceRadius: 40,
+                      sectionsSpace: 2,
+                      sections: [
+                        for (final e in entries)
+                          PieChartSectionData(value: e.count.toDouble(), color: e.color, showTitle: false, radius: 20),
+                      ],
+                    )),
+                    Column(mainAxisSize: MainAxisSize.min, children: [
+                      Text('$circleCount', style: theme.textTheme.headlineSmall),
+                      Text('حلقات', style: theme.textTheme.bodySmall),
+                    ]),
+                  ]),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      PieChart(PieChartData(
-                        centerSpaceRadius: 44,
-                        sectionsSpace: 2,
-                        sections: [
-                          for (final e in entries)
-                            PieChartSectionData(value: e.count.toDouble(), color: e.color, showTitle: false, radius: 22),
-                        ],
-                      )),
-                      Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text('$circleCount', style: theme.textTheme.headlineSmall),
-                          Text('حلقات', style: theme.textTheme.bodySmall),
-                        ],
-                      ),
+                      for (final e in entries)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 3),
+                          child: Row(children: [
+                            Container(width: 10, height: 10, decoration: BoxDecoration(color: e.color, shape: BoxShape.circle)),
+                            const SizedBox(width: 8),
+                            Expanded(child: Text(e.label, style: theme.textTheme.bodySmall)),
+                            Text('${e.count}', style: theme.textTheme.titleSmall),
+                          ]),
+                        ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 10),
-                for (final e in entries)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 2),
-                    child: Row(children: [
-                      Container(width: 10, height: 10, decoration: BoxDecoration(color: e.color, shape: BoxShape.circle)),
-                      const SizedBox(width: 8),
-                      Expanded(child: Text(e.label, style: theme.textTheme.bodySmall)),
-                      Text('${e.count}', style: theme.textTheme.titleSmall),
-                    ]),
-                  ),
               ],
             ),
     );
   }
 }
 
-// ---- Today's tasks ----
+// ---------- tasks ----------
 class _TasksCard extends StatelessWidget {
   final List<({String title, String circle, DateTime at})> tasks;
   const _TasksCard({required this.tasks});
@@ -391,57 +479,34 @@ class _TasksCard extends StatelessWidget {
     final fmt = DateFormat('h:mm a', 'ar');
     return _CardShell(
       title: 'مهام اليوم',
-      child: tasks.isEmpty
-          ? Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Text('لا توجد مهام اليوم', style: theme.textTheme.bodySmall))
-          : Column(
-              children: [
-                for (final t in tasks)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 6),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.check_box_outline_blank, size: 20, color: AppColors.textMuted),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('${t.title} · ${t.circle}', style: theme.textTheme.titleSmall),
-                              Text(fmt.format(t.at), style: theme.textTheme.bodySmall),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-    );
-  }
-}
-
-class _CardShell extends StatelessWidget {
-  final String title;
-  final Widget child;
-  const _CardShell({required this.title, required this.child});
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: AppColors.border),
-      ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(title, style: theme.textTheme.titleMedium),
-          const SizedBox(height: AppSpacing.md),
-          child,
+          if (tasks.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text('لا توجد مهام اليوم', style: theme.textTheme.bodySmall),
+            )
+          else
+            for (final t in tasks)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(children: [
+                  const Icon(Icons.check_box_outline_blank, size: 20, color: AppColors.textMuted),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('${t.title} · ${t.circle}', style: theme.textTheme.titleSmall),
+                      Text(fmt.format(t.at), style: theme.textTheme.bodySmall),
+                    ]),
+                  ),
+                ]),
+              ),
+          const SizedBox(height: 4),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(onPressed: () {}, child: const Text('عرض كل المهام')),
+          ),
         ],
       ),
     );
