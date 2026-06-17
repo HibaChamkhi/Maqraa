@@ -50,7 +50,7 @@ class WardDrawer extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xFF15795B), Color(0xFF0C4E3F)],
+            colors: [Color(0xFF0F6B5B), Color(0xFF09463A)],
           ),
           borderRadius: BorderRadius.horizontal(left: Radius.circular(26)),
         ),
