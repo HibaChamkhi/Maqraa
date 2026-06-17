@@ -32,6 +32,7 @@ import '../../session/pages/student_session_page.dart';
 import '../../task/pages/assignments_page.dart';
 import '../../task/pages/pending_confirmations_page.dart';
 import '../../task/pages/today_task_page.dart';
+import 'student_home_page.dart';
 
 /// Role-based home. Loads the user's circles, then shows a dashboard whose
 /// tiles route to the relevant feature pages for that role.
@@ -60,9 +61,46 @@ class _HomePageState extends State<HomePage> {
     final user = context.select<AuthBloc, AppUser?>((b) => b.state.user);
     if (user == null) return const SizedBox.shrink();
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('وصال'),
+    return FutureBuilder<List<Circle>>(
+      future: _circlesFuture,
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+              body: Center(child: CircularProgressIndicator()));
+        }
+        final circles = snap.data ?? [];
+        if (circles.isEmpty) {
+          return Scaffold(
+            appBar: _appBar(context),
+            body: _EmptyState(user: user, onChanged: _reload),
+          );
+        }
+        final circle = circles.first;
+
+        // Students get the «وِرد» daily home with bottom navigation; the full
+        // feature grid lives behind the "المزيد" tab.
+        if (user.role == UserRole.student) {
+          return StudentHomePage(
+            user: user,
+            circle: circle,
+            more: Scaffold(
+              appBar: _appBar(context),
+              body: _Dashboard(user: user, circle: circle),
+            ),
+          );
+        }
+
+        // Teachers / supervisors keep the management grid.
+        return Scaffold(
+          appBar: _appBar(context),
+          body: _Dashboard(user: user, circle: circle),
+        );
+      },
+    );
+  }
+
+  PreferredSizeWidget _appBar(BuildContext context) => AppBar(
+        title: const Text('وِرد'),
         actions: [
           IconButton(
             icon: const Icon(Icons.person_outline),
@@ -76,22 +114,7 @@ class _HomePageState extends State<HomePage> {
                 context.read<AuthBloc>().add(const AuthLogoutRequested()),
           ),
         ],
-      ),
-      body: FutureBuilder<List<Circle>>(
-        future: _circlesFuture,
-        builder: (context, snap) {
-          if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final circles = snap.data ?? [];
-          if (circles.isEmpty) {
-            return _EmptyState(user: user, onChanged: _reload);
-          }
-          return _Dashboard(user: user, circle: circles.first);
-        },
-      ),
-    );
-  }
+      );
 }
 
 /// Shown when the user isn't in any circle yet.

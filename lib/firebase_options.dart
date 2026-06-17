@@ -31,24 +31,23 @@ class DefaultFirebaseOptions {
   }
 
   // TODO: replace all REPLACE_ME values via `flutterfire configure`.
-
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyBnjMO5ItG9vw7SyFPeGfsGKJJ5bQ8Bq4s',
-    appId: '1:173216165827:web:4738cf1a7529b7044cd776',
-    messagingSenderId: '173216165827',
-    projectId: 'maqraa-1add5',
-    authDomain: 'maqraa-1add5.firebaseapp.com',
-    storageBucket: 'maqraa-1add5.firebasestorage.app',
-    measurementId: 'G-LCLT7410PJ',
+    apiKey: 'REPLACE_ME',
+    appId: 'REPLACE_ME',
+    messagingSenderId: 'REPLACE_ME',
+    projectId: 'REPLACE_ME',
+    authDomain: 'REPLACE_ME.firebaseapp.com',
+    storageBucket: 'REPLACE_ME.appspot.com',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyAthsPL2MKtMv0BA9fqhdW91SC3KIlb3lM',
-    appId: '1:173216165827:android:bb67b838dec899614cd776',
-    messagingSenderId: '173216165827',
-    projectId: 'maqraa-1add5',
-    storageBucket: 'maqraa-1add5.firebasestorage.app',
+    apiKey: 'REPLACE_ME',
+    appId: 'REPLACE_ME',
+    messagingSenderId: 'REPLACE_ME',
+    projectId: 'REPLACE_ME',
+    storageBucket: 'REPLACE_ME.appspot.com',
   );
+
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'REPLACE_ME',
     appId: 'REPLACE_ME',

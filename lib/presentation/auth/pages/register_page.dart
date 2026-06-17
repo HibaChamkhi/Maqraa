@@ -19,6 +19,7 @@ class _RegisterPageState extends State<RegisterPage> {
   final _password = TextEditingController();
   final _phone = TextEditingController();
   Gender? _gender;
+  UserRole? _role;
   bool _obscure = true;
 
   @override
@@ -38,6 +39,12 @@ class _RegisterPageState extends State<RegisterPage> {
       );
       return;
     }
+    if (_role == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('يرجى اختيار نوع الحساب')),
+      );
+      return;
+    }
     context.read<AuthBloc>().add(
           AuthRegisterRequested(
             name: _name.text.trim(),
@@ -45,6 +52,7 @@ class _RegisterPageState extends State<RegisterPage> {
             password: _password.text,
             phone: _phone.text.trim().isEmpty ? null : _phone.text.trim(),
             gender: _gender!,
+            role: _role,
           ),
         );
   }
@@ -142,6 +150,21 @@ class _RegisterPageState extends State<RegisterPage> {
                               onSelected: (_) => setState(() => _gender = Gender.male),
                             ),
                           ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      Text('نوع الحساب', style: theme.textTheme.titleSmall),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 8,
+                        children: [
+                          for (final role in UserRole.values)
+                            ChoiceChip(
+                              label: Text(role.arabicLabel),
+                              selected: _role == role,
+                              onSelected: (_) => setState(() => _role = role),
+                            ),
                         ],
                       ),
                       const SizedBox(height: 28),

@@ -13,9 +13,17 @@ import 'presentation/auth/bloc/auth_bloc.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  // On some platforms (e.g. Android with google-services.json) Firebase
+  // auto-initializes a default app natively before this runs, so a second
+  // initializeApp throws `[core/duplicate-app]`. Ignore that specific case and
+  // reuse the existing default app.
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } on FirebaseException catch (e) {
+    if (e.code != 'duplicate-app') rethrow;
+  }
   await initializeDateFormatting('ar', null);
   await configureDependencies();
   runApp(

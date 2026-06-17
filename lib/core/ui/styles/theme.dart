@@ -1,17 +1,20 @@
 // ============================================================================
-//  WESAL — وصال  |  Central Theme File
+//  وِرد (WERD) — Quran memorization app  |  Central Theme File
 // ----------------------------------------------------------------------------
-//  This is the SINGLE source of truth for the app's look & feel.
-//  Change colors, fonts, radii, or spacing here and the whole app updates.
+//  SINGLE source of truth for the app's look & feel. Change colors, fonts,
+//  radii, or spacing here and the whole app updates.
 //
-//  Official «وصال» palette (from the project spec):
-//    Primary   #4E79A8   buttons & headers
-//    PrimaryLt #8DB6D8   progress & secondary touches
-//    Sky       #D6E6E7   section backgrounds / empty progress bars
-//    Pink      #E0A3BB   badges, borders, accents (used sparingly)
-//    Lavender  #F4DFE6   main screen background
-//    Ink       #2E3A4A   primary text
-//  Dark mode: background #1B2330, text #E9E4EC.
+//  Official «وِرد» palette (from the design spec):
+//    Primary      #1FA463   buttons, brand, active states
+//    PrimaryDark  #137A55   gradients / pressed
+//    Teal         #14B8A6   secondary accents, charts
+//    Beige        #F6F1E8   app background
+//    Ink          #1F2937   primary text (navy)
+//    Muted        #64748B   secondary text
+//    Border       #E5E7EB   hairlines / input borders
+//    Amber/Gold   #F59E0B   badges, streak, warnings
+//    Red          #EF4444   errors / absent
+//  Dark mode: background #0F1B17, surface #16241F, text #E7EFEA.
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -22,12 +25,13 @@ class AppColors {
   AppColors._();
 
   // --- Brand palette (light) ---
-  static const Color primary = Color(0xFF4E79A8); // أزرق غامق
-  static const Color primaryLight = Color(0xFF8DB6D8); // أزرق فاتح
-  static const Color sky = Color(0xFFD6E6E7); // سماوي فاتح
-  static const Color pink = Color(0xFFE0A3BB); // وردي
-  static const Color lavender = Color(0xFFF4DFE6); // خزامى (خلفية)
-  static const Color ink = Color(0xFF2E3A4A); // كحلي ناعم (نص)
+  static const Color primary = Color(0xFF1FA463); // أخضر رئيسي
+  static const Color primaryDark = Color(0xFF137A55); // أخضر داكن
+  static const Color primaryLight = Color(0xFF14B8A6); // تركواز
+  static const Color sky = Color(0xFFE6F4EC); // أخضر فاتح جدًا (خلفيات أقسام)
+  static const Color pink = Color(0xFFF59E0B); // كهرماني (أوسمة/تمييز)
+  static const Color lavender = Color(0xFFF6F1E8); // بيج (خلفية)
+  static const Color ink = Color(0xFF1F2937); // نص رئيسي (كحلي)
 
   // --- Light surfaces ---
   static const Color background = lavender;
@@ -35,24 +39,24 @@ class AppColors {
   static const Color surfaceMuted = sky;
 
   // --- Dark surfaces ---
-  static const Color darkBackground = Color(0xFF1B2330);
-  static const Color darkSurface = Color(0xFF222C3C);
-  static const Color darkText = Color(0xFFE9E4EC);
+  static const Color darkBackground = Color(0xFF0F1B17);
+  static const Color darkSurface = Color(0xFF16241F);
+  static const Color darkText = Color(0xFFE7EFEA);
 
   // --- Semantic ---
-  static const Color success = Color(0xFF4FA89A);
-  static const Color warning = Color(0xFFD9A648);
-  static const Color error = Color(0xFFC9596B);
-  static const Color textMuted = Color(0xFF7A8699);
-  static const Color border = Color(0xFFE0D3DA);
+  static const Color success = Color(0xFF1FA463);
+  static const Color warning = Color(0xFFF59E0B);
+  static const Color error = Color(0xFFEF4444);
+  static const Color textMuted = Color(0xFF64748B);
+  static const Color border = Color(0xFFE5E7EB);
 }
 
 /// Reusable design tokens (spacing & radii). Edit to restyle globally.
 class AppRadius {
   AppRadius._();
   static const double sm = 10;
-  static const double md = 16;
-  static const double lg = 24;
+  static const double md = 14;
+  static const double lg = 20;
   static const double pill = 999;
 }
 
@@ -65,27 +69,28 @@ class AppSpacing {
   static const double xl = 32;
 }
 
-/// Typography. Headings use an elegant Arabic face (Amiri); body uses Cairo.
-/// Swap the font families here to change them everywhere.
+/// Typography. Headings use Cairo (bold geometric kufi); body uses Tajawal.
+/// Both are Arabic-first faces matching the design spec.
 class AppText {
   AppText._();
 
   static TextTheme textTheme(Color color) {
-    final heading = GoogleFonts.amiriTextTheme();
-    final body = GoogleFonts.cairoTextTheme();
+    final heading = GoogleFonts.cairoTextTheme();
+    final body = GoogleFonts.tajawalTextTheme();
     return TextTheme(
-      displayLarge: heading.displayLarge?.copyWith(color: color, fontWeight: FontWeight.w700),
-      displayMedium: heading.displayMedium?.copyWith(color: color, fontWeight: FontWeight.w700),
+      displayLarge: heading.displayLarge?.copyWith(color: color, fontWeight: FontWeight.w800),
+      displayMedium: heading.displayMedium?.copyWith(color: color, fontWeight: FontWeight.w800),
+      displaySmall: heading.displaySmall?.copyWith(color: color, fontWeight: FontWeight.w800),
       headlineLarge: heading.headlineLarge?.copyWith(color: color, fontWeight: FontWeight.w700),
       headlineMedium: heading.headlineMedium?.copyWith(color: color, fontWeight: FontWeight.w700),
-      headlineSmall: heading.headlineSmall?.copyWith(color: color, fontWeight: FontWeight.w600),
-      titleLarge: body.titleLarge?.copyWith(color: color, fontWeight: FontWeight.w700),
-      titleMedium: body.titleMedium?.copyWith(color: color, fontWeight: FontWeight.w600),
+      headlineSmall: heading.headlineSmall?.copyWith(color: color, fontWeight: FontWeight.w700),
+      titleLarge: heading.titleLarge?.copyWith(color: color, fontWeight: FontWeight.w700),
+      titleMedium: body.titleMedium?.copyWith(color: color, fontWeight: FontWeight.w700),
       titleSmall: body.titleSmall?.copyWith(color: color, fontWeight: FontWeight.w600),
       bodyLarge: body.bodyLarge?.copyWith(color: color),
       bodyMedium: body.bodyMedium?.copyWith(color: color),
-      bodySmall: body.bodySmall?.copyWith(color: color.withValues(alpha: 0.7)),
-      labelLarge: body.labelLarge?.copyWith(color: color, fontWeight: FontWeight.w600),
+      bodySmall: body.bodySmall?.copyWith(color: color.withValues(alpha: 0.75)),
+      labelLarge: body.labelLarge?.copyWith(color: color, fontWeight: FontWeight.w700),
     );
   }
 }
@@ -102,15 +107,16 @@ class AppTheme {
     final bg = isDark ? AppColors.darkBackground : AppColors.background;
     final surface = isDark ? AppColors.darkSurface : AppColors.surface;
     final onSurface = isDark ? AppColors.darkText : AppColors.ink;
+    final borderColor = isDark ? const Color(0xFF24382F) : AppColors.border;
 
     final colorScheme = ColorScheme(
       brightness: brightness,
       primary: AppColors.primary,
       onPrimary: Colors.white,
-      secondary: AppColors.pink,
+      secondary: AppColors.primaryLight,
       onSecondary: Colors.white,
-      tertiary: AppColors.primaryLight,
-      onTertiary: AppColors.ink,
+      tertiary: AppColors.pink,
+      onTertiary: Colors.white,
       surface: surface,
       onSurface: onSurface,
       error: AppColors.error,
@@ -123,15 +129,18 @@ class AppTheme {
       scaffoldBackgroundColor: bg,
       colorScheme: colorScheme,
       textTheme: AppText.textTheme(onSurface),
+      // Clean, light app bar (matches the mobile mockups: white header, dark
+      // title, no colored band).
       appBarTheme: AppBarTheme(
-        backgroundColor: isDark ? AppColors.darkSurface : AppColors.primary,
-        foregroundColor: Colors.white,
+        backgroundColor: isDark ? AppColors.darkBackground : AppColors.background,
+        foregroundColor: onSurface,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
-        titleTextStyle: GoogleFonts.amiri(
-          fontSize: 22,
+        titleTextStyle: GoogleFonts.cairo(
+          fontSize: 20,
           fontWeight: FontWeight.w700,
-          color: Colors.white,
+          color: onSurface,
         ),
       ),
       cardTheme: CardThemeData(
@@ -140,6 +149,7 @@ class AppTheme {
         margin: const EdgeInsets.all(AppSpacing.sm),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppRadius.lg),
+          side: BorderSide(color: borderColor),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -147,26 +157,43 @@ class AppTheme {
           backgroundColor: AppColors.primary,
           foregroundColor: Colors.white,
           minimumSize: const Size.fromHeight(52),
+          elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppRadius.md),
           ),
-          textStyle: GoogleFonts.cairo(fontSize: 16, fontWeight: FontWeight.w700),
+          textStyle: GoogleFonts.tajawal(fontSize: 16, fontWeight: FontWeight.w700),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppColors.primary,
+          minimumSize: const Size.fromHeight(52),
+          side: const BorderSide(color: AppColors.primary, width: 1.4),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.md),
+          ),
+          textStyle: GoogleFonts.tajawal(fontSize: 15, fontWeight: FontWeight.w700),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
-        style: TextButton.styleFrom(foregroundColor: AppColors.primary),
+        style: TextButton.styleFrom(
+          foregroundColor: AppColors.primary,
+          textStyle: GoogleFonts.tajawal(fontWeight: FontWeight.w700),
+        ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: isDark ? AppColors.darkSurface : Colors.white,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        hintStyle: GoogleFonts.tajawal(color: AppColors.textMuted),
+        labelStyle: GoogleFonts.tajawal(color: AppColors.textMuted),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadius.md),
-          borderSide: const BorderSide(color: AppColors.border),
+          borderSide: BorderSide(color: borderColor),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadius.md),
-          borderSide: const BorderSide(color: AppColors.border),
+          borderSide: BorderSide(color: borderColor),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadius.md),
@@ -175,17 +202,36 @@ class AppTheme {
       ),
       chipTheme: ChipThemeData(
         backgroundColor: AppColors.sky,
-        selectedColor: AppColors.primaryLight,
-        labelStyle: GoogleFonts.cairo(color: AppColors.ink),
+        selectedColor: AppColors.primary,
+        side: BorderSide.none,
+        labelStyle: GoogleFonts.tajawal(color: AppColors.primaryDark, fontWeight: FontWeight.w600),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppRadius.pill),
+        ),
+      ),
+      bottomNavigationBarTheme: BottomNavigationBarThemeData(
+        backgroundColor: surface,
+        selectedItemColor: AppColors.primary,
+        unselectedItemColor: AppColors.textMuted,
+        selectedLabelStyle: GoogleFonts.tajawal(fontWeight: FontWeight.w700, fontSize: 11),
+        unselectedLabelStyle: GoogleFonts.tajawal(fontSize: 11),
+        type: BottomNavigationBarType.fixed,
+        elevation: 0,
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: surface,
+        indicatorColor: AppColors.sky,
+        elevation: 0,
+        labelTextStyle: WidgetStatePropertyAll(
+          GoogleFonts.tajawal(fontWeight: FontWeight.w700, fontSize: 12),
         ),
       ),
       progressIndicatorTheme: const ProgressIndicatorThemeData(
         color: AppColors.primary,
         linearTrackColor: AppColors.sky,
+        circularTrackColor: AppColors.sky,
       ),
-      dividerTheme: const DividerThemeData(color: AppColors.border, thickness: 1),
+      dividerTheme: DividerThemeData(color: borderColor, thickness: 1),
     );
   }
 }
