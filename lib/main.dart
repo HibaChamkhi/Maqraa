@@ -23,8 +23,7 @@ void main() async {
   // Forcing long-polling avoids that and makes where/orderBy queries work.
   if (kIsWeb) {
     FirebaseFirestore.instance.settings = const Settings(
-      persistenceEnabled: false,
-      webExperimentalForceLongPolling: true,
+      webExperimentalAutoDetectLongPolling: true,
     );
   }
   await initializeDateFormatting('ar', null);
