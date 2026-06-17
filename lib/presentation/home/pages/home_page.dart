@@ -38,6 +38,7 @@ import '../../task/pages/assignments_page.dart';
 import '../../task/pages/pending_confirmations_page.dart';
 import '../../task/pages/today_task_page.dart';
 import 'student_home_page.dart';
+import 'teacher_overview_page.dart';
 
 /// Role-based home. Loads the user's circles, then shows a dashboard whose
 /// tiles route to the relevant feature pages for that role.
@@ -96,11 +97,11 @@ class _HomePageState extends State<HomePage> {
           );
         }
 
-        // Teachers / supervisors keep the management grid.
+        // Teachers / supervisors get the overview dashboard (الرئيسية).
         return Scaffold(
           appBar: _appBar(context),
           drawer: WardDrawer(user: user),
-          body: _Dashboard(user: user, circle: circle),
+          body: TeacherOverviewPage(user: user, circles: circles),
         );
       },
     );
