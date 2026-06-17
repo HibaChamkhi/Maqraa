@@ -5,6 +5,8 @@ import '../../../core/di/injection.dart';
 import '../../../domain/auth/models/app_user.dart';
 import '../../../domain/circle/models/circle.dart';
 import '../../../domain/circle/repositories/circle_repository.dart';
+import '../../../core/ui/styles/theme.dart';
+import '../../../core/ui/widgets/werd_widgets.dart';
 import '../../announcement/pages/announcements_page.dart';
 import '../../auth/bloc/auth_bloc.dart';
 import '../../achievement/pages/achievement_page.dart';
@@ -185,8 +187,14 @@ class _EmptyState extends StatelessWidget {
 class _Tile {
   final String label;
   final IconData icon;
-  final Widget Function() page;
-  const _Tile(this.label, this.icon, this.page);
+  final VoidCallback onTap;
+  const _Tile(this.label, this.icon, this.onTap);
+}
+
+class _Section {
+  final String title;
+  final List<_Tile> tiles;
+  const _Section(this.title, this.tiles);
 }
 
 class _Dashboard extends StatelessWidget {
@@ -198,127 +206,277 @@ class _Dashboard extends StatelessWidget {
   bool get _canManage =>
       user.role == UserRole.teacher || user.role == UserRole.supervisor;
 
+  void _push(BuildContext context, Widget page) => Navigator.of(context)
+      .push(MaterialPageRoute(builder: (_) => page));
+
   Future<void> _openPairing(BuildContext context) async {
     final members = await getIt<CircleRepository>().getMembers(circle.id);
     if (!context.mounted) return;
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => PairingPage(circleId: circle.id, user: user, members: members),
-    ));
+    _push(context,
+        PairingPage(circleId: circle.id, user: user, members: members));
   }
+
+  @override
+  Widget build(BuildContext context) =>
+      _canManage ? _teacherView(context) : _studentView(context);
+
+  // -------------------- TEACHER / SUPERVISOR --------------------
+
+  Widget _teacherView(BuildContext context) {
+    final id = circle.id;
+    final sections = <_Section>[
+      _Section('إدارة الحلقة', [
+        _Tile('معلومات الحلقة', Icons.info_outline,
+            () => _push(context, CircleInfoPage(circleId: id, user: user))),
+        _Tile('الطالبات', Icons.group_outlined,
+            () => _push(context, CircleMembersPage(circleId: id, user: user))),
+        _Tile('طلبات الانضمام', Icons.how_to_reg_outlined,
+            () => _push(context, JoinRequestsPage(circleId: id))),
+        _Tile('إقران الرفيقات', Icons.handshake_outlined,
+            () => _openPairing(context)),
+      ]),
+      _Section('المتابعة اليومية', [
+        _Tile('متابعة التسليم', Icons.fact_check_outlined,
+            () => _push(context, TeacherTrackingPage(circleId: id))),
+        _Tile('نشر الجدول', Icons.edit_calendar_outlined,
+            () => _push(context, PublishSchedulePage(circleId: id))),
+        _Tile('التقويم', Icons.calendar_month_outlined,
+            () => _push(context, ManageCalendarPage(circleId: id, user: user))),
+        _Tile('الجلسة المباشرة', Icons.podcasts_outlined,
+            () => _push(context, LiveSessionPage(circleId: id, user: user))),
+      ]),
+      _Section('التقييم والتواصل', [
+        _Tile('الاختبارات', Icons.assignment_outlined,
+            () => _push(context, TeacherExamsPage(circleId: id, user: user))),
+        _Tile('المكالمة الأسبوعية', Icons.video_call_outlined,
+            () => _push(context, WeeklyCallPage(circleId: id, user: user))),
+        _Tile('الإعلانات', Icons.campaign_outlined,
+            () => _push(context, AnnouncementsPage(circleId: id, user: user))),
+      ]),
+    ];
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+      children: [
+        _WelcomeBanner(user: user, circle: circle),
+        const SizedBox(height: AppSpacing.md),
+        _StatsRow(circle: circle, user: user),
+        for (final s in sections) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, AppSpacing.lg, 4, AppSpacing.sm),
+            child: SectionHeader(title: s.title),
+          ),
+          Card(
+            margin: EdgeInsets.zero,
+            child: Column(
+              children: [
+                for (int i = 0; i < s.tiles.length; i++)
+                  _MenuRow(tile: s.tiles[i], showDivider: i != s.tiles.length - 1),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  // -------------------- STUDENT (the "more" grid) --------------------
+
+  Widget _studentView(BuildContext context) {
+    final theme = Theme.of(context);
+    final id = circle.id;
+    final tiles = <_Tile>[
+      _Tile('واجب اليوم', Icons.today_outlined,
+          () => _push(context, TodayTaskPage(circleId: id, user: user))),
+      _Tile('جدول الأسبوع', Icons.calendar_view_week_outlined,
+          () => _push(context, WeeklySchedulePage(circleId: id))),
+      _Tile('تقدّمي', Icons.timeline_outlined,
+          () => _push(context, const MyProgressPage())),
+      _Tile('تأكيد التسميع', Icons.verified_outlined,
+          () => _push(context, PendingConfirmationsPage(circleId: id, user: user))),
+      _Tile('مهامي', Icons.checklist_outlined,
+          () => _push(context, AssignmentsPage(circleId: id, studentId: user.uid, studentName: user.name, user: user))),
+      _Tile('رفيقتي', Icons.handshake_outlined,
+          () => _push(context, MyPartnerPage(circleId: id, user: user))),
+      _Tile('تقويمي', Icons.calendar_month_outlined,
+          () => _push(context, StudentCalendarPage(circleId: id, user: user))),
+      _Tile('الجلسة', Icons.podcasts_outlined,
+          () => _push(context, StudentSessionPage(circleId: id, user: user))),
+      _Tile('اختباراتي', Icons.assignment_turned_in_outlined,
+          () => _push(context, StudentExamsPage(circleId: id, user: user))),
+      _Tile('الإعلانات', Icons.campaign_outlined,
+          () => _push(context, AnnouncementsPage(circleId: id, user: user))),
+      _Tile('إنجازاتي', Icons.emoji_events_outlined,
+          () => _push(context, const AchievementPage())),
+      _Tile('التذكيرات', Icons.notifications_active_outlined,
+          () => _push(context, const ReminderSettingsPage())),
+    ];
+    return GridView.count(
+      padding: const EdgeInsets.all(16),
+      crossAxisCount: 2,
+      mainAxisSpacing: 12,
+      crossAxisSpacing: 12,
+      childAspectRatio: 1.15,
+      children: [
+        for (final t in tiles)
+          Card(
+            margin: EdgeInsets.zero,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(AppRadius.lg),
+              onTap: t.onTap,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(AppRadius.md),
+                    ),
+                    child: Icon(t.icon, size: 26, color: AppColors.primary),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(t.label, textAlign: TextAlign.center, style: theme.textTheme.titleSmall),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// One row inside a menu group (icon chip + label + chevron).
+class _MenuRow extends StatelessWidget {
+  final _Tile tile;
+  final bool showDivider;
+  const _MenuRow({required this.tile, required this.showDivider});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final id = circle.id;
-
-    final tiles = _canManage
-        ? <_Tile>[
-            _Tile('معلومات الحلقة', Icons.info_outline,
-                () => CircleInfoPage(circleId: id, user: user)),
-            _Tile('الطالبات', Icons.group_outlined,
-                () => CircleMembersPage(circleId: id, user: user)),
-            _Tile('طلبات الانضمام', Icons.how_to_reg_outlined,
-                () => JoinRequestsPage(circleId: id)),
-            _Tile('نشر الجدول', Icons.edit_calendar_outlined,
-                () => PublishSchedulePage(circleId: id)),
-            _Tile('متابعة التسليم', Icons.fact_check_outlined,
-                () => TeacherTrackingPage(circleId: id)),
-            _Tile('الاختبارات', Icons.assignment_outlined,
-                () => TeacherExamsPage(circleId: id, user: user)),
-            _Tile('التقويم', Icons.calendar_month_outlined,
-                () => ManageCalendarPage(circleId: id, user: user)),
-            _Tile('الجلسة المباشرة', Icons.podcasts_outlined,
-                () => LiveSessionPage(circleId: id, user: user)),
-            _Tile('المكالمة الأسبوعية', Icons.video_call_outlined,
-                () => WeeklyCallPage(circleId: id, user: user)),
-            _Tile('الإعلانات', Icons.campaign_outlined,
-                () => AnnouncementsPage(circleId: id, user: user)),
-          ]
-        : <_Tile>[
-            _Tile('واجب اليوم', Icons.today_outlined,
-                () => TodayTaskPage(circleId: id, user: user)),
-            _Tile('جدول الأسبوع', Icons.calendar_view_week_outlined,
-                () => WeeklySchedulePage(circleId: id)),
-            _Tile('تقدّمي', Icons.timeline_outlined, () => const MyProgressPage()),
-            _Tile('تأكيد التسميع', Icons.verified_outlined,
-                () => PendingConfirmationsPage(circleId: id, user: user)),
-            _Tile('مهامي', Icons.checklist_outlined,
-                () => AssignmentsPage(
-                    circleId: id, studentId: user.uid, studentName: user.name, user: user)),
-            _Tile('رفيقتي', Icons.handshake_outlined,
-                () => MyPartnerPage(circleId: id, user: user)),
-            _Tile('تقويمي', Icons.calendar_month_outlined,
-                () => StudentCalendarPage(circleId: id, user: user)),
-            _Tile('الجلسة', Icons.podcasts_outlined,
-                () => StudentSessionPage(circleId: id, user: user)),
-            _Tile('اختباراتي', Icons.assignment_turned_in_outlined,
-                () => StudentExamsPage(circleId: id, user: user)),
-            _Tile('الإعلانات', Icons.campaign_outlined,
-                () => AnnouncementsPage(circleId: id, user: user)),
-            _Tile('إنجازاتي', Icons.emoji_events_outlined, () => const AchievementPage()),
-            _Tile('التذكيرات', Icons.notifications_active_outlined,
-                () => const ReminderSettingsPage()),
-          ];
-
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('مرحبًا ${user.name} 🌿', style: theme.textTheme.headlineSmall),
-              const SizedBox(height: 4),
-              Text('حلقة: ${circle.name}  •  ${user.role?.arabicLabel ?? ''}',
-                  style: theme.textTheme.bodyMedium),
-            ],
+        InkWell(
+          onTap: tile.onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(9),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
+                  ),
+                  child: Icon(tile.icon, size: 20, color: AppColors.primary),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Text(tile.label, style: theme.textTheme.titleMedium),
+                ),
+                const Icon(Icons.chevron_left, color: AppColors.textMuted),
+              ],
+            ),
           ),
         ),
-        Expanded(
-          child: GridView.count(
-            padding: const EdgeInsets.all(16),
-            crossAxisCount: 2,
-            mainAxisSpacing: 12,
-            crossAxisSpacing: 12,
-            children: [
-              for (final t in tiles)
-                Card(
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(24),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => t.page()),
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(t.icon, size: 38, color: theme.colorScheme.primary),
-                        const SizedBox(height: 10),
-                        Text(t.label, textAlign: TextAlign.center),
-                      ],
-                    ),
-                  ),
-                ),
-              if (_canManage)
-                Card(
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(24),
-                    onTap: () => _openPairing(context),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.handshake_outlined,
-                            size: 38, color: theme.colorScheme.primary),
-                        const SizedBox(height: 10),
-                        const Text('إقران الرفيقات', textAlign: TextAlign.center),
-                      ],
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
+        if (showDivider)
+          const Divider(height: 1, indent: 56, endIndent: 14),
       ],
+    );
+  }
+}
+
+/// Green welcome banner at the top of the teacher dashboard.
+class _WelcomeBanner extends StatelessWidget {
+  final AppUser user;
+  final Circle circle;
+  const _WelcomeBanner({required this.user, required this.circle});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: AppColors.primary,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('مرحبًا ${user.name}',
+                    style: theme.textTheme.headlineSmall?.copyWith(color: Colors.white)),
+                const SizedBox(height: 6),
+                Text('تابعي طالبات «${circle.name}» وحفّزيهن على الإنجاز',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                        color: Colors.white.withValues(alpha: 0.9))),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(AppRadius.md),
+            ),
+            child: const Icon(Icons.spa_outlined, color: Colors.white, size: 28),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Stat cards row (live member count + circle + role).
+class _StatsRow extends StatelessWidget {
+  final Circle circle;
+  final AppUser user;
+  const _StatsRow({required this.circle, required this.user});
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<CircleMember>>(
+      future: getIt<CircleRepository>().getMembers(circle.id),
+      builder: (context, snap) {
+        final members = snap.data ?? const [];
+        final students =
+            members.where((m) => m.status == MemberStatus.active).length;
+        final pending =
+            members.where((m) => m.status == MemberStatus.pending).length;
+        return Row(
+          children: [
+            Expanded(
+              child: StatCard(
+                value: snap.connectionState == ConnectionState.waiting ? '—' : '$students',
+                label: 'الطالبات',
+                icon: Icons.group_outlined,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: StatCard(
+                value: snap.connectionState == ConnectionState.waiting ? '—' : '$pending',
+                label: 'طلبات الانضمام',
+                icon: Icons.how_to_reg_outlined,
+                accent: AppColors.warning,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: StatCard(
+                value: circle.privacy == Privacy.public ? 'عامة' : 'خاصة',
+                label: 'خصوصية الحلقة',
+                icon: Icons.lock_outline,
+                accent: AppColors.primaryLight,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
