@@ -33,14 +33,17 @@ class CircleBloc extends Bloc<CircleEvent, CircleState> {
       CircleCreateRequested event, Emitter<CircleState> emit) async {
     emit(state.copyWith(status: UIStatus.loading, message: '', actionDone: false));
     try {
-      final circle = await circleRepository.createCircle(
-        name: event.name,
-        privacy: event.privacy,
-      );
+      final circle = await circleRepository
+          .createCircle(name: event.name, privacy: event.privacy)
+          .timeout(const Duration(seconds: 20));
       emit(state.copyWith(
           status: UIStatus.success, circle: circle, actionDone: true));
     } on Exception catch (e) {
       emit(state.copyWith(status: UIStatus.error, message: mapExceptionToMessage(e)));
+    } catch (e) {
+      emit(state.copyWith(
+          status: UIStatus.error,
+          message: 'تعذّر إنشاء الحلقة (تحقّقي من قواعد Firestore): $e'));
     }
   }
 
