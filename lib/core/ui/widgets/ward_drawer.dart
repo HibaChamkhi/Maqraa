@@ -40,11 +40,23 @@ class WardDrawer extends StatelessWidget {
           ];
 
     return Drawer(
-      backgroundColor: AppColors.primaryDark,
-      shape: const RoundedRectangleBorder(),
-      child: SafeArea(
-        child: Column(
-          children: [
+      width: 272,
+      backgroundColor: Colors.transparent,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.horizontal(left: Radius.circular(26)),
+      ),
+      child: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFF15795B), Color(0xFF0C4E3F)],
+          ),
+          borderRadius: BorderRadius.horizontal(left: Radius.circular(26)),
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
               child: Row(
@@ -87,7 +99,8 @@ class WardDrawer extends StatelessWidget {
               },
             ),
             const SizedBox(height: 8),
-          ],
+            ],
+          ),
         ),
       ),
     );
