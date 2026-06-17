@@ -221,7 +221,7 @@ class _StatsRow extends StatelessWidget {
         crossAxisCount: cols,
         mainAxisSpacing: 12,
         crossAxisSpacing: 12,
-        childAspectRatio: 1.45,
+        mainAxisExtent: 124, // fixed compact height regardless of width
         children: tiles,
       );
     });

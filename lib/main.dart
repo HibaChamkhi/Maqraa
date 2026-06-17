@@ -45,8 +45,8 @@ class MyApp extends StatelessWidget {
         title: 'وصال',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light,
-        darkTheme: AppTheme.dark,
-        themeMode: ThemeMode.system, // light/dark toggle ready (US-23)
+        darkTheme: AppTheme.light, // «ورْد» is a light-only design
+        themeMode: ThemeMode.light,
         // Arabic + full RTL support (US-22).
         locale: const Locale('ar'),
         supportedLocales: const [Locale('ar'), Locale('en')],

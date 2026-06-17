@@ -135,7 +135,7 @@ class AppTheme {
       // Clean, light app bar (matches the mobile mockups: white header, dark
       // title, no colored band).
       appBarTheme: AppBarTheme(
-        backgroundColor: isDark ? AppColors.darkBackground : AppColors.background,
+        backgroundColor: isDark ? AppColors.darkSurface : AppColors.surface,
         foregroundColor: onSurface,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
