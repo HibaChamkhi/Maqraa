@@ -9,7 +9,7 @@ class TaskState extends Equatable {
   final List<Assignment> assignments;
 
   const TaskState({
-    this.status = UIStatus.loading,
+    this.status = UIStatus.success,
     this.message = '',
     this.dateId = '',
     this.todayTask,

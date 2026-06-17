@@ -68,6 +68,7 @@ class _LoginWidgetState extends State<LoginWidget> {
                   padding: const EdgeInsets.all(20),
                   child: Form(
                     key: _formKey,
+                    autovalidateMode: AutovalidateMode.onUserInteraction,
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.stretch,

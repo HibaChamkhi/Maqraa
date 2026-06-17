@@ -58,7 +58,7 @@ class CircleRemoteDataSource {
     }
     final teacherName = (profile?['name'] ?? '') as String;
 
-    final inviteCode = await _generateUniqueInviteCode();
+    final inviteCode = _generateInviteCode();
     final docRef = _circles.doc();
     final circle = Circle(
       id: docRef.id,
@@ -80,6 +80,11 @@ class CircleRemoteDataSource {
             status: MemberStatus.active,
           ),
         ));
+    // Track membership on the user doc so getMyCircles needs no index.
+    await _users.doc(uid).set(
+      {'circleIds': FieldValue.arrayUnion([docRef.id])},
+      SetOptions(merge: true),
+    );
 
     return circle;
   }
@@ -114,6 +119,10 @@ class CircleRemoteDataSource {
             status: MemberStatus.active,
           ),
         ));
+    await _users.doc(uid).set(
+      {'circleIds': FieldValue.arrayUnion([circle.id])},
+      SetOptions(merge: true),
+    );
     return circle;
   }
 
@@ -222,16 +231,15 @@ class CircleRemoteDataSource {
 
   Future<List<Circle>> getMyCircles() async {
     final uid = _uid;
-    // A members/{uid} doc exists for the user across circles.
-    final query = await firestore
-        .collectionGroup('members')
-        .where('uid', isEqualTo: uid)
-        .get();
+    // Read the circle ids cached on the user doc, then fetch each circle by id.
+    // Plain document reads — no collection-group query, so no index needed.
+    final userDoc = await _users.doc(uid).get();
+    final ids = ((userDoc.data()?['circleIds'] as List?) ?? const [])
+        .map((e) => e.toString())
+        .toList();
     final circles = <Circle>[];
-    for (final memberDoc in query.docs) {
-      final circleRef = memberDoc.reference.parent.parent;
-      if (circleRef == null) continue;
-      final circleDoc = await circleRef.get();
+    for (final id in ids) {
+      final circleDoc = await _circles.doc(id).get();
       if (circleDoc.exists) {
         circles.add(CircleDto.fromMap(circleDoc.id, circleDoc.data()!));
       }
@@ -246,18 +254,12 @@ class CircleRemoteDataSource {
     return (doc.data()?['name'] ?? '') as String;
   }
 
-  Future<String> _generateUniqueInviteCode() async {
+  /// Generates a random 6-char invite code. A no-query approach (6 chars from a
+  /// 31-char alphabet ≈ 887M combinations) keeps circle creation to plain doc
+  /// writes — avoiding a collection query that hangs on Flutter web.
+  String _generateInviteCode() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     final rand = Random.secure();
-    for (var attempt = 0; attempt < 8; attempt++) {
-      final code = List.generate(
-        6,
-        (_) => chars[rand.nextInt(chars.length)],
-      ).join();
-      final existing =
-          await _circles.where('inviteCode', isEqualTo: code).limit(1).get();
-      if (existing.docs.isEmpty) return code;
-    }
-    throw BadRequestException(message: 'تعذّر توليد رمز دعوة، حاولي مرة أخرى');
+    return List.generate(6, (_) => chars[rand.nextInt(chars.length)]).join();
   }
 }

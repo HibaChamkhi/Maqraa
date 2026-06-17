@@ -17,7 +17,7 @@ class CallState extends Equatable {
   final bool actionDone;
 
   const CallState({
-    this.status = UIStatus.loading,
+    this.status = UIStatus.success,
     this.message = '',
     this.calls = const [],
     this.myAttendance = false,

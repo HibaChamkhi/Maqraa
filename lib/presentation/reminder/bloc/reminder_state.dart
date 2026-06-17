@@ -8,7 +8,7 @@ class ReminderState extends Equatable {
   final ReminderSettings settings;
 
   const ReminderState({
-    this.status = UIStatus.loading,
+    this.status = UIStatus.success,
     this.message = '',
     this.settings = const ReminderSettings(),
   });

@@ -8,7 +8,7 @@ class AchievementState extends Equatable {
   final Achievement achievement;
 
   const AchievementState({
-    this.status = UIStatus.loading,
+    this.status = UIStatus.success,
     this.message = '',
     this.achievement = const Achievement(),
   });

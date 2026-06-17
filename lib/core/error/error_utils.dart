@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:http/http.dart';
 import '../network/network_info.dart';
 import 'exception.dart';
@@ -31,8 +32,23 @@ String mapExceptionToMessage(Exception e) {
     return e.message;
   } else if (e is NetworkException) {
     return e.message;
+  } else if (e is FirebaseException) {
+    // Covers cloud_firestore + firebase_auth errors so the real cause is shown
+    // instead of a generic message (e.g. permission-denied, unavailable).
+    switch (e.code) {
+      case 'permission-denied':
+        return 'الوصول مرفوض من قواعد Firestore — حدّثي قواعد الأمان';
+      case 'unavailable':
+        return 'تعذّر الوصول إلى Firestore (الشبكة/قاعدة البيانات غير متاحة)';
+      case 'not-found':
+        return 'قاعدة بيانات Firestore غير مُنشأة';
+      case 'failed-precondition':
+        return 'الاستعلام يحتاج فهرسًا (Index) في Firestore: ${e.message ?? ''}';
+      default:
+        return 'خطأ Firebase [${e.code}]: ${e.message ?? ''}';
+    }
   } else {
-    return 'Unknown error occurred';
+    return 'خطأ غير متوقع: $e';
   }
 }
 

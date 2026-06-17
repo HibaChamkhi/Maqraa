@@ -17,7 +17,7 @@ class SessionState extends Equatable {
   final bool joined;
 
   const SessionState({
-    this.status = UIStatus.loading,
+    this.status = UIStatus.success,
     this.message = '',
     this.activeSession,
     this.sessions = const [],

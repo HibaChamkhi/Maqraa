@@ -28,20 +28,26 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   Future<void> _onCheck(AuthCheckRequested event, Emitter<AuthState> emit) async {
     emit(state.copyWith(status: UIStatus.loading));
     try {
-      final user = await authRepository.currentUser();
+      final user =
+          await authRepository.currentUser().timeout(const Duration(seconds: 15));
       emit(state.copyWith(status: UIStatus.success, user: user, clearUser: user == null));
-    } on Exception catch (e) {
-      emit(state.copyWith(status: UIStatus.error, message: mapExceptionToMessage(e)));
+    } catch (e) {
+      // Never get stuck on the splash — fall through to the login screen.
+      emit(state.copyWith(status: UIStatus.success, clearUser: true));
     }
   }
 
   Future<void> _onLogin(AuthLoginRequested event, Emitter<AuthState> emit) async {
     emit(state.copyWith(status: UIStatus.loading, message: ''));
     try {
-      final user = await authRepository.login(event.email, event.password);
+      final user = await authRepository
+          .login(event.email, event.password)
+          .timeout(const Duration(seconds: 25));
       emit(state.copyWith(status: UIStatus.success, user: user));
     } on Exception catch (e) {
       emit(state.copyWith(status: UIStatus.error, message: mapExceptionToMessage(e)));
+    } catch (e) {
+      emit(state.copyWith(status: UIStatus.error, message: 'تعذّر تسجيل الدخول: $e'));
     }
   }
 

@@ -17,7 +17,7 @@ class ExamState extends Equatable {
   final bool actionDone;
 
   const ExamState({
-    this.status = UIStatus.loading,
+    this.status = UIStatus.success,
     this.message = '',
     this.exams = const [],
     this.results = const [],

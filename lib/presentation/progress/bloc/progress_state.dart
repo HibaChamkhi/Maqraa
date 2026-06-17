@@ -7,7 +7,7 @@ class ProgressState extends Equatable {
   final List<StudentSubmission> submissions;
 
   const ProgressState({
-    this.status = UIStatus.loading,
+    this.status = UIStatus.success,
     this.message = '',
     this.progress,
     this.submissions = const [],
