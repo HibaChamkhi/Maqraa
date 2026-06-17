@@ -11,7 +11,7 @@ class CalendarState extends Equatable {
   final bool actionDone;
 
   const CalendarState({
-    this.status = UIStatus.loading,
+    this.status = UIStatus.success,
     this.message = '',
     this.sessions = const [],
     this.actionDone = false,

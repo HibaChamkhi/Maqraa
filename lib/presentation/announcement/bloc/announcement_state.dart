@@ -11,7 +11,7 @@ class AnnouncementState extends Equatable {
   final bool actionDone;
 
   const AnnouncementState({
-    this.status = UIStatus.loading,
+    this.status = UIStatus.success,
     this.message = '',
     this.announcements = const [],
     this.actionDone = false,

@@ -24,7 +24,7 @@ class CircleState extends Equatable {
   final bool actionDone;
 
   const CircleState({
-    this.status = UIStatus.loading,
+    this.status = UIStatus.success,
     this.message = '',
     this.circle,
     this.members = const [],

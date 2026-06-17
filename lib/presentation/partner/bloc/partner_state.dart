@@ -20,7 +20,7 @@ class PartnerState extends Equatable {
   final bool actionDone;
 
   const PartnerState({
-    this.status = UIStatus.loading,
+    this.status = UIStatus.success,
     this.message = '',
     this.pairs = const [],
     this.myPair,

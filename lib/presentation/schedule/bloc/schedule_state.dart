@@ -8,7 +8,7 @@ class ScheduleState extends Equatable {
   final String? weekId;
 
   const ScheduleState({
-    this.status = UIStatus.loading,
+    this.status = UIStatus.success,
     this.message = '',
     this.schedule,
     this.weekStart,
