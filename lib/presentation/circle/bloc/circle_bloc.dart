@@ -27,6 +27,55 @@ class CircleBloc extends Bloc<CircleEvent, CircleState> {
     on<CirclePrivacyChanged>(_onPrivacy);
     on<CircleLoadRequested>(_onLoad);
     on<CircleMyCirclesRequested>(_onMyCircles);
+    on<CircleStudentAdded>(_onStudentAdded);
+    on<CircleMemberUpdated>(_onMemberUpdated);
+    on<CircleMemberRemoved>(_onMemberRemoved);
+  }
+
+  Future<void> _onStudentAdded(
+      CircleStudentAdded event, Emitter<CircleState> emit) async {
+    emit(state.copyWith(status: UIStatus.loading, message: '', actionDone: false));
+    try {
+      await circleRepository.addStudentManually(
+          circleId: event.circleId, name: event.name, juz: event.juz);
+      final members = await circleRepository.getMembers(event.circleId);
+      emit(state.copyWith(
+          status: UIStatus.success, members: members, message: 'تمت إضافة الطالبة'));
+    } on Exception catch (e) {
+      emit(state.copyWith(status: UIStatus.error, message: mapExceptionToMessage(e)));
+    }
+  }
+
+  Future<void> _onMemberUpdated(
+      CircleMemberUpdated event, Emitter<CircleState> emit) async {
+    try {
+      await circleRepository.updateMember(
+        circleId: event.circleId,
+        uid: event.uid,
+        attendance: event.attendance,
+        performance: event.performance,
+        memorizedPages: event.memorizedPages,
+        juz: event.juz,
+        touchRecitation: event.touchRecitation,
+      );
+      final members = await circleRepository.getMembers(event.circleId);
+      emit(state.copyWith(status: UIStatus.success, members: members));
+    } on Exception catch (e) {
+      emit(state.copyWith(status: UIStatus.error, message: mapExceptionToMessage(e)));
+    }
+  }
+
+  Future<void> _onMemberRemoved(
+      CircleMemberRemoved event, Emitter<CircleState> emit) async {
+    try {
+      await circleRepository.removeMember(
+          circleId: event.circleId, uid: event.uid);
+      final members = await circleRepository.getMembers(event.circleId);
+      emit(state.copyWith(
+          status: UIStatus.success, members: members, message: 'تم حذف الطالبة'));
+    } on Exception catch (e) {
+      emit(state.copyWith(status: UIStatus.error, message: mapExceptionToMessage(e)));
+    }
   }
 
   Future<void> _onCreate(

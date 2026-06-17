@@ -15,6 +15,8 @@ import '../../calendar/pages/student_calendar_page.dart';
 import '../../call/pages/weekly_call_page.dart';
 import '../../circle/pages/circle_info_page.dart';
 import '../../circle/pages/circle_members_page.dart';
+import '../../circle/pages/circles_list_page.dart';
+import '../../circle/pages/circle_workspace_page.dart';
 import '../../circle/pages/create_circle_page.dart';
 import '../../circle/pages/join_circle_page.dart';
 import '../../circle/pages/join_requests_page.dart';
@@ -226,10 +228,12 @@ class _Dashboard extends StatelessWidget {
     final id = circle.id;
     final sections = <_Section>[
       _Section('إدارة الحلقة', [
+        _Tile('كل الحلقات', Icons.groups_2_outlined,
+            () => _push(context, const CirclesListPage())),
+        _Tile('الطالبات', Icons.group_outlined,
+            () => _push(context, CircleWorkspacePage(circle: circle, user: user))),
         _Tile('معلومات الحلقة', Icons.info_outline,
             () => _push(context, CircleInfoPage(circleId: id, user: user))),
-        _Tile('الطالبات', Icons.group_outlined,
-            () => _push(context, CircleMembersPage(circleId: id, user: user))),
         _Tile('طلبات الانضمام', Icons.how_to_reg_outlined,
             () => _push(context, JoinRequestsPage(circleId: id))),
         _Tile('إقران الرفيقات', Icons.handshake_outlined,
