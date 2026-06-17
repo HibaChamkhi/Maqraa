@@ -5,6 +5,7 @@ import '../../../core/di/injection.dart';
 import '../../../core/model /ui_state.dart';
 import '../../../core/ui/styles/theme.dart';
 import '../../../domain/auth/models/app_user.dart';
+import '../../../domain/circle/models/circle.dart';
 import '../bloc/circle_bloc.dart';
 import 'circle_info_page.dart';
 import 'qr_join_page.dart';
