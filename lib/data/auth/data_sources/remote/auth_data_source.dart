@@ -59,8 +59,10 @@ class AuthRemoteDataSource {
       await cred.user!.updateDisplayName(name.trim());
       _cache(appUser);
       return appUser;
-    } on FirebaseAuthException catch (e) {
+    } on FirebaseException catch (e) {
       throw BadRequestException(message: _authMessage(e));
+    } catch (e) {
+      throw BadRequestException(message: 'خطأ غير متوقع: $e');
     }
   }
 
@@ -71,8 +73,10 @@ class AuthRemoteDataSource {
         password: password,
       );
       return _loadProfile(cred.user!.uid, fallbackEmail: email.trim());
-    } on FirebaseAuthException catch (e) {
+    } on FirebaseException catch (e) {
       throw BadRequestException(message: _authMessage(e));
+    } catch (e) {
+      throw BadRequestException(message: 'خطأ غير متوقع: $e');
     }
   }
 
@@ -119,8 +123,10 @@ class AuthRemoteDataSource {
         return stub;
       }
       return _loadProfile(uid, fallbackEmail: cred.user!.email ?? '');
-    } on FirebaseAuthException catch (e) {
+    } on FirebaseException catch (e) {
       throw BadRequestException(message: _authMessage(e));
+    } catch (e) {
+      throw BadRequestException(message: 'خطأ غير متوقع: $e');
     }
   }
 
@@ -147,7 +153,7 @@ class AuthRemoteDataSource {
       );
       await user.reauthenticateWithCredential(cred);
       await user.updatePassword(newPassword);
-    } on FirebaseAuthException catch (e) {
+    } on FirebaseException catch (e) {
       throw BadRequestException(message: _authMessage(e));
     }
   }
@@ -175,7 +181,7 @@ class AuthRemoteDataSource {
       ..setGender(user.gender?.name);
   }
 
-  String _authMessage(FirebaseAuthException e) {
+  String _authMessage(FirebaseException e) {
     switch (e.code) {
       case 'invalid-email':
         return 'البريد الإلكتروني غير صحيح';
@@ -186,13 +192,24 @@ class AuthRemoteDataSource {
       case 'email-already-in-use':
         return 'البريد الإلكتروني مستخدم بالفعل';
       case 'weak-password':
-        return 'كلمة المرور ضعيفة';
+        return 'كلمة المرور ضعيفة (٦ أحرف على الأقل)';
       case 'invalid-verification-code':
         return 'رمز التحقق غير صحيح';
       case 'requires-recent-login':
         return 'يلزم تسجيل الدخول من جديد لإتمام العملية';
+      case 'operation-not-allowed':
+        return 'تسجيل الدخول بالبريد غير مُفعّل في Firebase (Authentication → Sign-in method)';
+      case 'configuration-not-found':
+        return 'لم تُفعّل خدمة المصادقة في Firebase (اضغطي Get started في تبويب Authentication)';
+      case 'permission-denied':
+        return 'قاعدة البيانات ترفض الوصول (Firestore Rules) — راجعي قواعد الأمان';
+      case 'unavailable':
+      case 'not-found':
+        return 'قاعدة بيانات Firestore غير مُنشأة أو غير متاحة';
+      case 'network-request-failed':
+        return 'فشل الاتصال بالشبكة';
       default:
-        return e.message ?? 'حدث خطأ غير متوقع';
+        return 'خطأ Firebase [${e.code}]: ${e.message ?? ''}';
     }
   }
 }
