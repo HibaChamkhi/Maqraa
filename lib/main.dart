@@ -42,7 +42,7 @@ class MyApp extends StatelessWidget {
     return BlocProvider(
       create: (_) => getIt<AuthBloc>()..add(const AuthCheckRequested()),
       child: MaterialApp(
-        title: 'وصال',
+        title: 'وِصَال',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light,
         darkTheme: AppTheme.light, // «ورْد» is a light-only design

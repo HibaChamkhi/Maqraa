@@ -112,7 +112,7 @@ class _HomePageState extends State<HomePage> {
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: const [
-            Text('ورد'),
+            Text('وِصَال'),
             SizedBox(width: 6),
             Icon(Icons.spa_outlined, color: AppColors.primary),
           ],

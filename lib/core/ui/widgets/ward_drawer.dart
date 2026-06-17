@@ -67,7 +67,7 @@ class WardDrawer extends StatelessWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  Text('ورد',
+                  Text('وِصَال',
                       style: Theme.of(context)
                           .textTheme
                           .headlineSmall

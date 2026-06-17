@@ -52,7 +52,7 @@ class _Splash extends StatelessWidget {
               child: Icon(Icons.menu_book_rounded, size: 48, color: primary),
             ),
             const SizedBox(height: 20),
-            Text('وِرد', style: theme.textTheme.displayMedium),
+            Text('وِصَال', style: theme.textTheme.displayMedium),
             const SizedBox(height: 4),
             Text('لحفظ القرآن الكريم', style: theme.textTheme.bodyMedium),
             const SizedBox(height: 24),
