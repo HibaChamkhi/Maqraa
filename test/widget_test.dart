@@ -1,30 +1,29 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
+// Smoke tests for Wesal. The full app needs Firebase + DI initialization,
+// so here we test pure units (theme + domain) that don't require a backend.
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:maqraa/main.dart';
+import 'package:maqraa/core/ui/styles/theme.dart';
+import 'package:maqraa/domain/auth/models/app_user.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  test('official brand primary color is correct', () {
+    expect(AppColors.primary.toARGB32(), 0xFF4E79A8);
+  });
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+  test('UserRole maps to/from name', () {
+    expect(UserRole.fromName('teacher'), UserRole.teacher);
+    expect(UserRole.student.arabicLabel, 'طالبة');
+  });
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+  test('Gender maps from name', () {
+    expect(Gender.fromName('female'), Gender.female);
+    expect(Gender.fromName('unknown'), isNull);
+  });
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+  test('profile completeness requires role and gender', () {
+    const incomplete = AppUser(uid: '1', name: 'أمل', email: 'a@b.com');
+    final complete = incomplete.copyWith(role: UserRole.student, gender: Gender.female);
+    expect(incomplete.hasCompletedProfile, isFalse);
+    expect(complete.hasCompletedProfile, isTrue);
   });
 }

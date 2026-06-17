@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
-import '../../../core/input_validation/validate_email.dart';
-import '../../../core/input_validation/validate_password.dart';
-import '../bloc/login_bloc/login_bloc.dart';
+import '../../../core/model /ui_state.dart';
+import '../bloc/auth_bloc.dart';
+import '../pages/otp_page.dart';
+import '../pages/register_page.dart';
 
 class LoginWidget extends StatefulWidget {
   const LoginWidget({super.key});
@@ -14,9 +15,9 @@ class LoginWidget extends StatefulWidget {
 
 class _LoginWidgetState extends State<LoginWidget> {
   final _formKey = GlobalKey<FormState>();
-
-  final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _obscure = true;
 
   @override
   void dispose() {
@@ -27,92 +28,119 @@ class _LoginWidgetState extends State<LoginWidget> {
 
   void _onLogin() {
     if (_formKey.currentState!.validate()) {
-      BlocProvider.of<LoginBloc>(context).add(
-        LoginUserEvent(
-          email: _emailController.text,
-          password: _passwordController.text,
-        ),
-      );
+      context.read<AuthBloc>().add(
+            AuthLoginRequested(
+              email: _emailController.text.trim(),
+              password: _passwordController.text,
+            ),
+          );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      // Center and constrain the form so it looks good on wide web/desktop
-      // screens instead of stretching edge to edge.
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
+    final theme = Theme.of(context);
+    final loading = context.select<AuthBloc, bool>(
+      (b) => b.state.status == UIStatus.loading,
+    );
+
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 440),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Icon(Icons.menu_book_rounded, size: 56, color: theme.colorScheme.primary),
+              const SizedBox(height: 12),
+              Text('وصال', textAlign: TextAlign.center, style: theme.textTheme.displaySmall),
+              const SizedBox(height: 4),
+              Text(
+                'رفيقك في حفظ القرآن الكريم',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium,
               ),
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(
-                        'Sign in',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.headlineSmall,
-                      ),
-                      const SizedBox(height: 24),
-
-                      // Email input field
-                      TextFormField(
-                        controller: _emailController,
-                        decoration: const InputDecoration(
-                          labelText: 'Email',
-                          hintText: 'Enter your email',
-                          border: OutlineInputBorder(),
+              const SizedBox(height: 32),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text('تسجيل الدخول', style: theme.textTheme.titleLarge),
+                        const SizedBox(height: 20),
+                        TextFormField(
+                          controller: _emailController,
+                          keyboardType: TextInputType.emailAddress,
+                          decoration: const InputDecoration(
+                            labelText: 'البريد الإلكتروني',
+                            prefixIcon: Icon(Icons.email_outlined),
+                          ),
+                          validator: (v) =>
+                              (v == null || !v.contains('@')) ? 'أدخل بريدًا صحيحًا' : null,
                         ),
-                        keyboardType: TextInputType.emailAddress,
-                        validator: (value) =>
-                            validateEmail(value ?? '', context),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Password input field
-                      TextFormField(
-                        controller: _passwordController,
-                        decoration: const InputDecoration(
-                          labelText: 'Password',
-                          hintText: 'Enter your password',
-                          border: OutlineInputBorder(),
-                        ),
-                        obscureText: true,
-                        onFieldSubmitted: (_) => _onLogin(),
-                        validator: (value) =>
-                            validatePassword(value ?? '', context),
-                      ),
-                      const SizedBox(height: 24),
-
-                      // Login button
-                      SizedBox(
-                        height: 48,
-                        child: ElevatedButton(
-                          onPressed: _onLogin,
-                          style: ElevatedButton.styleFrom(
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(50),
+                        const SizedBox(height: 16),
+                        TextFormField(
+                          controller: _passwordController,
+                          obscureText: _obscure,
+                          onFieldSubmitted: (_) => _onLogin(),
+                          decoration: InputDecoration(
+                            labelText: 'كلمة المرور',
+                            prefixIcon: const Icon(Icons.lock_outline),
+                            suffixIcon: IconButton(
+                              icon: Icon(_obscure ? Icons.visibility_off : Icons.visibility),
+                              onPressed: () => setState(() => _obscure = !_obscure),
                             ),
                           ),
-                          child: const Text('Login'),
+                          validator: (v) =>
+                              (v == null || v.length < 6) ? 'كلمة المرور قصيرة' : null,
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 24),
+                        ElevatedButton(
+                          onPressed: loading ? null : _onLogin,
+                          child: loading
+                              ? const SizedBox(
+                                  height: 22,
+                                  width: 22,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: Colors.white),
+                                )
+                              : const Text('دخول'),
+                        ),
+                        const SizedBox(height: 8),
+                        OutlinedButton.icon(
+                          onPressed: loading
+                              ? null
+                              : () => Navigator.of(context).push(
+                                    MaterialPageRoute(builder: (_) => const OtpPage()),
+                                  ),
+                          icon: const Icon(Icons.sms_outlined),
+                          label: const Text('الدخول عبر رقم الهاتف'),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text('ليس لديك حساب؟'),
+                  TextButton(
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const RegisterPage()),
+                    ),
+                    child: const Text('أنشئي حسابًا'),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
       ),

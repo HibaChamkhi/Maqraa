@@ -1,25 +1,58 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:maqraa/presentation/auth/pages/login_page.dart';
+import 'package:intl/date_symbol_data_local.dart';
+
 import 'core/di/injection.dart';
+import 'core/ui/styles/theme.dart';
+import 'firebase_options.dart';
+import 'presentation/app/auth_gate.dart';
+import 'presentation/auth/bloc/auth_bloc.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  await initializeDateFormatting('ar', null);
   await configureDependencies();
-  runApp(ScreenUtilInit(
-    designSize: const Size(428, 810),
-    builder: (BuildContext context, Widget? child) {
-      return const MyApp();
-    },
-  ));
+  runApp(
+    ScreenUtilInit(
+      designSize: const Size(428, 810),
+      builder: (context, child) => const MyApp(),
+    ),
+  );
 }
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
+
   @override
   Widget build(BuildContext context) {
-    return   const MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home:  LoginPage(),
+    return BlocProvider(
+      create: (_) => getIt<AuthBloc>()..add(const AuthCheckRequested()),
+      child: MaterialApp(
+        title: 'وصال',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.light,
+        darkTheme: AppTheme.dark,
+        themeMode: ThemeMode.system, // light/dark toggle ready (US-23)
+        // Arabic + full RTL support (US-22).
+        locale: const Locale('ar'),
+        supportedLocales: const [Locale('ar'), Locale('en')],
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        builder: (context, child) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: child!,
+        ),
+        home: const AuthGate(),
+      ),
     );
   }
 }

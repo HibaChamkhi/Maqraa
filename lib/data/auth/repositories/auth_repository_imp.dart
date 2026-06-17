@@ -1,63 +1,70 @@
 import 'package:injectable/injectable.dart';
-import '../../../../core/network/network_info.dart';
+
+import '../../../domain/auth/models/app_user.dart';
 import '../../../domain/auth/repositories/auth_repository.dart';
 import '../data_sources/remote/auth_data_source.dart';
 
 @Injectable(as: AuthRepository)
 class AuthRepositoryImpl implements AuthRepository {
   final AuthRemoteDataSource remoteDataSource;
-  final NetworkInfo networkInfo;
 
-  AuthRepositoryImpl({
-    required this.remoteDataSource,
-    required this.networkInfo,
-  });
+  AuthRepositoryImpl({required this.remoteDataSource});
 
   @override
-  Future<void> register(Map<String, dynamic> userInfo) async {
-    // Perform the network request to register
-    final response = await remoteDataSource.register(userInfo);
-    response.fold(
-      (exception) {
-        throw exception;
-      },
-      (success) {
-        // Handle successful response
-        // Optionally return success if needed
-      },
+  Future<AppUser?> currentUser() => remoteDataSource.currentUser();
+
+  @override
+  Future<AppUser> register({
+    required String name,
+    required String email,
+    required String password,
+    String? phone,
+    required Gender gender,
+    UserRole? role,
+  }) {
+    return remoteDataSource.register(
+      name: name,
+      email: email,
+      password: password,
+      phone: phone,
+      gender: gender,
+      role: role,
     );
   }
 
   @override
-  Future<void> login(String email, String password) async {
-    // Perform the network request to login
-    final response = await remoteDataSource.login(email, password);
-    response.fold(
-      (exception) {
-        // Handle the exception
-        throw exception;
-      },
-      (success) {
-        // Handle successful response
-        // Optionally return success if needed
-      },
+  Future<AppUser> login(String email, String password) =>
+      remoteDataSource.login(email, password);
+
+  @override
+  Future<String> sendPhoneOtp(String phoneNumber) =>
+      remoteDataSource.sendPhoneOtp(phoneNumber);
+
+  @override
+  Future<AppUser> verifyPhoneOtp({
+    required String verificationId,
+    required String smsCode,
+  }) {
+    return remoteDataSource.verifyPhoneOtp(
+      verificationId: verificationId,
+      smsCode: smsCode,
     );
   }
 
   @override
-  Future<void> logout() async {
-    // Perform the network request to logout
-    final response = await remoteDataSource.logout();
-    response.fold(
-      (exception) {
-        // Handle the exception
-        throw exception;
-      },
-      (success) {
-        // Handle successful response
-        // Optionally return success if needed
-      },
+  Future<void> setRole(UserRole role) => remoteDataSource.setRole(role);
+
+  @override
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) {
+    return remoteDataSource.changePassword(
+      currentPassword: currentPassword,
+      newPassword: newPassword,
     );
   }
 
+  @override
+  Future<void> logout() => remoteDataSource.logout();
 }

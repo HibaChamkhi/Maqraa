@@ -7,8 +7,21 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
 
   cupertino_icons: ^1.0.8
+  firebase_core: ^3.6.0
+  firebase_auth: ^5.3.1
+  cloud_firestore: ^5.4.4
+  google_fonts: ^6.2.1
+  image_picker: ^1.1.2
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^5.2.3
+  table_calendar: ^3.1.2
+  flutter_local_notifications: ^17.2.3
+  timezone: ^0.9.4
+  intl: ^0.19.0
   dartz: ^0.10.1
   injectable: ^2.5.1
   http: ^1.6.0
