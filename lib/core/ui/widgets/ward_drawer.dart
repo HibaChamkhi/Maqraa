@@ -1,0 +1,164 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+
+import '../../../domain/auth/models/app_user.dart';
+import '../../../presentation/auth/bloc/auth_bloc.dart';
+import '../../../presentation/circle/pages/circles_list_page.dart';
+import '../../../presentation/profile/pages/profile_page.dart';
+import '../styles/theme.dart';
+
+/// The green «ورْد» side navigation drawer (the sidebar in the reference).
+/// Opened by the ≡ button; on RTL it slides in from the right.
+class WardDrawer extends StatelessWidget {
+  final AppUser user;
+
+  /// Label of the currently-open section, to highlight it.
+  final String current;
+
+  const WardDrawer({super.key, required this.user, this.current = 'الرئيسية'});
+
+  bool get _isTeacher =>
+      user.role == UserRole.teacher || user.role == UserRole.supervisor;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = _isTeacher
+        ? const [
+            ('الرئيسية', Icons.home_outlined),
+            ('الحلقات', Icons.groups_2_outlined),
+            ('الطالبات', Icons.people_outline),
+            ('الجدول', Icons.calendar_month_outlined),
+            ('الاختبارات والتقارير', Icons.assignment_outlined),
+            ('الإشعارات', Icons.notifications_outlined),
+          ]
+        : const [
+            ('الرئيسية', Icons.home_outlined),
+            ('حلقتي', Icons.groups_2_outlined),
+            ('واجب اليوم', Icons.today_outlined),
+            ('تقدّمي', Icons.timeline_outlined),
+            ('الإشعارات', Icons.notifications_outlined),
+          ];
+
+    return Drawer(
+      backgroundColor: AppColors.primaryDark,
+      shape: const RoundedRectangleBorder(),
+      child: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Text('ورد',
+                      style: Theme.of(context)
+                          .textTheme
+                          .headlineSmall
+                          ?.copyWith(color: Colors.white)),
+                  const SizedBox(width: 8),
+                  const Icon(Icons.spa_outlined, color: Colors.white, size: 26),
+                ],
+              ),
+            ),
+            for (final item in items)
+              _DrawerItem(
+                label: item.$1,
+                icon: item.$2,
+                active: item.$1 == current,
+                onTap: () => _go(context, item.$1),
+              ),
+            const Spacer(),
+            const Divider(color: Colors.white24, height: 1),
+            _DrawerItem(
+              label: 'الملف الشخصي',
+              icon: Icons.person_outline,
+              onTap: () {
+                Navigator.of(context).pop();
+                Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const ProfilePage()));
+              },
+            ),
+            _DrawerItem(
+              label: 'تسجيل الخروج',
+              icon: Icons.logout,
+              onTap: () {
+                Navigator.of(context).pop();
+                context.read<AuthBloc>().add(const AuthLogoutRequested());
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _go(BuildContext context, String label) {
+    Navigator.of(context).pop(); // close drawer
+    switch (label) {
+      case 'الرئيسية':
+        Navigator.of(context).popUntil((r) => r.isFirst);
+        break;
+      case 'الحلقات':
+      case 'الطالبات':
+      case 'حلقتي':
+        Navigator.of(context)
+            .push(MaterialPageRoute(builder: (_) => const CirclesListPage()));
+        break;
+      default:
+        // الجدول / الاختبارات / الإشعارات / واجب اليوم / تقدّمي — reachable from
+        // the home grid for now; deeper wiring comes with each section.
+        Navigator.of(context).popUntil((r) => r.isFirst);
+    }
+  }
+}
+
+class _DrawerItem extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool active;
+  final VoidCallback onTap;
+
+  const _DrawerItem({
+    required this.label,
+    required this.icon,
+    this.active = false,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+      child: Material(
+        color: active ? Colors.white : Colors.transparent,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+            child: Row(
+              children: [
+                Icon(icon,
+                    color: active ? AppColors.primaryDark : Colors.white,
+                    size: 22),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      color: active ? AppColors.primaryDark : Colors.white,
+                      fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                      fontSize: 15,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

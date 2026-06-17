@@ -7,6 +7,7 @@ import '../../../domain/circle/models/circle.dart';
 import '../../../domain/circle/repositories/circle_repository.dart';
 import '../../../core/ui/styles/theme.dart';
 import '../../../core/ui/widgets/werd_widgets.dart';
+import '../../../core/ui/widgets/ward_drawer.dart';
 import '../../announcement/pages/announcements_page.dart';
 import '../../auth/bloc/auth_bloc.dart';
 import '../../achievement/pages/achievement_page.dart';
@@ -76,6 +77,7 @@ class _HomePageState extends State<HomePage> {
         if (circles.isEmpty) {
           return Scaffold(
             appBar: _appBar(context),
+            drawer: WardDrawer(user: user),
             body: _EmptyState(user: user, onChanged: _reload),
           );
         }
@@ -97,6 +99,7 @@ class _HomePageState extends State<HomePage> {
         // Teachers / supervisors keep the management grid.
         return Scaffold(
           appBar: _appBar(context),
+          drawer: WardDrawer(user: user),
           body: _Dashboard(user: user, circle: circle),
         );
       },
