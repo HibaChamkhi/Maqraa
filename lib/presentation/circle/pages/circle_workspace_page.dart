@@ -825,7 +825,6 @@ class _StudentsViewState extends State<_StudentsView> {
       },
     );
   }
-  }
 
   String _csvCell(String v) {
     if (v.contains(',') || v.contains('"') || v.contains('\n')) {
