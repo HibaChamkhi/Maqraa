@@ -178,18 +178,18 @@ class _TopBar extends StatelessWidget {
           ),
           child: Row(
             children: [
+              const SizedBox(width: 8),
+              Text('وِصَال', style: theme.textTheme.titleLarge),
+              const SizedBox(width: 6),
+              const Icon(Icons.spa_outlined, color: AppColors.primary),
+              const SizedBox(width: 4),
               if (onMenu != null)
                 IconButton(icon: const Icon(Icons.menu), onPressed: onMenu)
               else if (menu)
                 IconButton(
                   icon: const Icon(Icons.menu),
                   onPressed: () => Scaffold.of(context).openDrawer(),
-                )
-              else
-                const SizedBox(width: 8),
-              Text('وِصَال', style: theme.textTheme.titleLarge),
-              const SizedBox(width: 6),
-              const Icon(Icons.spa_outlined, color: AppColors.primary),
+                ),
               const Spacer(),
               IconButton(
                   onPressed: () {},
