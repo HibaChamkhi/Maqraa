@@ -237,6 +237,20 @@ class CircleRemoteDataSource {
     await _circles.doc(circleId).update({'privacy': privacy.name});
   }
 
+  /// Set the circle's memorization level (surah + ayah range).
+  Future<void> updateLevel({
+    required String circleId,
+    required String surah,
+    int? fromAyah,
+    int? toAyah,
+  }) async {
+    await _circles.doc(circleId).update({
+      'levelSurah': surah,
+      'levelFromAyah': fromAyah,
+      'levelToAyah': toAyah,
+    });
+  }
+
   /// Set the circle's recurring weekly meeting schedule (days + per-day start
   /// time + default duration). Drives the global weekly calendar.
   Future<void> updateSchedule({

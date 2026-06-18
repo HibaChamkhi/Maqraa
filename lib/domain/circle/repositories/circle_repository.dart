@@ -50,6 +50,14 @@ abstract class CircleRepository {
     required Privacy privacy,
   });
 
+  /// Set the circle's memorization level (surah + ayah range).
+  Future<void> updateLevel({
+    required String circleId,
+    required String surah,
+    int? fromAyah,
+    int? toAyah,
+  });
+
   /// Set the circle's recurring weekly meeting schedule (per-day start time
   /// + default duration). Drives the global weekly calendar.
   Future<void> updateSchedule({

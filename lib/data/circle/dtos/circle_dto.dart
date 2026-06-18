@@ -17,6 +17,9 @@ class CircleDto {
       supervisorIds:
           ((map['supervisorIds'] as List?)?.cast<String>()) ?? const [],
       level: (map['level'] ?? '') as String,
+      levelSurah: (map['levelSurah'] ?? '') as String,
+      levelFromAyah: (map['levelFromAyah'] as num?)?.toInt(),
+      levelToAyah: (map['levelToAyah'] as num?)?.toInt(),
       days: ((map['days'] as List?)?.cast<String>()) ?? const [],
       dayTimes: ((map['dayTimes'] as Map?)?.map(
               (k, v) => MapEntry(k.toString(), v.toString()))) ??
@@ -36,6 +39,9 @@ class CircleDto {
       'inviteCode': circle.inviteCode,
       'supervisorIds': circle.supervisorIds,
       'level': circle.level,
+      'levelSurah': circle.levelSurah,
+      'levelFromAyah': circle.levelFromAyah,
+      'levelToAyah': circle.levelToAyah,
       'days': circle.days,
       'dayTimes': circle.dayTimes,
       'durationMinutes': circle.durationMinutes,

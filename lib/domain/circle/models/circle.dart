@@ -89,8 +89,22 @@ class Circle {
   final String inviteCode;
   final List<String> supervisorIds;
 
-  /// Memorization level / range, e.g. "جزء ٥ - ٣٠".
+  /// Legacy free-text level (kept for backward compatibility).
   final String level;
+
+  /// Structured memorization level: surah name + ayah range.
+  final String levelSurah;
+  final int? levelFromAyah;
+  final int? levelToAyah;
+
+  /// Arabic display for the level, e.g. «البقرة · الآيات ١–٥٠».
+  String get levelLabel {
+    if (levelSurah.isEmpty) return level.isEmpty ? '' : level;
+    final f = levelFromAyah, t = levelToAyah;
+    if (f == null) return levelSurah;
+    if (t == null || t == f) return '$levelSurah · الآية $f';
+    return '$levelSurah · الآيات $f–$t';
+  }
 
   /// Session days, e.g. ['sun','tue','thu'].
   final List<String> days;
@@ -113,6 +127,9 @@ class Circle {
     required this.inviteCode,
     this.supervisorIds = const [],
     this.level = '',
+    this.levelSurah = '',
+    this.levelFromAyah,
+    this.levelToAyah,
     this.days = const [],
     this.dayTimes = const {},
     this.durationMinutes = 60,
@@ -128,6 +145,9 @@ class Circle {
     String? inviteCode,
     List<String>? supervisorIds,
     String? level,
+    String? levelSurah,
+    int? levelFromAyah,
+    int? levelToAyah,
     List<String>? days,
     Map<String, String>? dayTimes,
     int? durationMinutes,
@@ -143,6 +163,9 @@ class Circle {
       inviteCode: inviteCode ?? this.inviteCode,
       supervisorIds: supervisorIds ?? this.supervisorIds,
       level: level ?? this.level,
+      levelSurah: levelSurah ?? this.levelSurah,
+      levelFromAyah: levelFromAyah ?? this.levelFromAyah,
+      levelToAyah: levelToAyah ?? this.levelToAyah,
       days: days ?? this.days,
       dayTimes: dayTimes ?? this.dayTimes,
       durationMinutes: durationMinutes ?? this.durationMinutes,

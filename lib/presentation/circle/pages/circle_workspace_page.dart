@@ -6,6 +6,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 import 'package:share_plus/share_plus.dart';
 
+import '../../../core/data/quran_surahs.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/model /ui_state.dart';
 import '../../../core/ui/styles/theme.dart';
@@ -152,10 +153,7 @@ class _CircleHeader extends StatelessWidget {
           label: 'المعلم المسؤول',
           value: circle.teacherName.isEmpty ? '—' : circle.teacherName),
       _DaysInfoCard(circleId: circle.id),
-      _InfoCard(
-          icon: Icons.menu_book_outlined,
-          label: 'مستوى الحلقة',
-          value: circle.level.isEmpty ? '—' : circle.level),
+      _LevelInfoCard(circle: circle, canManage: canManage),
     ];
 
     return Container(
@@ -304,6 +302,180 @@ class _DaysInfoCard extends StatelessWidget {
           value: days.isEmpty ? 'لم تُحدَّد' : days.join(' · '),
         );
       },
+    );
+  }
+}
+
+/// «مستوى الحلقة» card — surah + ayah range, editable by the teacher.
+class _LevelInfoCard extends StatefulWidget {
+  final Circle circle;
+  final bool canManage;
+  const _LevelInfoCard({required this.circle, required this.canManage});
+
+  @override
+  State<_LevelInfoCard> createState() => _LevelInfoCardState();
+}
+
+class _LevelInfoCardState extends State<_LevelInfoCard> {
+  late SurahInfo? _surah = _findSurah(widget.circle.levelSurah);
+  late int? _from = widget.circle.levelFromAyah;
+
+  static SurahInfo? _findSurah(String name) {
+    for (final s in kSurahs) {
+      if (s.name == name) return s;
+    }
+    return null;
+  }
+  late int? _to = widget.circle.levelToAyah;
+
+  String get _label {
+    if (_surah == null) return 'لم يُحدَّد';
+    if (_from == null) return _surah!.name;
+    if (_to == null || _to == _from) return '${_surah!.name} · الآية $_from';
+    return '${_surah!.name} · الآيات $_from–$_to';
+  }
+
+  Future<void> _edit() async {
+    final result =
+        await showDialog<({SurahInfo? surah, int? from, int? to})>(
+      context: context,
+      builder: (_) => _LevelEditorDialog(
+          initialSurah: _surah, initialFrom: _from, initialTo: _to),
+    );
+    if (result == null) return;
+    setState(() {
+      _surah = result.surah;
+      _from = result.from;
+      _to = result.to;
+    });
+    try {
+      await getIt<CircleRepository>().updateLevel(
+        circleId: widget.circle.id,
+        surah: result.surah?.name ?? '',
+        fromAyah: result.from,
+        toAyah: result.to,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('تم تحديث مستوى الحلقة')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('تعذّر الحفظ: $e')));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final card = _InfoCard(
+        icon: Icons.menu_book_outlined, label: 'مستوى الحلقة', value: _label);
+    if (!widget.canManage) return card;
+    return InkWell(
+      borderRadius: BorderRadius.circular(AppRadius.lg),
+      onTap: _edit,
+      child: card,
+    );
+  }
+}
+
+class _LevelEditorDialog extends StatefulWidget {
+  final SurahInfo? initialSurah;
+  final int? initialFrom;
+  final int? initialTo;
+  const _LevelEditorDialog(
+      {this.initialSurah, this.initialFrom, this.initialTo});
+
+  @override
+  State<_LevelEditorDialog> createState() => _LevelEditorDialogState();
+}
+
+class _LevelEditorDialogState extends State<_LevelEditorDialog> {
+  late int? _num = widget.initialSurah?.number;
+  late final TextEditingController _from =
+      TextEditingController(text: widget.initialFrom?.toString() ?? '');
+  late final TextEditingController _to =
+      TextEditingController(text: widget.initialTo?.toString() ?? '');
+
+  @override
+  void dispose() {
+    _from.dispose();
+    _to.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    if (_num == null) {
+      Navigator.of(context).pop((surah: null, from: null, to: null));
+      return;
+    }
+    final surah = kSurahs[_num! - 1];
+    int? from = int.tryParse(_from.text.trim());
+    int? to = int.tryParse(_to.text.trim());
+    if (from != null) from = from.clamp(1, surah.ayahs).toInt();
+    if (to != null) to = to.clamp(1, surah.ayahs).toInt();
+    if (from != null && to != null && from > to) {
+      final tmp = from;
+      from = to;
+      to = tmp;
+    }
+    Navigator.of(context).pop((surah: surah, from: from, to: to));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final maxAyahs = _num == null ? null : kSurahs[_num! - 1].ayahs;
+    return AlertDialog(
+      title: const Text('مستوى الحلقة'),
+      content: SizedBox(
+        width: 320,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            DropdownButtonFormField<int>(
+              isExpanded: true,
+              value: _num,
+              decoration: const InputDecoration(
+                  labelText: 'السورة', isDense: true),
+              items: [
+                for (final s in kSurahs)
+                  DropdownMenuItem(
+                      value: s.number, child: Text('${s.number}. ${s.name}')),
+              ],
+              onChanged: (v) => setState(() => _num = v),
+            ),
+            const SizedBox(height: 12),
+            Row(children: [
+              Expanded(
+                child: TextField(
+                  controller: _from,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                      labelText: 'من آية',
+                      isDense: true,
+                      helperText: maxAyahs == null ? null : '1–$maxAyahs'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: _to,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                      labelText: 'إلى آية', isDense: true),
+                ),
+              ),
+            ]),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('إلغاء')),
+        ElevatedButton(onPressed: _save, child: const Text('حفظ')),
+      ],
     );
   }
 }
