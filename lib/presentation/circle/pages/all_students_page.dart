@@ -21,7 +21,7 @@ class AllStudentsPage extends StatefulWidget {
 typedef _Row = ({CircleMember member, Circle circle});
 
 class _AllStudentsPageState extends State<AllStudentsPage> {
-  late Future<List<_Row>> _future = _load();
+  late final Future<List<_Row>> _future = _load();
   String _query = '';
 
   Future<List<_Row>> _load() async {
@@ -87,7 +87,7 @@ class _AllStudentsPageState extends State<AllStudentsPage> {
                         child: Text('لا توجد طالبات بعد',
                             style: Theme.of(context).textTheme.bodyMedium))
                     : LayoutBuilder(builder: (context, c) {
-                        final open = (Circle circle) =>
+                        void open(Circle circle) =>
                             Navigator.of(context).push(MaterialPageRoute(
                               builder: (_) => CircleWorkspacePage(
                                   circle: circle, user: widget.user),

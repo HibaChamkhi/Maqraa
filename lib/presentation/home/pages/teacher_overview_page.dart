@@ -200,12 +200,11 @@ class _TeacherOverviewPageState extends State<TeacherOverviewPage> {
 // ---------- shared card shell with soft shadow ----------
 class _Shell extends StatelessWidget {
   final Widget child;
-  final EdgeInsets padding;
-  const _Shell({required this.child, this.padding = const EdgeInsets.all(AppSpacing.md)});
+  const _Shell({required this.child});
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: padding,
+      padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.lg),

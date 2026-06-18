@@ -6,7 +6,6 @@ import '../../../core/di/injection.dart';
 import '../../../core/model /ui_state.dart';
 import '../../../core/ui/styles/theme.dart';
 import '../../../domain/auth/models/app_user.dart';
-import '../../../domain/exam/models/exam.dart';
 import '../bloc/exam_bloc.dart';
 import 'exam_results_page.dart';
 

@@ -1,4 +1,3 @@
-import '../../auth/models/app_user.dart';
 import '../models/circle.dart';
 
 /// Circle management contract (US-03/04/05/29/38/39/40/41).

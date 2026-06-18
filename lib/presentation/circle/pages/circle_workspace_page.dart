@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -429,7 +428,7 @@ class _ScheduleTab extends StatefulWidget {
 }
 
 class _ScheduleTabState extends State<_ScheduleTab> {
-  late Map<String, String> _times = {...widget.circle.dayTimes};
+  late final Map<String, String> _times = {...widget.circle.dayTimes};
   late int _duration = widget.circle.durationMinutes;
   bool _saving = false;
 
@@ -495,8 +494,7 @@ class _ScheduleTabState extends State<_ScheduleTab> {
                     leading:
                         const Icon(Icons.event_outlined, color: AppColors.primary),
                     title: Text(_scheduleDayLabels[d]!),
-                    trailing: Text(
-                        '${_times[d]} · ${_duration}د',
+                    trailing: Text('${_times[d]} · $_duration د',
                         style: theme.textTheme.titleSmall),
                   ),
               ],
