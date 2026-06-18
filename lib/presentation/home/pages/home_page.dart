@@ -73,25 +73,24 @@ class _HomePageState extends State<HomePage> {
     return LayoutBuilder(builder: (context, c) {
       if (c.maxWidth >= 900) {
         return Scaffold(
-          body: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              AnimatedSize(
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeInOut,
-                child: _railOpen
-                    ? WardDrawer(user: user, permanent: true)
-                    : const SizedBox(height: double.infinity),
-              ),
-              Expanded(
-                child: Column(children: [
-                  _TopBar(
-                      onMenu: () => setState(() => _railOpen = !_railOpen)),
+          body: Column(children: [
+            _TopBar(onMenu: () => setState(() => _railOpen = !_railOpen)),
+            Expanded(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeInOut,
+                    child: _railOpen
+                        ? WardDrawer(user: user, permanent: true)
+                        : const SizedBox(height: double.infinity),
+                  ),
                   Expanded(child: content),
-                ]),
+                ],
               ),
-            ],
-          ),
+            ),
+          ]),
         );
       }
       return Scaffold(
@@ -178,18 +177,18 @@ class _TopBar extends StatelessWidget {
           ),
           child: Row(
             children: [
-              const SizedBox(width: 8),
-              Text('وِصَال', style: theme.textTheme.titleLarge),
-              const SizedBox(width: 6),
-              const Icon(Icons.spa_outlined, color: AppColors.primary),
-              const SizedBox(width: 4),
               if (onMenu != null)
                 IconButton(icon: const Icon(Icons.menu), onPressed: onMenu)
               else if (menu)
                 IconButton(
                   icon: const Icon(Icons.menu),
                   onPressed: () => Scaffold.of(context).openDrawer(),
-                ),
+                )
+              else
+                const SizedBox(width: 8),
+              Text('وِصَال', style: theme.textTheme.titleLarge),
+              const SizedBox(width: 6),
+              const Icon(Icons.spa_outlined, color: AppColors.primary),
               const Spacer(),
               IconButton(
                   onPressed: () {},

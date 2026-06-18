@@ -84,21 +84,27 @@ class WardDrawer extends StatelessWidget {
       child: SafeArea(
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Text('وِصَال',
-                      style: Theme.of(context)
-                          .textTheme
-                          .headlineSmall
-                          ?.copyWith(color: Colors.white)),
-                  const SizedBox(width: 8),
-                  const Icon(Icons.spa_outlined, color: Colors.white, size: 26),
-                ],
+            // The permanent rail sits under the full-width top bar which
+            // already shows the brand, so its own header is hidden there.
+            if (permanent)
+              const SizedBox(height: 12)
+            else
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Text('وِصَال',
+                        style: Theme.of(context)
+                            .textTheme
+                            .headlineSmall
+                            ?.copyWith(color: Colors.white)),
+                    const SizedBox(width: 8),
+                    const Icon(Icons.spa_outlined,
+                        color: Colors.white, size: 26),
+                  ],
+                ),
               ),
-            ),
             Expanded(
               child: ListView(
                 padding: EdgeInsets.zero,
