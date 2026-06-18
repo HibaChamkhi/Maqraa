@@ -748,14 +748,16 @@ class _SessionFormState extends State<_SessionForm> {
   }
 
   void _submit() {
-    if (_title.text.trim().isEmpty) return;
+    // Title is optional — default to the session type label.
+    final title =
+        _title.text.trim().isEmpty ? _type.arabicLabel : _title.text.trim();
     final at = DateTime(
         _date.year, _date.month, _date.day, _time.hour, _time.minute);
     if (_isEdit) {
       widget.bloc.add(CalendarSessionUpdated(
         circleId: widget.circleId,
         sessionId: widget.initial!.id,
-        title: _title.text,
+        title: title,
         scheduledAt: at,
         durationMinutes: _duration,
         type: _type,
@@ -763,7 +765,7 @@ class _SessionFormState extends State<_SessionForm> {
     } else if (_repeat && _weekdays.isNotEmpty) {
       widget.bloc.add(CalendarRecurringSessionsAdded(
         circleId: widget.circleId,
-        title: _title.text,
+        title: title,
         type: _type,
         durationMinutes: _duration,
         occurrences: _occurrences(),
@@ -771,7 +773,7 @@ class _SessionFormState extends State<_SessionForm> {
     } else {
       widget.bloc.add(CalendarSessionAdded(
         circleId: widget.circleId,
-        title: _title.text,
+        title: title,
         scheduledAt: at,
         durationMinutes: _duration,
         type: _type,
