@@ -4,7 +4,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/model /ui_state.dart';
 import '../../../core/ui/styles/theme.dart';
-import '../../../domain/reminder/models/reminder_settings.dart';
 import '../bloc/reminder_bloc.dart';
 
 /// US-13: enable/disable the daily task reminder and set its time.

@@ -2,12 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../domain/auth/models/app_user.dart';
+import '../../../presentation/announcement/pages/announcements_page.dart';
 import '../../../presentation/auth/bloc/auth_bloc.dart';
+import '../../../presentation/calendar/pages/week_schedule_page.dart';
+import '../../../presentation/circle/pages/all_students_page.dart';
 import '../../../presentation/circle/pages/circles_list_page.dart';
-import '../../../presentation/help/help_page.dart';
+import '../../../presentation/circle/pages/section_circle_picker_page.dart';
 import '../../../presentation/notification/pages/notifications_page.dart';
+import '../../../presentation/exam/pages/teacher_exams_page.dart';
+import '../../../presentation/help/pages/help_page.dart';
 import '../../../presentation/profile/pages/profile_page.dart';
-import '../../../presentation/profile/pages/settings_page.dart';
+import '../../../presentation/progress/pages/teacher_tracking_page.dart';
+import '../../../presentation/settings/pages/settings_page.dart';
 import '../styles/theme.dart';
 
 /// The green «ورْد» side navigation drawer (the sidebar in the reference).
@@ -22,11 +28,20 @@ class WardDrawer extends StatelessWidget {
   /// instead of a pop-over drawer.
   final bool permanent;
 
+  /// On wide screens, navigation pushes into this content-area navigator so
+  /// the rail + top bar stay put. When null, the root navigator is used.
+  final GlobalKey<NavigatorState>? contentNavigator;
+
+  /// Notifies the host which section was tapped (for active highlight).
+  final ValueChanged<String>? onSelect;
+
   const WardDrawer({
     super.key,
     required this.user,
     this.current = 'الرئيسية',
     this.permanent = false,
+    this.contentNavigator,
+    this.onSelect,
   });
 
   bool get _isTeacher =>
@@ -55,7 +70,7 @@ class WardDrawer extends StatelessWidget {
             ('الحلقات', Icons.groups_2_outlined),
             ('الطالبات', Icons.people_outline),
             ('الجدول', Icons.calendar_month_outlined),
-            ('الاختبارات والتقارير', Icons.assignment_outlined),
+            ('الاختبارات', Icons.assignment_outlined),
             ('التقارير', Icons.bar_chart_outlined),
             ('الإشعارات', Icons.notifications_outlined),
             ('الإعدادات', Icons.settings_outlined),
@@ -87,21 +102,27 @@ class WardDrawer extends StatelessWidget {
       child: SafeArea(
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Text('وِصَال',
-                      style: Theme.of(context)
-                          .textTheme
-                          .headlineSmall
-                          ?.copyWith(color: Colors.white)),
-                  const SizedBox(width: 8),
-                  const Icon(Icons.spa_outlined, color: Colors.white, size: 26),
-                ],
+            // The permanent rail sits under the full-width top bar which
+            // already shows the brand, so its own header is hidden there.
+            if (permanent)
+              const SizedBox(height: 12)
+            else
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Text('وِصَال',
+                        style: Theme.of(context)
+                            .textTheme
+                            .headlineSmall
+                            ?.copyWith(color: Colors.white)),
+                    const SizedBox(width: 8),
+                    const Icon(Icons.spa_outlined,
+                        color: Colors.white, size: 26),
+                  ],
+                ),
               ),
-            ),
             Expanded(
               child: ListView(
                 padding: EdgeInsets.zero,
@@ -122,7 +143,7 @@ class WardDrawer extends StatelessWidget {
               icon: Icons.person_outline,
               onTap: () {
                 _closeIfDrawer(context);
-                Navigator.of(context).push(
+                _nav(context).push(
                     MaterialPageRoute(builder: (_) => const ProfilePage()));
               },
             ),
@@ -147,34 +168,57 @@ class WardDrawer extends StatelessWidget {
     if (s != null && s.isDrawerOpen) s.closeDrawer();
   }
 
+  /// The navigator to drive: the content-area one on wide screens, else root.
+  NavigatorState _nav(BuildContext context) =>
+      contentNavigator?.currentState ?? Navigator.of(context);
+
   void _go(BuildContext context, String label) {
     _closeIfDrawer(context);
+    onSelect?.call(label);
+    final nav = _nav(context);
+    nav.popUntil((r) => r.isFirst);
+
+    void push(Widget page) =>
+        nav.push(MaterialPageRoute(builder: (_) => page));
+
     switch (label) {
       case 'الرئيسية':
-        Navigator.of(context).popUntil((r) => r.isFirst);
-        break;
+        break; // already reset to the overview above
       case 'الحلقات':
-      case 'الطالبات':
       case 'حلقتي':
-        Navigator.of(context)
-            .push(MaterialPageRoute(builder: (_) => const CirclesListPage()));
+        push(const CirclesListPage());
         break;
-      case 'الإعدادات':
-        Navigator.of(context)
-            .push(MaterialPageRoute(builder: (_) => SettingsPage(user: user)));
+      case 'الطالبات':
+        push(AllStudentsPage(user: user));
+        break;
+      case 'الجدول':
+        push(WeekSchedulePage(user: user));
+        break;
+      case 'الاختبارات':
+        push(SectionCirclePickerPage(
+          title: 'الاختبارات',
+          icon: Icons.assignment_outlined,
+          pageBuilder: (c) => TeacherExamsPage(circleId: c.id, user: user),
+        ));
+        break;
+      case 'التقارير':
+        push(SectionCirclePickerPage(
+          title: 'التقارير',
+          icon: Icons.bar_chart_outlined,
+          pageBuilder: (c) => TeacherTrackingPage(circleId: c.id),
+        ));
         break;
       case 'الإشعارات':
-        Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const NotificationsPage()));
+        push(const NotificationsPage());
+        break;
+      case 'الإعدادات':
+        push(const SettingsPage());
         break;
       case 'المساعدة':
-        Navigator.of(context)
-            .push(MaterialPageRoute(builder: (_) => const HelpPage()));
+        push(const HelpPage());
         break;
       default:
-        // الجدول / الاختبارات / الإشعارات / واجب اليوم / تقدّمي — reachable from
-        // the home grid for now; deeper wiring comes with each section.
-        Navigator.of(context).popUntil((r) => r.isFirst);
+        break; // واجب اليوم / تقدّمي — student tabs handle these
     }
   }
 }

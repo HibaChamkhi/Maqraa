@@ -47,7 +47,7 @@ class WesalSplash extends StatelessWidget {
                   _BookEmblem(color: _gold),
                   const SizedBox(height: 28),
                   Text(
-                    'وِصال',
+                    'وِصَال',
                     style: GoogleFonts.tajawal(
                       fontSize: 46,
                       fontWeight: FontWeight.w800,

@@ -17,8 +17,10 @@ class CalendarBloc extends Bloc<CalendarEvent, CalendarState> {
   CalendarBloc(this.calendarRepository) : super(const CalendarState()) {
     on<CalendarSessionsRequested>(_onLoad);
     on<CalendarSessionAdded>(_onAdd);
+    on<CalendarRecurringSessionsAdded>(_onAddRecurring);
     on<CalendarSessionUpdated>(_onUpdate);
     on<CalendarSessionDeleted>(_onDelete);
+    on<CalendarSeriesDeleted>(_onDeleteSeries);
   }
 
   Future<void> _onLoad(
@@ -41,6 +43,8 @@ class CalendarBloc extends Bloc<CalendarEvent, CalendarState> {
         circleId: event.circleId,
         title: event.title,
         scheduledAt: event.scheduledAt,
+        durationMinutes: event.durationMinutes,
+        type: event.type,
         link: event.link,
       );
       final sessions = await calendarRepository.getSessions(event.circleId);
@@ -48,6 +52,32 @@ class CalendarBloc extends Bloc<CalendarEvent, CalendarState> {
         status: UIStatus.success,
         sessions: sessions,
         message: 'تمت إضافة الجلسة',
+        actionDone: true,
+      ));
+    } on Exception catch (e) {
+      emit(state.copyWith(
+          status: UIStatus.error, message: mapExceptionToMessage(e)));
+    }
+  }
+
+  Future<void> _onAddRecurring(
+      CalendarRecurringSessionsAdded event, Emitter<CalendarState> emit) async {
+    emit(state.copyWith(
+        status: UIStatus.loading, message: '', actionDone: false));
+    try {
+      await calendarRepository.addRecurringSessions(
+        circleId: event.circleId,
+        title: event.title,
+        type: event.type,
+        durationMinutes: event.durationMinutes,
+        occurrences: event.occurrences,
+        link: event.link,
+      );
+      final sessions = await calendarRepository.getSessions(event.circleId);
+      emit(state.copyWith(
+        status: UIStatus.success,
+        sessions: sessions,
+        message: 'تمت إضافة الجلسات',
         actionDone: true,
       ));
     } on Exception catch (e) {
@@ -65,6 +95,8 @@ class CalendarBloc extends Bloc<CalendarEvent, CalendarState> {
         sessionId: event.sessionId,
         title: event.title,
         scheduledAt: event.scheduledAt,
+        durationMinutes: event.durationMinutes,
+        type: event.type,
         link: event.link,
       );
       final sessions = await calendarRepository.getSessions(event.circleId);
@@ -93,6 +125,28 @@ class CalendarBloc extends Bloc<CalendarEvent, CalendarState> {
         status: UIStatus.success,
         sessions: sessions,
         message: 'تم حذف الجلسة',
+        actionDone: true,
+      ));
+    } on Exception catch (e) {
+      emit(state.copyWith(
+          status: UIStatus.error, message: mapExceptionToMessage(e)));
+    }
+  }
+
+  Future<void> _onDeleteSeries(
+      CalendarSeriesDeleted event, Emitter<CalendarState> emit) async {
+    emit(state.copyWith(
+        status: UIStatus.loading, message: '', actionDone: false));
+    try {
+      await calendarRepository.deleteSeries(
+        circleId: event.circleId,
+        recurrenceId: event.recurrenceId,
+      );
+      final sessions = await calendarRepository.getSessions(event.circleId);
+      emit(state.copyWith(
+        status: UIStatus.success,
+        sessions: sessions,
+        message: 'تم حذف السلسلة',
         actionDone: true,
       ));
     } on Exception catch (e) {

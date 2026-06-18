@@ -107,6 +107,16 @@ class CircleRemoteDataSource {
     final doc = query.docs.first;
     final circle = CircleDto.fromMap(doc.id, doc.data());
 
+    // Gender separation (US-43): the joining account must match the circle.
+    final profileDoc = await _users.doc(uid).get();
+    final userGender = Gender.fromName(profileDoc.data()?['gender'] as String?);
+    if (userGender != null && userGender != circle.gender) {
+      throw BadRequestException(
+          message: circle.gender == Gender.female
+              ? 'هذه الحلقة مخصّصة للبنات'
+              : 'هذه الحلقة مخصّصة للأولاد');
+    }
+
     final existing = await _members(circle.id).doc(uid).get();
     if (existing.exists) {
       throw BadRequestException(message: 'أنتِ عضوة في هذه الحلقة بالفعل');
@@ -170,6 +180,13 @@ class CircleRemoteDataSource {
         .toList(growable: false);
   }
 
+  /// Live members of a circle — emits whenever the roster changes.
+  Stream<List<CircleMember>> membersStream(String circleId) {
+    return _members(circleId).snapshots().map((q) => q.docs
+        .map((d) => CircleMemberDto.fromMap(d.id, d.data()))
+        .toList(growable: false));
+  }
+
   // --- US-41 ---
 
   Future<List<CircleMember>> getPendingRequests(String circleId) async {
@@ -218,6 +235,52 @@ class CircleRemoteDataSource {
     required Privacy privacy,
   }) async {
     await _circles.doc(circleId).update({'privacy': privacy.name});
+  }
+
+  /// Set the circle's memorization level (surah + ayah range).
+  Future<void> updateLevel({
+    required String circleId,
+    required String unit,
+    String surah = '',
+    int? fromAyah,
+    int? toAyah,
+  }) async {
+    await _circles.doc(circleId).update({
+      'levelUnit': unit,
+      'levelSurah': surah,
+      'levelFromAyah': fromAyah,
+      'levelToAyah': toAyah,
+    });
+  }
+
+  /// Set the circle's short description (نبذة).
+  Future<void> updateDescription({
+    required String circleId,
+    required String description,
+  }) async {
+    await _circles.doc(circleId).update({'description': description.trim()});
+  }
+
+  /// Set the circle's recitation (رواية).
+  Future<void> updateRiwayah({
+    required String circleId,
+    required String riwayah,
+  }) async {
+    await _circles.doc(circleId).update({'riwayah': riwayah});
+  }
+
+  /// Set the circle's recurring weekly meeting schedule (days + per-day start
+  /// time + default duration). Drives the global weekly calendar.
+  Future<void> updateSchedule({
+    required String circleId,
+    required Map<String, String> dayTimes,
+    required int durationMinutes,
+  }) async {
+    await _circles.doc(circleId).update({
+      'days': dayTimes.keys.toList(),
+      'dayTimes': dayTimes,
+      'durationMinutes': durationMinutes,
+    });
   }
 
   // --- shared ---
@@ -270,6 +333,79 @@ class CircleRemoteDataSource {
       juz: juz,
     );
     await ref.set(CircleMemberDto.toMap(member));
+    return member;
+  }
+
+  /// Add an EXISTING account holder to the حلقة by their email or phone.
+  /// Looks the user up in `users`, enrolls them with their real uid, and adds
+  /// the circle to their membership so it appears in their own app.
+  Future<CircleMember> addStudentByContact({
+    required String circleId,
+    required String contact,
+  }) async {
+    final value = contact.trim();
+    if (value.isEmpty) {
+      throw BadRequestException(message: 'أدخلي البريد الإلكتروني أو رقم الهاتف');
+    }
+
+    QueryDocumentSnapshot<Map<String, dynamic>>? found;
+    if (value.contains('@')) {
+      final q = await _users.where('email', isEqualTo: value).limit(1).get();
+      if (q.docs.isNotEmpty) found = q.docs.first;
+    } else {
+      // Phone: try the raw value plus normalized variants (digits only, with
+      // a leading +, and without a leading 0) so different formats still match.
+      final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
+      final candidates = <String>{value, digits, '+$digits'};
+      if (digits.startsWith('0')) candidates.add(digits.substring(1));
+      for (final cand in candidates) {
+        if (cand.isEmpty) continue;
+        final q = await _users.where('phone', isEqualTo: cand).limit(1).get();
+        if (q.docs.isNotEmpty) {
+          found = q.docs.first;
+          break;
+        }
+      }
+    }
+    // Last resort: treat the value as an email even without '@'.
+    if (found == null) {
+      final q = await _users.where('email', isEqualTo: value).limit(1).get();
+      if (q.docs.isNotEmpty) found = q.docs.first;
+    }
+    if (found == null) {
+      throw BadRequestException(
+          message: 'لا يوجد مستخدم بهذا البريد أو رقم الهاتف');
+    }
+
+    final uid = found.id;
+    final data = found.data();
+    final name = (data['name'] ?? '') as String;
+
+    // Gender separation (US-43): an account's gender must match the circle's.
+    final circleDoc = await _circles.doc(circleId).get();
+    final circleGender = Gender.fromName(circleDoc.data()?['gender'] as String?);
+    final userGender = Gender.fromName(data['gender'] as String?);
+    if (circleGender != null &&
+        userGender != null &&
+        userGender != circleGender) {
+      throw BadRequestException(message: 'نوع الحساب لا يطابق نوع الحلقة');
+    }
+
+    final existing = await _members(circleId).doc(uid).get();
+    if (existing.exists) {
+      throw BadRequestException(message: 'هذه الطالبة مضافة بالفعل');
+    }
+    final member = CircleMember(
+      uid: uid,
+      name: name.isEmpty ? value : name,
+      role: UserRole.student,
+      status: MemberStatus.active,
+    );
+    await _members(circleId).doc(uid).set(CircleMemberDto.toMap(member));
+    await _users.doc(uid).set(
+      {'circleIds': FieldValue.arrayUnion([circleId])},
+      SetOptions(merge: true),
+    );
     return member;
   }
 

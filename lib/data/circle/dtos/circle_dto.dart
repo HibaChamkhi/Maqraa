@@ -17,7 +17,17 @@ class CircleDto {
       supervisorIds:
           ((map['supervisorIds'] as List?)?.cast<String>()) ?? const [],
       level: (map['level'] ?? '') as String,
+      levelUnit: (map['levelUnit'] ?? '') as String,
+      levelSurah: (map['levelSurah'] ?? '') as String,
+      levelFromAyah: (map['levelFromAyah'] as num?)?.toInt(),
+      levelToAyah: (map['levelToAyah'] as num?)?.toInt(),
+      riwayah: (map['riwayah'] ?? '') as String,
+      description: (map['description'] ?? '') as String,
       days: ((map['days'] as List?)?.cast<String>()) ?? const [],
+      dayTimes: ((map['dayTimes'] as Map?)?.map(
+              (k, v) => MapEntry(k.toString(), v.toString()))) ??
+          const {},
+      durationMinutes: (map['durationMinutes'] as num?)?.toInt() ?? 60,
       createdAt: (map['createdAt'] as Timestamp?)?.toDate(),
     );
   }
@@ -32,7 +42,15 @@ class CircleDto {
       'inviteCode': circle.inviteCode,
       'supervisorIds': circle.supervisorIds,
       'level': circle.level,
+      'levelUnit': circle.levelUnit,
+      'levelSurah': circle.levelSurah,
+      'levelFromAyah': circle.levelFromAyah,
+      'levelToAyah': circle.levelToAyah,
+      'riwayah': circle.riwayah,
+      'description': circle.description,
       'days': circle.days,
+      'dayTimes': circle.dayTimes,
+      'durationMinutes': circle.durationMinutes,
       'createdAt': circle.createdAt != null
           ? Timestamp.fromDate(circle.createdAt!)
           : FieldValue.serverTimestamp(),

@@ -10,6 +10,10 @@ class ExamDto {
       title: (map['title'] ?? '') as String,
       range: (map['range'] ?? '') as String,
       date: (map['date'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      type: ExamType.fromKey(map['type'] as String?),
+      totalMarks: (map['totalMarks'] ?? 100) as num,
+      passMark: (map['passMark'] ?? 50) as num,
+      resultsPublished: (map['resultsPublished'] ?? false) as bool,
     );
   }
 
@@ -18,6 +22,10 @@ class ExamDto {
       'title': exam.title,
       'range': exam.range,
       'date': Timestamp.fromDate(exam.date),
+      'type': exam.type.storageKey,
+      'totalMarks': exam.totalMarks,
+      'passMark': exam.passMark,
+      'resultsPublished': exam.resultsPublished,
     };
   }
 }
@@ -29,6 +37,8 @@ class ExamResultDto {
       uid: uid,
       name: (map['name'] ?? '') as String,
       score: (map['score'] ?? 0) as num,
+      attendance: ExamAttendance.fromKey(map['attendance'] as String?),
+      feedback: (map['feedback'] ?? '') as String,
     );
   }
 
@@ -37,6 +47,8 @@ class ExamResultDto {
       'uid': result.uid,
       'name': result.name,
       'score': result.score,
+      'attendance': result.attendance.storageKey,
+      'feedback': result.feedback,
     };
   }
 }

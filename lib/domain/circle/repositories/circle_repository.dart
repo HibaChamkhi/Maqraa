@@ -1,4 +1,3 @@
-import '../../auth/models/app_user.dart';
 import '../models/circle.dart';
 
 /// Circle management contract (US-03/04/05/29/38/39/40/41).
@@ -26,6 +25,9 @@ abstract class CircleRepository {
   /// US-05: list all members of a circle (active + pending).
   Future<List<CircleMember>> getMembers(String circleId);
 
+  /// Live members of a circle — emits on every roster change.
+  Stream<List<CircleMember>> membersStream(String circleId);
+
   /// US-41: list pending join requests for a circle.
   Future<List<CircleMember>> getPendingRequests(String circleId);
 
@@ -48,17 +50,52 @@ abstract class CircleRepository {
     required Privacy privacy,
   });
 
+  /// Set the circle's memorization level (juz / hizb / surah + range).
+  Future<void> updateLevel({
+    required String circleId,
+    required String unit,
+    String surah,
+    int? fromAyah,
+    int? toAyah,
+  });
+
+  /// Set the circle's short description (نبذة).
+  Future<void> updateDescription({
+    required String circleId,
+    required String description,
+  });
+
+  /// Set the circle's recitation (رواية).
+  Future<void> updateRiwayah({
+    required String circleId,
+    required String riwayah,
+  });
+
+  /// Set the circle's recurring weekly meeting schedule (per-day start time
+  /// + default duration). Drives the global weekly calendar.
+  Future<void> updateSchedule({
+    required String circleId,
+    required Map<String, String> dayTimes,
+    required int durationMinutes,
+  });
+
   /// Fetch a single circle by id.
   Future<Circle> getCircle(String circleId);
 
   /// Circles the current user is a member of (used by the home screen).
   Future<List<Circle>> getMyCircles();
 
-  /// Manually add a student to a حلقة (teacher).
+  /// Manually add a student to a حلقة (teacher) — name only, no account.
   Future<CircleMember> addStudentManually({
     required String circleId,
     required String name,
     int? juz,
+  });
+
+  /// Add an existing account holder to a حلقة by email or phone.
+  Future<CircleMember> addStudentByContact({
+    required String circleId,
+    required String contact,
   });
 
   /// Update a student's per-enrollment data (progress / attendance / rating).

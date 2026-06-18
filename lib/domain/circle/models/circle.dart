@@ -89,11 +89,53 @@ class Circle {
   final String inviteCode;
   final List<String> supervisorIds;
 
-  /// Memorization level / range, e.g. "جزء ٥ - ٣٠".
+  /// Legacy free-text level (kept for backward compatibility).
   final String level;
+
+  /// Structured memorization level.
+  /// [levelUnit] is 'juz' | 'hizb' | 'surah'. For juz/hizb the range is in
+  /// [levelFromAyah]/[levelToAyah] (the juz/hizb numbers); for surah the
+  /// surah name is in [levelSurah] and the ayah range in from/to.
+  final String levelUnit;
+  final String levelSurah;
+  final int? levelFromAyah;
+  final int? levelToAyah;
+
+  /// The حلقة's recitation (رواية), e.g. «حفص عن عاصم».
+  final String riwayah;
+
+  /// A short free-text note the teacher writes, shown under the name.
+  final String description;
+
+  /// Arabic display for the level, e.g. «جزء ٥ – ٣٠» or «البقرة · الآيات ١–٥٠».
+  String get levelLabel {
+    final f = levelFromAyah, t = levelToAyah;
+    String pair(String u) =>
+        (t == null || t == f) ? '$u $f' : '$u $f – $t';
+    switch (levelUnit) {
+      case 'juz':
+        return f == null ? (level) : pair('جزء');
+      case 'hizb':
+        return f == null ? (level) : pair('حزب');
+      case 'surah':
+        if (levelSurah.isEmpty) return level;
+        if (f == null) return levelSurah;
+        return (t == null || t == f)
+            ? '$levelSurah · الآية $f'
+            : '$levelSurah · الآيات $f–$t';
+      default:
+        return level;
+    }
+  }
 
   /// Session days, e.g. ['sun','tue','thu'].
   final List<String> days;
+
+  /// Recurring meeting start time per day code, e.g. {'sun':'08:00','tue':'10:00'}.
+  final Map<String, String> dayTimes;
+
+  /// Default meeting length in minutes (applies to every recurring day).
+  final int durationMinutes;
 
   final DateTime? createdAt;
 
@@ -107,7 +149,15 @@ class Circle {
     required this.inviteCode,
     this.supervisorIds = const [],
     this.level = '',
+    this.levelUnit = '',
+    this.levelSurah = '',
+    this.levelFromAyah,
+    this.levelToAyah,
+    this.riwayah = '',
+    this.description = '',
     this.days = const [],
+    this.dayTimes = const {},
+    this.durationMinutes = 60,
     this.createdAt,
   });
 
@@ -120,7 +170,15 @@ class Circle {
     String? inviteCode,
     List<String>? supervisorIds,
     String? level,
+    String? levelUnit,
+    String? levelSurah,
+    int? levelFromAyah,
+    int? levelToAyah,
+    String? riwayah,
+    String? description,
     List<String>? days,
+    Map<String, String>? dayTimes,
+    int? durationMinutes,
     DateTime? createdAt,
   }) {
     return Circle(
@@ -133,7 +191,15 @@ class Circle {
       inviteCode: inviteCode ?? this.inviteCode,
       supervisorIds: supervisorIds ?? this.supervisorIds,
       level: level ?? this.level,
+      levelUnit: levelUnit ?? this.levelUnit,
+      levelSurah: levelSurah ?? this.levelSurah,
+      levelFromAyah: levelFromAyah ?? this.levelFromAyah,
+      levelToAyah: levelToAyah ?? this.levelToAyah,
+      riwayah: riwayah ?? this.riwayah,
+      description: description ?? this.description,
       days: days ?? this.days,
+      dayTimes: dayTimes ?? this.dayTimes,
+      durationMinutes: durationMinutes ?? this.durationMinutes,
       createdAt: createdAt ?? this.createdAt,
     );
   }

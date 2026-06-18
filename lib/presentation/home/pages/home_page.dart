@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/di/injection.dart';
+import '../../../core/util/last_location_store.dart';
 import '../../../domain/auth/models/app_user.dart';
 import '../../../domain/circle/models/circle.dart';
 import '../../../domain/circle/repositories/circle_repository.dart';
@@ -15,7 +16,6 @@ import '../../calendar/pages/manage_calendar_page.dart';
 import '../../calendar/pages/student_calendar_page.dart';
 import '../../call/pages/weekly_call_page.dart';
 import '../../circle/pages/circle_info_page.dart';
-import '../../circle/pages/circle_members_page.dart';
 import '../../circle/pages/circles_list_page.dart';
 import '../../circle/pages/circle_workspace_page.dart';
 import '../../circle/pages/create_circle_page.dart';
@@ -54,6 +54,46 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   late Future<List<Circle>> _circlesFuture;
 
+  /// Whether the permanent side rail is shown (wide screens). The ≡ button
+  /// toggles it.
+  bool _railOpen = true;
+
+  /// Nested navigator for the content area on wide screens, so the rail + top
+  /// bar persist while the section content swaps.
+  final GlobalKey<NavigatorState> _contentNav = GlobalKey<NavigatorState>();
+
+  /// Currently-selected sidebar section (drives the active highlight).
+  String _section = 'الرئيسية';
+
+  /// Restores the last-open circle/tab once after a (web) refresh.
+  bool _restored = false;
+
+  void _maybeRestore(
+      BuildContext context, List<Circle> circles, AppUser user) {
+    if (_restored) return;
+    _restored = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final saved = await LastLocationStore.load();
+      if (saved.circleId == null || !mounted) return;
+      Circle? circle;
+      for (final c in circles) {
+        if (c.id == saved.circleId) {
+          circle = c;
+          break;
+        }
+      }
+      if (circle == null || !mounted) return;
+      final wide = MediaQuery.of(context).size.width >= 900;
+      final nav = wide
+          ? _contentNav.currentState
+          : Navigator.of(context, rootNavigator: true);
+      nav?.push(MaterialPageRoute(
+        builder: (_) => CircleWorkspacePage(
+            circle: circle!, user: user, initialTab: saved.tab),
+      ));
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -71,22 +111,44 @@ class _HomePageState extends State<HomePage> {
     return LayoutBuilder(builder: (context, c) {
       if (c.maxWidth >= 900) {
         return Scaffold(
-          body: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              WardDrawer(user: user, permanent: true),
-              Expanded(
-                child: Column(children: [
-                  const _TopBar(menu: false),
-                  Expanded(child: content),
-                ]),
+          body: Column(children: [
+            _TopBar(onMenu: () => setState(() => _railOpen = !_railOpen)),
+            Expanded(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeInOut,
+                    child: _railOpen
+                        ? WardDrawer(
+                            user: user,
+                            permanent: true,
+                            contentNavigator: _contentNav,
+                            current: _section,
+                            onSelect: (l) => setState(() => _section = l),
+                          )
+                        : const SizedBox(height: double.infinity),
+                  ),
+                  Expanded(
+                    child: Navigator(
+                      key: _contentNav,
+                      onGenerateRoute: (_) =>
+                          MaterialPageRoute(builder: (_) => content),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ]),
         );
       }
       return Scaffold(
-        drawer: WardDrawer(user: user),
+        drawer: WardDrawer(
+          user: user,
+          current: _section,
+          onSelect: (l) => setState(() => _section = l),
+        ),
         body: Column(children: [
           const _TopBar(),
           Expanded(child: content),
@@ -132,6 +194,7 @@ class _HomePageState extends State<HomePage> {
         }
 
         // Teachers / supervisors get the overview dashboard (الرئيسية).
+        _maybeRestore(context, circles, user);
         return _shell(
           user: user,
           content: TeacherOverviewPage(user: user, circles: circles),
@@ -148,7 +211,11 @@ class _HomePageState extends State<HomePage> {
 class _TopBar extends StatelessWidget {
   /// Whether to show the ≡ menu button (false on screens without a drawer).
   final bool menu;
-  const _TopBar({this.menu = true});
+
+  /// If provided, the ≡ button calls this (used to toggle the permanent rail)
+  /// instead of opening the pop-over drawer.
+  final VoidCallback? onMenu;
+  const _TopBar({this.menu = true, this.onMenu});
 
   @override
   Widget build(BuildContext context) {
@@ -165,7 +232,9 @@ class _TopBar extends StatelessWidget {
           ),
           child: Row(
             children: [
-              if (menu)
+              if (onMenu != null)
+                IconButton(icon: const Icon(Icons.menu), onPressed: onMenu)
+              else if (menu)
                 IconButton(
                   icon: const Icon(Icons.menu),
                   onPressed: () => Scaffold.of(context).openDrawer(),

@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:dartz/dartz.dart';
 import 'package:injectable/injectable.dart';
 import '../../../../core/error/error_utils.dart';
-import '../../../../core/interceptor/HttpInterceptor.dart';
+import '../../../../core/interceptor/http_interceptor.dart';
 import '../../../../core/network/network_info.dart';
 import '../local/name_feature_prefutils.dart';
 

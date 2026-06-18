@@ -34,6 +34,10 @@ class CircleRepositoryImpl implements CircleRepository {
       remoteDataSource.getMembers(circleId);
 
   @override
+  Stream<List<CircleMember>> membersStream(String circleId) =>
+      remoteDataSource.membersStream(circleId);
+
+  @override
   Future<List<CircleMember>> getPendingRequests(String circleId) =>
       remoteDataSource.getPendingRequests(circleId);
 
@@ -66,6 +70,49 @@ class CircleRepositoryImpl implements CircleRepository {
       remoteDataSource.updatePrivacy(circleId: circleId, privacy: privacy);
 
   @override
+  Future<void> updateDescription({
+    required String circleId,
+    required String description,
+  }) =>
+      remoteDataSource.updateDescription(
+          circleId: circleId, description: description);
+
+  @override
+  Future<void> updateRiwayah({
+    required String circleId,
+    required String riwayah,
+  }) =>
+      remoteDataSource.updateRiwayah(circleId: circleId, riwayah: riwayah);
+
+  @override
+  Future<void> updateLevel({
+    required String circleId,
+    required String unit,
+    String surah = '',
+    int? fromAyah,
+    int? toAyah,
+  }) =>
+      remoteDataSource.updateLevel(
+        circleId: circleId,
+        unit: unit,
+        surah: surah,
+        fromAyah: fromAyah,
+        toAyah: toAyah,
+      );
+
+  @override
+  Future<void> updateSchedule({
+    required String circleId,
+    required Map<String, String> dayTimes,
+    required int durationMinutes,
+  }) =>
+      remoteDataSource.updateSchedule(
+        circleId: circleId,
+        dayTimes: dayTimes,
+        durationMinutes: durationMinutes,
+      );
+
+  @override
   Future<Circle> getCircle(String circleId) =>
       remoteDataSource.getCircle(circleId);
 
@@ -80,6 +127,14 @@ class CircleRepositoryImpl implements CircleRepository {
   }) =>
       remoteDataSource.addStudentManually(
           circleId: circleId, name: name, juz: juz);
+
+  @override
+  Future<CircleMember> addStudentByContact({
+    required String circleId,
+    required String contact,
+  }) =>
+      remoteDataSource.addStudentByContact(
+          circleId: circleId, contact: contact);
 
   @override
   Future<void> updateMember({
