@@ -58,6 +58,12 @@ abstract class CircleRepository {
     int? toAyah,
   });
 
+  /// Set the circle's recitation (رواية).
+  Future<void> updateRiwayah({
+    required String circleId,
+    required String riwayah,
+  });
+
   /// Set the circle's recurring weekly meeting schedule (per-day start time
   /// + default duration). Drives the global weekly calendar.
   Future<void> updateSchedule({

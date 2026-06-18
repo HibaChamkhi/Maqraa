@@ -251,6 +251,14 @@ class CircleRemoteDataSource {
     });
   }
 
+  /// Set the circle's recitation (رواية).
+  Future<void> updateRiwayah({
+    required String circleId,
+    required String riwayah,
+  }) async {
+    await _circles.doc(circleId).update({'riwayah': riwayah});
+  }
+
   /// Set the circle's recurring weekly meeting schedule (days + per-day start
   /// time + default duration). Drives the global weekly calendar.
   Future<void> updateSchedule({

@@ -1,3 +1,16 @@
+/// Common Quran recitations (روايات) for the circle riwayah picker.
+const List<String> kRiwayat = [
+  'حفص عن عاصم',
+  'شعبة عن عاصم',
+  'ورش عن نافع',
+  'قالون عن نافع',
+  'الدوري عن أبي عمرو',
+  'السوسي عن أبي عمرو',
+  'الدوري عن الكسائي',
+  'البزي عن ابن كثير',
+  'قنبل عن ابن كثير',
+];
+
 /// The 114 surahs of the Quran with their names and ayah counts (Hafs).
 /// Index 0 = surah 1 (الفاتحة). Used by the circle-level picker.
 class SurahInfo {

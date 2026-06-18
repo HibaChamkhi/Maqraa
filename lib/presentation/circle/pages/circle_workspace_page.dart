@@ -151,6 +151,7 @@ class _CircleHeader extends StatelessWidget {
           value: circle.teacherName.isEmpty ? '—' : circle.teacherName),
       _DaysInfoCard(circleId: circle.id),
       _LevelInfoCard(circle: circle, canManage: canManage),
+      _RiwayahInfoCard(circle: circle, canManage: canManage),
     ];
 
     return Container(
@@ -473,6 +474,82 @@ class _LevelEditorDialogState extends State<_LevelEditorDialog> {
             child: const Text('إلغاء')),
         ElevatedButton(onPressed: _save, child: const Text('حفظ')),
       ],
+    );
+  }
+}
+
+/// «رواية الحلقة» card — pick from the common روايات, editable by the teacher.
+class _RiwayahInfoCard extends StatefulWidget {
+  final Circle circle;
+  final bool canManage;
+  const _RiwayahInfoCard({required this.circle, required this.canManage});
+
+  @override
+  State<_RiwayahInfoCard> createState() => _RiwayahInfoCardState();
+}
+
+class _RiwayahInfoCardState extends State<_RiwayahInfoCard> {
+  late String _riwayah = widget.circle.riwayah;
+
+  Future<void> _edit() async {
+    var selected = _riwayah.isEmpty ? kRiwayat.first : _riwayah;
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('رواية الحلقة'),
+        content: SizedBox(
+          width: 320,
+          child: StatefulBuilder(
+            builder: (ctx, setLocal) => DropdownButtonFormField<String>(
+              isExpanded: true,
+              value: selected,
+              decoration:
+                  const InputDecoration(labelText: 'الرواية', isDense: true),
+              items: [
+                for (final r in kRiwayat)
+                  DropdownMenuItem(value: r, child: Text(r)),
+              ],
+              onChanged: (v) => setLocal(() => selected = v ?? selected),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, selected),
+              child: const Text('حفظ')),
+        ],
+      ),
+    );
+    if (result == null) return;
+    setState(() => _riwayah = result);
+    try {
+      await getIt<CircleRepository>()
+          .updateRiwayah(circleId: widget.circle.id, riwayah: result);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('تم تحديث رواية الحلقة')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('تعذّر الحفظ: $e')));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final card = _InfoCard(
+        icon: Icons.record_voice_over_outlined,
+        label: 'رواية الحلقة',
+        value: _riwayah.isEmpty ? 'لم تُحدَّد' : _riwayah);
+    if (!widget.canManage) return card;
+    return InkWell(
+      borderRadius: BorderRadius.circular(AppRadius.lg),
+      onTap: _edit,
+      child: card,
     );
   }
 }

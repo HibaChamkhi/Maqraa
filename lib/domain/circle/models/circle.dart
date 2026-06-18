@@ -97,6 +97,9 @@ class Circle {
   final int? levelFromAyah;
   final int? levelToAyah;
 
+  /// The حلقة's recitation (رواية), e.g. «حفص عن عاصم».
+  final String riwayah;
+
   /// Arabic display for the level, e.g. «البقرة · الآيات ١–٥٠».
   String get levelLabel {
     if (levelSurah.isEmpty) return level.isEmpty ? '' : level;
@@ -130,6 +133,7 @@ class Circle {
     this.levelSurah = '',
     this.levelFromAyah,
     this.levelToAyah,
+    this.riwayah = '',
     this.days = const [],
     this.dayTimes = const {},
     this.durationMinutes = 60,
@@ -148,6 +152,7 @@ class Circle {
     String? levelSurah,
     int? levelFromAyah,
     int? levelToAyah,
+    String? riwayah,
     List<String>? days,
     Map<String, String>? dayTimes,
     int? durationMinutes,
@@ -166,6 +171,7 @@ class Circle {
       levelSurah: levelSurah ?? this.levelSurah,
       levelFromAyah: levelFromAyah ?? this.levelFromAyah,
       levelToAyah: levelToAyah ?? this.levelToAyah,
+      riwayah: riwayah ?? this.riwayah,
       days: days ?? this.days,
       dayTimes: dayTimes ?? this.dayTimes,
       durationMinutes: durationMinutes ?? this.durationMinutes,
