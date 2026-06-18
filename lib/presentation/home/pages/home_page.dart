@@ -60,6 +60,9 @@ class _HomePageState extends State<HomePage> {
   /// bar persist while the section content swaps.
   final GlobalKey<NavigatorState> _contentNav = GlobalKey<NavigatorState>();
 
+  /// Currently-selected sidebar section (drives the active highlight).
+  String _section = 'الرئيسية';
+
   @override
   void initState() {
     super.initState();
@@ -91,6 +94,8 @@ class _HomePageState extends State<HomePage> {
                             user: user,
                             permanent: true,
                             contentNavigator: _contentNav,
+                            current: _section,
+                            onSelect: (l) => setState(() => _section = l),
                           )
                         : const SizedBox(height: double.infinity),
                   ),
@@ -108,7 +113,11 @@ class _HomePageState extends State<HomePage> {
         );
       }
       return Scaffold(
-        drawer: WardDrawer(user: user),
+        drawer: WardDrawer(
+          user: user,
+          current: _section,
+          onSelect: (l) => setState(() => _section = l),
+        ),
         body: Column(children: [
           const _TopBar(),
           Expanded(child: content),

@@ -2,9 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../domain/auth/models/app_user.dart';
+import '../../../presentation/announcement/pages/announcements_page.dart';
 import '../../../presentation/auth/bloc/auth_bloc.dart';
+import '../../../presentation/calendar/pages/manage_calendar_page.dart';
 import '../../../presentation/circle/pages/circles_list_page.dart';
+import '../../../presentation/circle/pages/section_circle_picker_page.dart';
+import '../../../presentation/exam/pages/teacher_exams_page.dart';
+import '../../../presentation/help/pages/help_page.dart';
 import '../../../presentation/profile/pages/profile_page.dart';
+import '../../../presentation/progress/pages/teacher_tracking_page.dart';
+import '../../../presentation/settings/pages/settings_page.dart';
 import '../styles/theme.dart';
 
 /// The green «ورْد» side navigation drawer (the sidebar in the reference).
@@ -23,12 +30,16 @@ class WardDrawer extends StatelessWidget {
   /// the rail + top bar stay put. When null, the root navigator is used.
   final GlobalKey<NavigatorState>? contentNavigator;
 
+  /// Notifies the host which section was tapped (for active highlight).
+  final ValueChanged<String>? onSelect;
+
   const WardDrawer({
     super.key,
     required this.user,
     this.current = 'الرئيسية',
     this.permanent = false,
     this.contentNavigator,
+    this.onSelect,
   });
 
   bool get _isTeacher =>
@@ -161,21 +172,57 @@ class WardDrawer extends StatelessWidget {
 
   void _go(BuildContext context, String label) {
     _closeIfDrawer(context);
+    onSelect?.call(label);
     final nav = _nav(context);
+    nav.popUntil((r) => r.isFirst);
+
+    void push(Widget page) =>
+        nav.push(MaterialPageRoute(builder: (_) => page));
+
     switch (label) {
       case 'الرئيسية':
-        nav.popUntil((r) => r.isFirst);
-        break;
+        break; // already reset to the overview above
       case 'الحلقات':
       case 'الطالبات':
       case 'حلقتي':
-        nav.popUntil((r) => r.isFirst);
-        nav.push(MaterialPageRoute(builder: (_) => const CirclesListPage()));
+        push(const CirclesListPage());
+        break;
+      case 'الجدول':
+        push(SectionCirclePickerPage(
+          title: 'الجدول',
+          icon: Icons.calendar_month_outlined,
+          pageBuilder: (c) => ManageCalendarPage(circleId: c.id, user: user),
+        ));
+        break;
+      case 'الاختبارات والتقارير':
+        push(SectionCirclePickerPage(
+          title: 'الاختبارات',
+          icon: Icons.assignment_outlined,
+          pageBuilder: (c) => TeacherExamsPage(circleId: c.id, user: user),
+        ));
+        break;
+      case 'التقارير':
+        push(SectionCirclePickerPage(
+          title: 'التقارير',
+          icon: Icons.bar_chart_outlined,
+          pageBuilder: (c) => TeacherTrackingPage(circleId: c.id),
+        ));
+        break;
+      case 'الإشعارات':
+        push(SectionCirclePickerPage(
+          title: 'الإشعارات',
+          icon: Icons.notifications_outlined,
+          pageBuilder: (c) => AnnouncementsPage(circleId: c.id, user: user),
+        ));
+        break;
+      case 'الإعدادات':
+        push(const SettingsPage());
+        break;
+      case 'المساعدة':
+        push(const HelpPage());
         break;
       default:
-        // الجدول / الاختبارات / الإشعارات / واجب اليوم / تقدّمي — reachable from
-        // the home grid for now; deeper wiring comes with each section.
-        nav.popUntil((r) => r.isFirst);
+        break; // واجب اليوم / تقدّمي — student tabs handle these
     }
   }
 }
