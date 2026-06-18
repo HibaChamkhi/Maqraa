@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 
@@ -56,57 +57,270 @@ class CircleWorkspacePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return DefaultTabController(
       length: 4,
       child: Scaffold(
-        appBar: AppBar(
-          title: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(circle.name),
-              Text(
-                [if (circle.level.isNotEmpty) circle.level].join(),
-                style: theme.textTheme.bodySmall,
-              ),
-            ],
-          ),
-          bottom: const TabBar(
-            isScrollable: true,
-            labelColor: AppColors.primary,
-            unselectedLabelColor: AppColors.textMuted,
-            indicatorColor: AppColors.primary,
-            tabs: [
-              Tab(text: 'الطالبات'),
-              Tab(text: 'الجدول'),
-              Tab(text: 'الجلسات'),
-              Tab(text: 'الاختبارات'),
-            ],
-          ),
-        ),
-        body: TabBarView(
+        appBar: AppBar(toolbarHeight: 48, title: const SizedBox.shrink()),
+        body: Column(
           children: [
-            _StudentsTab(circle: circle, canManage: _canManage),
-            _ScheduleTab(circle: circle, user: user, canManage: _canManage),
-            _LinkTab(
-              icon: Icons.podcasts_outlined,
-              label: 'الجلسات المباشرة',
-              buttonText: 'فتح الجلسات',
-              onOpen: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) =>
-                      LiveSessionPage(circleId: circle.id, user: user))),
+            _CircleHeader(circle: circle, canManage: _canManage),
+            Material(
+              color: AppColors.surface,
+              child: const TabBar(
+                isScrollable: true,
+                labelColor: AppColors.primary,
+                unselectedLabelColor: AppColors.textMuted,
+                indicatorColor: AppColors.primary,
+                tabAlignment: TabAlignment.start,
+                tabs: [
+                  Tab(text: 'الطالبات'),
+                  Tab(text: 'الجدول'),
+                  Tab(text: 'الجلسات'),
+                  Tab(text: 'الاختبارات'),
+                ],
+              ),
             ),
-            _LinkTab(
-              icon: Icons.assignment_outlined,
-              label: 'اختبارات الحلقة',
-              buttonText: 'فتح الاختبارات',
-              onOpen: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) =>
-                      TeacherExamsPage(circleId: circle.id, user: user))),
+            const Divider(height: 1),
+            Expanded(
+              child: TabBarView(
+                children: [
+                  _StudentsTab(circle: circle, canManage: _canManage),
+                  _ScheduleTab(
+                      circle: circle, user: user, canManage: _canManage),
+                  _LinkTab(
+                    icon: Icons.podcasts_outlined,
+                    label: 'الجلسات المباشرة',
+                    buttonText: 'فتح الجلسات',
+                    onOpen: () => Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) =>
+                            LiveSessionPage(circleId: circle.id, user: user))),
+                  ),
+                  _LinkTab(
+                    icon: Icons.assignment_outlined,
+                    label: 'اختبارات الحلقة',
+                    buttonText: 'فتح الاختبارات',
+                    onOpen: () => Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => TeacherExamsPage(
+                            circleId: circle.id, user: user))),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+//  Hero header (breadcrumb + title + count + info cards + invite code)
+// ---------------------------------------------------------------------------
+
+class _CircleHeader extends StatelessWidget {
+  final Circle circle;
+  final bool canManage;
+  const _CircleHeader({required this.circle, required this.canManage});
+
+  String get _daysLabel {
+    final ordered =
+        _scheduleDayOrder.where((d) => circle.dayTimes.containsKey(d)).toList();
+    final src = ordered.isNotEmpty ? ordered : circle.days;
+    if (src.isEmpty) return 'لم تُحدَّد';
+    return src.map((d) => _scheduleDayLabels[d] ?? d).join(' · ');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final titleBlock = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text('الحلقات / ${circle.name}',
+            style:
+                theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted)),
+        const SizedBox(height: 2),
+        Text(circle.name, style: theme.textTheme.headlineSmall),
+        const SizedBox(height: 2),
+        _MemberCount(circleId: circle.id),
+      ],
+    );
+
+    final infoCards = Wrap(
+      spacing: AppSpacing.sm,
+      runSpacing: AppSpacing.sm,
+      alignment: WrapAlignment.end,
+      children: [
+        _InfoCard(
+            icon: Icons.person_outline,
+            label: 'المعلم المسؤول',
+            value: circle.teacherName.isEmpty ? '—' : circle.teacherName),
+        _InfoCard(
+            icon: Icons.event_outlined,
+            label: 'أيام الحلقة',
+            value: _daysLabel),
+        _InfoCard(
+            icon: Icons.menu_book_outlined,
+            label: 'مستوى الحلقة',
+            value: circle.level.isEmpty ? '—' : circle.level),
+      ],
+    );
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(
+          AppSpacing.md, 0, AppSpacing.md, AppSpacing.md),
+      color: AppColors.background,
+      child: LayoutBuilder(builder: (context, c) {
+        final wide = c.maxWidth >= 760;
+        final invite = canManage ? _InviteCard(code: circle.inviteCode) : null;
+        if (wide) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (invite != null) ...[
+                SizedBox(width: 240, child: invite),
+                const SizedBox(width: AppSpacing.md),
+              ],
+              Expanded(child: infoCards),
+              const SizedBox(width: AppSpacing.md),
+              titleBlock,
+            ],
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Align(alignment: Alignment.centerRight, child: titleBlock),
+            const SizedBox(height: AppSpacing.md),
+            infoCards,
+            if (invite != null) ...[
+              const SizedBox(height: AppSpacing.md),
+              invite,
+            ],
+          ],
+        );
+      }),
+    );
+  }
+}
+
+class _MemberCount extends StatelessWidget {
+  final String circleId;
+  const _MemberCount({required this.circleId});
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder(
+      future: getIt<CircleRepository>().getMembers(circleId),
+      builder: (context, snap) {
+        final n = (snap.data ?? const [])
+            .where((m) =>
+                m.role == UserRole.student && m.status == MemberStatus.active)
+            .length;
+        return Text('عدد الطالبات: $n',
+            style: Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.copyWith(color: AppColors.textMuted));
+      },
+    );
+  }
+}
+
+class _InfoCard extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  const _InfoCard(
+      {required this.icon, required this.label, required this.value});
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      constraints: const BoxConstraints(minWidth: 150, maxWidth: 220),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(children: [
+            Icon(icon, size: 15, color: AppColors.primary),
+            const SizedBox(width: 6),
+            Text(label,
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: AppColors.textMuted)),
+          ]),
+          const SizedBox(height: 4),
+          Text(value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.titleSmall),
+        ],
+      ),
+    );
+  }
+}
+
+class _InviteCard extends StatelessWidget {
+  final String code;
+  const _InviteCard({required this.code});
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    void copy() {
+      Clipboard.setData(ClipboardData(text: code));
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تم نسخ رمز الدعوة')));
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('رمز الدعوة',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: AppColors.textMuted)),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: AppColors.sky,
+              borderRadius: BorderRadius.circular(AppRadius.md),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(code,
+                    style: theme.textTheme.titleMedium
+                        ?.copyWith(color: AppColors.primaryDark)),
+                InkWell(
+                  onTap: copy,
+                  child: const Icon(Icons.copy_outlined,
+                      size: 18, color: AppColors.primary),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: copy,
+            icon: const Icon(Icons.share_outlined, size: 18),
+            label: const Text('مشاركة الدعوة'),
+          ),
+        ],
       ),
     );
   }
@@ -394,13 +608,6 @@ class _StudentsViewState extends State<_StudentsView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      floatingActionButton: widget.canManage
-          ? FloatingActionButton.extended(
-              onPressed: () => _addStudent(context),
-              icon: const Icon(Icons.person_add_alt),
-              label: const Text('إضافة طالبة'),
-            )
-          : null,
       body: BlocConsumer<CircleBloc, CircleState>(
         listenWhen: (p, c) => c.message.isNotEmpty && p.message != c.message,
         listener: (context, state) {
@@ -419,30 +626,14 @@ class _StudentsViewState extends State<_StudentsView> {
             // follow-up priority: lowest memorization first
             ..sort((a, b) => a.memorizedPercent.compareTo(b.memorizedPercent));
 
-          final activeCount =
-              students.where((m) => m.status == MemberStatus.active).length;
-
           return Column(
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.md, AppSpacing.md, AppSpacing.md, AppSpacing.sm),
-                child: TextField(
-                  onChanged: (v) => setState(() => _query = v),
-                  decoration: const InputDecoration(
-                    hintText: 'ابحثي عن طالبة...',
-                    prefixIcon: Icon(Icons.search),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-                child: Row(
-                  children: [
-                    Text('$activeCount طالبة',
-                        style: Theme.of(context).textTheme.bodySmall),
-                  ],
-                ),
+              _StudentsToolbar(
+                canManage: widget.canManage,
+                onSearch: (v) => setState(() => _query = v),
+                onAdd: () => _addStudent(context),
+                onExport: () => ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('سيتوفّر تصدير القائمة قريبًا'))),
               ),
               Expanded(
                 child: students.isEmpty
@@ -450,18 +641,27 @@ class _StudentsViewState extends State<_StudentsView> {
                         child: Text('لا توجد طالبات بعد',
                             style: Theme.of(context).textTheme.bodyMedium),
                       )
-                    : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(
-                            AppSpacing.md, 4, AppSpacing.md, 90),
-                        itemCount: students.length,
-                        itemBuilder: (context, i) => _StudentCard(
-                          member: students[i],
-                          canManage: widget.canManage,
-                          onTap: widget.canManage
-                              ? () => _editStudent(context, students[i])
-                              : null,
-                        ),
-                      ),
+                    : LayoutBuilder(builder: (context, c) {
+                        final onEdit = widget.canManage
+                            ? (CircleMember m) => _editStudent(context, m)
+                            : null;
+                        if (c.maxWidth >= 720) {
+                          return _StudentsTable(
+                              students: students, onEdit: onEdit);
+                        }
+                        return ListView.builder(
+                          padding: const EdgeInsets.fromLTRB(
+                              AppSpacing.md, 4, AppSpacing.md, 24),
+                          itemCount: students.length,
+                          itemBuilder: (context, i) => _StudentCard(
+                            member: students[i],
+                            canManage: widget.canManage,
+                            onTap: onEdit == null
+                                ? null
+                                : () => onEdit(students[i]),
+                          ),
+                        );
+                      }),
               ),
             ],
           );
@@ -744,6 +944,260 @@ class _StudentEditorState extends State<_StudentEditor> {
               label: const Text('حذف الطالبة',
                   style: TextStyle(color: AppColors.error)),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+//  Students toolbar (search + add + export)
+// ---------------------------------------------------------------------------
+
+class _StudentsToolbar extends StatelessWidget {
+  final bool canManage;
+  final ValueChanged<String> onSearch;
+  final VoidCallback onAdd;
+  final VoidCallback onExport;
+  const _StudentsToolbar({
+    required this.canManage,
+    required this.onSearch,
+    required this.onAdd,
+    required this.onExport,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final search = TextField(
+      onChanged: onSearch,
+      decoration: const InputDecoration(
+        isDense: true,
+        hintText: 'بحث عن طالبة...',
+        prefixIcon: Icon(Icons.search),
+      ),
+    );
+    final add = ElevatedButton.icon(
+      onPressed: onAdd,
+      icon: const Icon(Icons.person_add_alt, size: 18),
+      label: const Text('إضافة طالبة'),
+      style: ElevatedButton.styleFrom(minimumSize: const Size(0, 46)),
+    );
+    final export = OutlinedButton.icon(
+      onPressed: onExport,
+      icon: const Icon(Icons.file_download_outlined, size: 18),
+      label: const Text('تصدير القائمة'),
+      style: OutlinedButton.styleFrom(minimumSize: const Size(0, 46)),
+    );
+
+    return Padding(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      child: LayoutBuilder(builder: (context, c) {
+        if (c.maxWidth >= 720) {
+          return Row(
+            children: [
+              if (canManage) ...[
+                add,
+                const SizedBox(width: 8),
+                export,
+              ],
+              const Spacer(),
+              SizedBox(width: 280, child: search),
+            ],
+          );
+        }
+        return Column(
+          children: [
+            search,
+            if (canManage) ...[
+              const SizedBox(height: 8),
+              Row(children: [
+                Expanded(child: add),
+                const SizedBox(width: 8),
+                Expanded(child: export),
+              ]),
+            ],
+          ],
+        );
+      }),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+//  Students table (wide screens)
+// ---------------------------------------------------------------------------
+
+class _StudentsTable extends StatelessWidget {
+  final List<CircleMember> students;
+  final void Function(CircleMember)? onEdit;
+  const _StudentsTable({required this.students, required this.onEdit});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    Widget head(String t, int flex) => Expanded(
+          flex: flex,
+          child: Text(t,
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: AppColors.textMuted)),
+        );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+          AppSpacing.md, 0, AppSpacing.md, AppSpacing.md),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border: Border.all(color: AppColors.border),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          children: [
+            Container(
+              color: AppColors.gray,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              child: Row(
+                children: [
+                  head('الطالبة', 3),
+                  head('الحضور', 2),
+                  head('آخر تسميع', 2),
+                  head('تقدّم الحفظ', 3),
+                  head('الحالة', 2),
+                  if (onEdit != null) head('إجراءات', 1),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: ListView.separated(
+                itemCount: students.length,
+                separatorBuilder: (_, __) => const Divider(height: 1),
+                itemBuilder: (context, i) =>
+                    _StudentRow(member: students[i], onEdit: onEdit),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StudentRow extends StatelessWidget {
+  final CircleMember member;
+  final void Function(CircleMember)? onEdit;
+  const _StudentRow({required this.member, required this.onEdit});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final initial = member.name.isNotEmpty ? member.name.characters.first : '؟';
+    final last = member.lastRecitationAt;
+    final pending = member.status == MemberStatus.pending;
+
+    return InkWell(
+      onTap: onEdit == null ? null : () => onEdit!(member),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        child: Row(
+          children: [
+            Expanded(
+              flex: 3,
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 16,
+                    backgroundColor: AppColors.sky,
+                    child: Text(initial,
+                        style: const TextStyle(
+                            color: AppColors.primary,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13)),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(member.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleSmall),
+                        if (member.juz != null)
+                          Text('جزء ${member.juz}',
+                              style: theme.textTheme.bodySmall
+                                  ?.copyWith(color: AppColors.textMuted)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              flex: 2,
+              child: pending
+                  ? const StatusChip(
+                      label: 'بانتظار', color: AppColors.warning)
+                  : StatusChip(
+                      label: member.attendance?.arabicLabel ?? '—',
+                      color: attendanceColor(member.attendance),
+                    ),
+            ),
+            Expanded(
+              flex: 2,
+              child: Text(
+                last == null
+                    ? 'لم تُسمّع'
+                    : DateFormat('d/M h:mm', 'ar').format(last),
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+            Expanded(
+              flex: 3,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('${member.memorizedPercent}%',
+                        style: theme.textTheme.bodySmall),
+                    const SizedBox(height: 3),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: LinearProgressIndicator(
+                        value: member.memorizedRatio,
+                        minHeight: 6,
+                        backgroundColor: AppColors.sky,
+                        valueColor:
+                            const AlwaysStoppedAnimation(AppColors.primary),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Expanded(
+              flex: 2,
+              child: StatusChip(
+                label: member.performance?.arabicLabel ?? 'بلا تقييم',
+                color: performanceColor(member.performance),
+              ),
+            ),
+            if (onEdit != null)
+              Expanded(
+                flex: 1,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: IconButton(
+                    icon: const Icon(Icons.edit_outlined,
+                        size: 18, color: AppColors.primary),
+                    onPressed: () => onEdit!(member),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
