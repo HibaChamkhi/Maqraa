@@ -55,10 +55,20 @@ class _TeacherOverviewPageState extends State<TeacherOverviewPage> {
     final uid = getIt<FirebaseAuth>().currentUser?.uid;
     final circles = widget.circles;
 
-    final members =
-        await Future.wait(circles.map((c) => circleRepo.getMembers(c.id)));
-    final sessions =
-        await Future.wait(circles.map((c) => calRepo.getSessions(c.id)));
+    final members = await Future.wait(circles.map((c) async {
+      try {
+        return await circleRepo.getMembers(c.id);
+      } catch (_) {
+        return <CircleMember>[];
+      }
+    }));
+    final sessions = await Future.wait(circles.map((c) async {
+      try {
+        return await calRepo.getSessions(c.id);
+      } catch (_) {
+        return <Session>[];
+      }
+    }));
 
     var totalStudents = 0, totalPercent = 0, totalPages = 0;
     final status = _Status();
@@ -137,6 +147,15 @@ class _TeacherOverviewPageState extends State<TeacherOverviewPage> {
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
+        }
+        if (snap.hasError || !snap.hasData) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.lg),
+              child: Text('تعذّر تحميل لوحة المعلومات',
+                  style: Theme.of(context).textTheme.bodyMedium),
+            ),
+          );
         }
         final d = snap.data!;
         final wide = MediaQuery.of(context).size.width >= 900;

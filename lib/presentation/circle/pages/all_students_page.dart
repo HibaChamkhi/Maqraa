@@ -29,7 +29,12 @@ class _AllStudentsPageState extends State<AllStudentsPage> {
     final circles = await repo.getMyCircles();
     final rows = <_Row>[];
     for (final c in circles) {
-      final members = await repo.getMembers(c.id);
+      List<CircleMember> members;
+      try {
+        members = await repo.getMembers(c.id);
+      } catch (_) {
+        members = const [];
+      }
       for (final m in members.where((m) =>
           m.role == UserRole.student && m.status == MemberStatus.active)) {
         rows.add((member: m, circle: c));

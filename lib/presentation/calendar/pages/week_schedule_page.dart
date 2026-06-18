@@ -102,7 +102,12 @@ class _WeekSchedulePageState extends State<WeekSchedulePage> {
       final c = circles[i];
       final color = i % _palette.length;
       colored.add((circle: c, color: color));
-      final sessions = await calRepo.getSessions(c.id);
+      List<Session> sessions;
+      try {
+        sessions = await calRepo.getSessions(c.id);
+      } catch (_) {
+        sessions = const [];
+      }
       for (final s in sessions) {
         oneOff.add(_Ev(
           start: s.scheduledAt,
@@ -167,6 +172,15 @@ class _WeekSchedulePageState extends State<WeekSchedulePage> {
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
+          }
+          if (snap.hasError || !snap.hasData) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.lg),
+                child: Text('تعذّر تحميل الجدول',
+                    style: Theme.of(context).textTheme.bodyMedium),
+              ),
+            );
           }
           final d = snap.data!;
           final days = [
