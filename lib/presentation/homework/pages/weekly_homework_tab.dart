@@ -8,10 +8,24 @@ import '../../../core/ui/styles/theme.dart';
 import '../../../data/homework/homework_repository.dart';
 import '../../../domain/auth/models/app_user.dart';
 import '../../../domain/circle/models/circle.dart';
+import '../../../domain/circle/repositories/circle_repository.dart';
 import '../../../domain/homework/models/weekly_homework.dart';
 
-/// «الواجب الأسبوعي» — the الجدول tab. Teacher fills الواجب + ملاحظات per day
-/// for the week; each student ticks «تمّ» (with رفيقتها). Per-circle.
+Color _typeColor(String type) {
+  switch (type) {
+    case 'إملاء':
+      return const Color(0xFF0C447C);
+    case 'مراجعة':
+      return AppColors.warning;
+    case 'تسميع':
+      return AppColors.primary;
+    default:
+      return AppColors.textMuted;
+  }
+}
+
+/// «الجدول الأسبوعي» — weekly homework grid. Teacher fills الواجب/النوع/ملاحظات
+/// per day; التمام shows done/total (tap → who). Student taps a row to confirm.
 class WeeklyHomeworkTab extends StatefulWidget {
   final Circle circle;
   final AppUser user;
@@ -30,8 +44,27 @@ class _WeeklyHomeworkTabState extends State<WeeklyHomeworkTab> {
   late final HomeworkRepository _repo =
       HomeworkRepository(getIt<FirebaseFirestore>(), getIt<FirebaseAuth>());
   late DateTime _weekStart = WeeklyHomework.weekStartOf(DateTime.now());
+  List<CircleMember> _students = const [];
 
   String get _weekId => DateFormat('yyyy-MM-dd').format(_weekStart);
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStudents();
+  }
+
+  Future<void> _loadStudents() async {
+    try {
+      final members =
+          await getIt<CircleRepository>().getMembers(widget.circle.id);
+      if (!mounted) return;
+      setState(() => _students = members
+          .where((m) =>
+              m.role == UserRole.student && m.status == MemberStatus.active)
+          .toList());
+    } catch (_) {/* best effort */}
+  }
 
   void _shift(int weeks) =>
       setState(() => _weekStart = _weekStart.add(Duration(days: 7 * weeks)));
@@ -66,37 +99,25 @@ class _WeeklyHomeworkTabState extends State<WeeklyHomeworkTab> {
               final week = weekSnap.data ??
                   WeeklyHomework(weekId: _weekId, weekStart: _weekStart);
               return StreamBuilder<List<HomeworkCompletion>>(
-                stream:
-                    _repo.completionsStream(widget.circle.id, _weekId),
+                stream: _repo.completionsStream(widget.circle.id, _weekId),
                 builder: (context, compSnap) {
                   final comps = compSnap.data ?? const [];
-                  final mine = comps
-                      .where((c) => c.uid == widget.user.uid)
-                      .cast<HomeworkCompletion?>()
-                      .fold<HomeworkCompletion?>(null, (p, e) => e);
-                  return ListView(
-                    padding: const EdgeInsets.fromLTRB(
-                        AppSpacing.md, 0, AppSpacing.md, AppSpacing.lg),
-                    children: [
-                      for (final code in WeeklyHomework.dayOrder)
-                        _DayCard(
-                          code: code,
-                          date: week.dateOf(code),
-                          plan: week.planOf(code),
-                          canManage: widget.canManage,
-                          doneCount:
-                              comps.where((c) => c.isDone(code)).length,
-                          myDone: mine?.isDone(code) ?? false,
-                          myPartner: mine?.partners[code] ?? '',
-                          onEdit: widget.canManage
-                              ? () => _editDay(week, code)
-                              : null,
-                          onTick: widget.canManage
-                              ? null
-                              : () => _tickDay(code, mine?.isDone(code) ?? false,
-                                  mine?.partners[code] ?? ''),
-                        ),
-                    ],
+                  HomeworkCompletion? mine;
+                  for (final c in comps) {
+                    if (c.uid == widget.user.uid) mine = c;
+                  }
+                  return _Grid(
+                    week: week,
+                    comps: comps,
+                    total: _students.length,
+                    mine: mine,
+                    canManage: widget.canManage,
+                    onEditDay: (code) => _editDay(week, code),
+                    onTickDay: (code) => _tickDay(
+                        code,
+                        mine?.isDone(code) ?? false,
+                        mine?.partners[code] ?? ''),
+                    onShowWho: (code) => _showWho(code, comps),
                   );
                 },
               );
@@ -111,29 +132,41 @@ class _WeeklyHomeworkTabState extends State<WeeklyHomeworkTab> {
     final plan = week.planOf(code);
     final wajib = TextEditingController(text: plan.wajib);
     final notes = TextEditingController(text: plan.notes);
+    var type = plan.type.isEmpty ? kWajibTypes.first : plan.type;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('${WeeklyHomework.dayLabels[code]} — الواجب'),
         content: SizedBox(
           width: 340,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: wajib,
-                minLines: 1,
-                maxLines: 3,
-                decoration: const InputDecoration(labelText: 'الواجب'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: notes,
-                minLines: 1,
-                maxLines: 3,
-                decoration: const InputDecoration(labelText: 'ملاحظات'),
-              ),
-            ],
+          child: StatefulBuilder(
+            builder: (ctx, setLocal) => Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SegmentedButton<String>(
+                  segments: [
+                    for (final t in kWajibTypes)
+                      ButtonSegment(value: t, label: Text(t)),
+                  ],
+                  selected: {type},
+                  onSelectionChanged: (s) => setLocal(() => type = s.first),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: wajib,
+                  minLines: 1,
+                  maxLines: 2,
+                  decoration: const InputDecoration(labelText: 'الواجب'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: notes,
+                  minLines: 1,
+                  maxLines: 3,
+                  decoration: const InputDecoration(labelText: 'ملاحظات'),
+                ),
+              ],
+            ),
           ),
         ),
         actions: [
@@ -154,12 +187,13 @@ class _WeeklyHomeworkTabState extends State<WeeklyHomeworkTab> {
         dayCode: code,
         wajib: wajib.text,
         notes: notes.text,
+        type: type,
       );
     }
   }
 
-  Future<void> _tickDay(String code, bool currentlyDone, String partner) async {
-    if (currentlyDone) {
+  Future<void> _tickDay(String code, bool done, String partner) async {
+    if (done) {
       await _repo.setDayDone(
         circleId: widget.circle.id,
         weekId: _weekId,
@@ -203,28 +237,146 @@ class _WeeklyHomeworkTabState extends State<WeeklyHomeworkTab> {
       );
     }
   }
+
+  void _showWho(String code, List<HomeworkCompletion> comps) {
+    final doneByUid = {for (final c in comps) c.uid: c};
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (_) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.all(AppSpacing.md),
+          children: [
+            Text('من أنجز واجب ${WeeklyHomework.dayLabels[code]}',
+                style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            for (final s in _students)
+              ListTile(
+                dense: true,
+                leading: Icon(
+                  (doneByUid[s.uid]?.isDone(code) ?? false)
+                      ? Icons.check_circle
+                      : Icons.radio_button_unchecked,
+                  color: (doneByUid[s.uid]?.isDone(code) ?? false)
+                      ? AppColors.success
+                      : AppColors.textMuted,
+                ),
+                title: Text(s.name),
+                subtitle: (doneByUid[s.uid]?.partners[code] ?? '').isEmpty
+                    ? null
+                    : Text('رفيقتها: ${doneByUid[s.uid]!.partners[code]}'),
+              ),
+            if (_students.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(8),
+                child: Text('لا توجد طالبات بعد'),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
-class _DayCard extends StatelessWidget {
+class _Grid extends StatelessWidget {
+  final WeeklyHomework week;
+  final List<HomeworkCompletion> comps;
+  final int total;
+  final HomeworkCompletion? mine;
+  final bool canManage;
+  final void Function(String code) onEditDay;
+  final void Function(String code) onTickDay;
+  final void Function(String code) onShowWho;
+  const _Grid({
+    required this.week,
+    required this.comps,
+    required this.total,
+    required this.mine,
+    required this.canManage,
+    required this.onEditDay,
+    required this.onTickDay,
+    required this.onShowWho,
+  });
+
+  static const _flex = [3, 4, 3, 2];
+
+  @override
+  Widget build(BuildContext context) {
+    Widget head(String t, int i) => Expanded(
+        flex: _flex[i],
+        child: Text(t,
+            style: const TextStyle(
+                color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)));
+    return Padding(
+      padding:
+          const EdgeInsets.fromLTRB(AppSpacing.md, 0, AppSpacing.md, AppSpacing.lg),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border: Border.all(color: AppColors.border),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          children: [
+            Container(
+              color: AppColors.primary,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+              child: Row(children: [
+                head('اليوم والتاريخ', 0),
+                head('الواجب', 1),
+                head('ملاحظات', 2),
+                head(canManage ? 'التمام' : 'تمّ', 3),
+              ]),
+            ),
+            Expanded(
+              child: ListView(
+                children: [
+                  for (final code in WeeklyHomework.dayOrder)
+                    _Row(
+                      code: code,
+                      date: week.dateOf(code),
+                      plan: week.planOf(code),
+                      doneCount: comps.where((c) => c.isDone(code)).length,
+                      total: total,
+                      myDone: mine?.isDone(code) ?? false,
+                      canManage: canManage,
+                      onEdit: () => onEditDay(code),
+                      onTick: () => onTickDay(code),
+                      onWho: () => onShowWho(code),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Row extends StatelessWidget {
   final String code;
   final DateTime date;
   final DayPlan plan;
-  final bool canManage;
   final int doneCount;
+  final int total;
   final bool myDone;
-  final String myPartner;
-  final VoidCallback? onEdit;
-  final VoidCallback? onTick;
-  const _DayCard({
+  final bool canManage;
+  final VoidCallback onEdit;
+  final VoidCallback onTick;
+  final VoidCallback onWho;
+  const _Row({
     required this.code,
     required this.date,
     required this.plan,
-    required this.canManage,
     required this.doneCount,
+    required this.total,
     required this.myDone,
-    required this.myPartner,
-    this.onEdit,
-    this.onTick,
+    required this.canManage,
+    required this.onEdit,
+    required this.onTick,
+    required this.onWho,
   });
 
   @override
@@ -232,81 +384,127 @@ class _DayCard extends StatelessWidget {
     final theme = Theme.of(context);
     final dFmt = DateFormat('d MMM', 'ar');
     final isToday = DateUtils.isSameDay(date, DateTime.now());
-    return Container(
-      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(
-            color: isToday ? AppColors.primary : AppColors.border),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
+    final empty = plan.wajib.isEmpty;
+
+    return InkWell(
+      onTap: canManage ? onEdit : (empty ? null : onTick),
+      child: Container(
+        color: isToday ? AppColors.sky : null,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        decoration: const BoxDecoration(
+          border: Border(top: BorderSide(color: AppColors.border, width: .5)),
+        ),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            SizedBox(
-              width: 64,
+            // day + date
+            Expanded(
+              flex: _Grid._flex[0],
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(WeeklyHomework.dayLabels[code]!,
-                      style: theme.textTheme.titleSmall),
+                  Row(children: [
+                    Text(WeeklyHomework.dayLabels[code]!,
+                        style: theme.textTheme.bodyMedium
+                            ?.copyWith(fontWeight: FontWeight.w700)),
+                    if (isToday) ...[
+                      const SizedBox(width: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                            color: AppColors.primary,
+                            borderRadius: BorderRadius.circular(99)),
+                        child: const Text('اليوم',
+                            style:
+                                TextStyle(color: Colors.white, fontSize: 8)),
+                      ),
+                    ],
+                  ]),
                   Text(dFmt.format(date),
                       style: theme.textTheme.bodySmall
-                          ?.copyWith(color: AppColors.textMuted)),
+                          ?.copyWith(color: AppColors.textMuted, fontSize: 10)),
                 ],
               ),
             ),
-            const SizedBox(width: 8),
+            // wajib + type chip
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(plan.wajib.isEmpty ? '— لا واجب —' : plan.wajib,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                          color: plan.wajib.isEmpty
-                              ? AppColors.textMuted
-                              : AppColors.ink)),
-                  if (plan.notes.isNotEmpty) ...[
-                    const SizedBox(height: 2),
-                    Text(plan.notes,
-                        style: theme.textTheme.bodySmall
-                            ?.copyWith(color: AppColors.textMuted)),
-                  ],
-                  if (!canManage && myDone && myPartner.isNotEmpty) ...[
-                    const SizedBox(height: 2),
-                    Text('رفيقتي: $myPartner',
-                        style: theme.textTheme.bodySmall
-                            ?.copyWith(color: AppColors.primary)),
-                  ],
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            if (canManage)
-              Column(
-                children: [
-                  IconButton(
-                    onPressed: onEdit,
-                    icon: const Icon(Icons.edit_outlined,
-                        size: 18, color: AppColors.primary),
-                  ),
-                  Text('تمّ $doneCount',
+              flex: _Grid._flex[1],
+              child: empty
+                  ? Text(canManage ? '— اضغطي للإضافة —' : '—',
                       style: theme.textTheme.bodySmall
-                          ?.copyWith(color: AppColors.success)),
-                ],
-              )
-            else
-              IconButton(
-                onPressed: plan.wajib.isEmpty ? null : onTick,
-                icon: Icon(
-                  myDone
-                      ? Icons.check_circle
-                      : Icons.radio_button_unchecked,
-                  color: myDone ? AppColors.success : AppColors.textMuted,
-                ),
-              ),
+                          ?.copyWith(color: AppColors.textMuted))
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(plan.wajib,
+                            style: theme.textTheme.bodyMedium),
+                        if (plan.type.isNotEmpty) ...[
+                          const SizedBox(height: 3),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 7, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: _typeColor(plan.type)
+                                  .withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(99),
+                            ),
+                            child: Text(plan.type,
+                                style: TextStyle(
+                                    fontSize: 9,
+                                    color: _typeColor(plan.type),
+                                    fontWeight: FontWeight.w700)),
+                          ),
+                        ],
+                      ],
+                    ),
+            ),
+            // notes
+            Expanded(
+              flex: _Grid._flex[2],
+              child: Text(plan.notes.isEmpty ? '—' : plan.notes,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                      color: plan.notes.isEmpty
+                          ? AppColors.textMuted
+                          : AppColors.ink)),
+            ),
+            // tamam
+            Expanded(
+              flex: _Grid._flex[3],
+              child: canManage
+                  ? GestureDetector(
+                      onTap: empty ? null : onWho,
+                      child: empty
+                          ? const Text('—',
+                              style: TextStyle(color: AppColors.textMuted))
+                          : Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('$doneCount/$total',
+                                    style: theme.textTheme.bodySmall),
+                                const SizedBox(height: 3),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(99),
+                                  child: LinearProgressIndicator(
+                                    value:
+                                        total == 0 ? 0 : doneCount / total,
+                                    minHeight: 5,
+                                    backgroundColor: AppColors.border,
+                                    valueColor: const AlwaysStoppedAnimation(
+                                        AppColors.primary),
+                                  ),
+                                ),
+                              ],
+                            ),
+                    )
+                  : Icon(
+                      myDone
+                          ? Icons.check_circle
+                          : Icons.radio_button_unchecked,
+                      color:
+                          myDone ? AppColors.success : AppColors.textMuted,
+                    ),
+            ),
           ],
         ),
       ),

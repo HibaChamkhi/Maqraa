@@ -2,18 +2,26 @@
 /// Stored at `circles/{circleId}/homework/{weekId}` where weekId is the
 /// yyyy-MM-dd of the week's Saturday.
 
-/// One day's plan: the assignment (الواجب) and notes (ملاحظات).
+/// One day's plan: the assignment (الواجب), its type, and notes (ملاحظات).
 class DayPlan {
   final String wajib;
   final String notes;
-  const DayPlan({this.wajib = '', this.notes = ''});
+  final String type; // تسميع / إملاء / مراجعة (or empty)
+  const DayPlan({this.wajib = '', this.notes = '', this.type = ''});
 
   bool get isEmpty => wajib.trim().isEmpty && notes.trim().isEmpty;
 
-  Map<String, dynamic> toMap() => {'wajib': wajib, 'notes': notes};
-  static DayPlan fromMap(Map<String, dynamic> m) =>
-      DayPlan(wajib: (m['wajib'] ?? '') as String, notes: (m['notes'] ?? '') as String);
+  Map<String, dynamic> toMap() =>
+      {'wajib': wajib, 'notes': notes, 'type': type};
+  static DayPlan fromMap(Map<String, dynamic> m) => DayPlan(
+        wajib: (m['wajib'] ?? '') as String,
+        notes: (m['notes'] ?? '') as String,
+        type: (m['type'] ?? '') as String,
+      );
 }
+
+/// Available واجب types.
+const kWajibTypes = ['تسميع', 'إملاء', 'مراجعة'];
 
 class WeeklyHomework {
   final String weekId;

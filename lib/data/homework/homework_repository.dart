@@ -42,11 +42,12 @@ class HomeworkRepository {
     required String dayCode,
     required String wajib,
     required String notes,
+    String type = '',
   }) async {
     await _weeks(circleId).doc(weekId).set({
       'weekStart': Timestamp.fromDate(weekStart),
       'days': {
-        dayCode: {'wajib': wajib.trim(), 'notes': notes.trim()},
+        dayCode: {'wajib': wajib.trim(), 'notes': notes.trim(), 'type': type},
       },
     }, SetOptions(merge: true));
   }
