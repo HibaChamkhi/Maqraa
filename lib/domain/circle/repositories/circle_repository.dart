@@ -50,10 +50,11 @@ abstract class CircleRepository {
     required Privacy privacy,
   });
 
-  /// Set the circle's memorization level (surah + ayah range).
+  /// Set the circle's memorization level (juz / hizb / surah + range).
   Future<void> updateLevel({
     required String circleId,
-    required String surah,
+    required String unit,
+    String surah,
     int? fromAyah,
     int? toAyah,
   });

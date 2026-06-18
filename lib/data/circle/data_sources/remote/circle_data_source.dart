@@ -240,11 +240,13 @@ class CircleRemoteDataSource {
   /// Set the circle's memorization level (surah + ayah range).
   Future<void> updateLevel({
     required String circleId,
-    required String surah,
+    required String unit,
+    String surah = '',
     int? fromAyah,
     int? toAyah,
   }) async {
     await _circles.doc(circleId).update({
+      'levelUnit': unit,
       'levelSurah': surah,
       'levelFromAyah': fromAyah,
       'levelToAyah': toAyah,

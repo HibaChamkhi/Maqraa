@@ -79,12 +79,14 @@ class CircleRepositoryImpl implements CircleRepository {
   @override
   Future<void> updateLevel({
     required String circleId,
-    required String surah,
+    required String unit,
+    String surah = '',
     int? fromAyah,
     int? toAyah,
   }) =>
       remoteDataSource.updateLevel(
         circleId: circleId,
+        unit: unit,
         surah: surah,
         fromAyah: fromAyah,
         toAyah: toAyah,

@@ -17,6 +17,7 @@ class CircleDto {
       supervisorIds:
           ((map['supervisorIds'] as List?)?.cast<String>()) ?? const [],
       level: (map['level'] ?? '') as String,
+      levelUnit: (map['levelUnit'] ?? '') as String,
       levelSurah: (map['levelSurah'] ?? '') as String,
       levelFromAyah: (map['levelFromAyah'] as num?)?.toInt(),
       levelToAyah: (map['levelToAyah'] as num?)?.toInt(),
@@ -40,6 +41,7 @@ class CircleDto {
       'inviteCode': circle.inviteCode,
       'supervisorIds': circle.supervisorIds,
       'level': circle.level,
+      'levelUnit': circle.levelUnit,
       'levelSurah': circle.levelSurah,
       'levelFromAyah': circle.levelFromAyah,
       'levelToAyah': circle.levelToAyah,

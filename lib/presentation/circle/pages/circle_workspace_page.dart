@@ -180,6 +180,16 @@ class _CircleHeader extends StatelessWidget {
             style: theme.textTheme.headlineMedium
                 ?.copyWith(fontWeight: FontWeight.w700)),
         const SizedBox(height: 4),
+        Text(
+          [
+            circle.gender == Gender.female ? 'بنات' : 'أولاد',
+            if (circle.riwayah.isNotEmpty) circle.riwayah,
+            if (circle.levelLabel.isNotEmpty) circle.levelLabel,
+          ].join(' · '),
+          style:
+              theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
+        ),
+        const SizedBox(height: 2),
         _MemberCount(circleId: circle.id),
       ],
     );
@@ -355,8 +365,10 @@ class _LevelInfoCard extends StatefulWidget {
 }
 
 class _LevelInfoCardState extends State<_LevelInfoCard> {
+  late String _unit = widget.circle.levelUnit;
   late SurahInfo? _surah = _findSurah(widget.circle.levelSurah);
   late int? _from = widget.circle.levelFromAyah;
+  late int? _to = widget.circle.levelToAyah;
 
   static SurahInfo? _findSurah(String name) {
     for (final s in kSurahs) {
@@ -364,24 +376,40 @@ class _LevelInfoCardState extends State<_LevelInfoCard> {
     }
     return null;
   }
-  late int? _to = widget.circle.levelToAyah;
 
   String get _label {
-    if (_surah == null) return 'لم يُحدَّد';
-    if (_from == null) return _surah!.name;
-    if (_to == null || _to == _from) return '${_surah!.name} · الآية $_from';
-    return '${_surah!.name} · الآيات $_from–$_to';
+    final f = _from, t = _to;
+    String pair(String u) => (t == null || t == f) ? '$u $f' : '$u $f – $t';
+    switch (_unit) {
+      case 'juz':
+        return f == null ? 'لم يُحدَّد' : pair('جزء');
+      case 'hizb':
+        return f == null ? 'لم يُحدَّد' : pair('حزب');
+      case 'surah':
+        if (_surah == null) return 'لم يُحدَّد';
+        if (f == null) return _surah!.name;
+        return (t == null || t == f)
+            ? '${_surah!.name} · الآية $f'
+            : '${_surah!.name} · الآيات $f–$t';
+      default:
+        return 'لم يُحدَّد';
+    }
   }
 
   Future<void> _edit() async {
-    final result =
-        await showDialog<({SurahInfo? surah, int? from, int? to})>(
+    final result = await showDialog<
+        ({String unit, SurahInfo? surah, int? from, int? to})>(
       context: context,
       builder: (_) => _LevelEditorDialog(
-          initialSurah: _surah, initialFrom: _from, initialTo: _to),
+        initialUnit: _unit.isEmpty ? 'juz' : _unit,
+        initialSurah: _surah,
+        initialFrom: _from,
+        initialTo: _to,
+      ),
     );
     if (result == null) return;
     setState(() {
+      _unit = result.unit;
       _surah = result.surah;
       _from = result.from;
       _to = result.to;
@@ -389,6 +417,7 @@ class _LevelInfoCardState extends State<_LevelInfoCard> {
     try {
       await getIt<CircleRepository>().updateLevel(
         circleId: widget.circle.id,
+        unit: result.unit,
         surah: result.surah?.name ?? '',
         fromAyah: result.from,
         toAyah: result.to,
@@ -419,51 +448,78 @@ class _LevelInfoCardState extends State<_LevelInfoCard> {
 }
 
 class _LevelEditorDialog extends StatefulWidget {
+  final String initialUnit;
   final SurahInfo? initialSurah;
   final int? initialFrom;
   final int? initialTo;
   const _LevelEditorDialog(
-      {this.initialSurah, this.initialFrom, this.initialTo});
+      {required this.initialUnit,
+      this.initialSurah,
+      this.initialFrom,
+      this.initialTo});
 
   @override
   State<_LevelEditorDialog> createState() => _LevelEditorDialogState();
 }
 
 class _LevelEditorDialogState extends State<_LevelEditorDialog> {
-  late int? _num = widget.initialSurah?.number;
-  late final TextEditingController _from =
-      TextEditingController(text: widget.initialFrom?.toString() ?? '');
-  late final TextEditingController _to =
-      TextEditingController(text: widget.initialTo?.toString() ?? '');
+  late String _unit = widget.initialUnit;
+  late int? _surahNum = widget.initialSurah?.number;
+  // ayah range (surah unit)
+  late final TextEditingController _ayahFrom = TextEditingController(
+      text: widget.initialUnit == 'surah'
+          ? (widget.initialFrom?.toString() ?? '')
+          : '');
+  late final TextEditingController _ayahTo = TextEditingController(
+      text: widget.initialUnit == 'surah'
+          ? (widget.initialTo?.toString() ?? '')
+          : '');
+  // numeric range (juz/hizb unit)
+  late int? _numFrom = widget.initialUnit == 'surah' ? null : widget.initialFrom;
+  late int? _numTo = widget.initialUnit == 'surah' ? null : widget.initialTo;
+
+  int get _maxUnit => _unit == 'hizb' ? 60 : 30;
 
   @override
   void dispose() {
-    _from.dispose();
-    _to.dispose();
+    _ayahFrom.dispose();
+    _ayahTo.dispose();
     super.dispose();
   }
 
   void _save() {
-    if (_num == null) {
-      Navigator.of(context).pop((surah: null, from: null, to: null));
-      return;
+    if (_unit == 'surah') {
+      if (_surahNum == null) {
+        Navigator.of(context)
+            .pop((unit: 'surah', surah: null, from: null, to: null));
+        return;
+      }
+      final surah = kSurahs[_surahNum! - 1];
+      int? from = int.tryParse(_ayahFrom.text.trim());
+      int? to = int.tryParse(_ayahTo.text.trim());
+      if (from != null) from = from.clamp(1, surah.ayahs).toInt();
+      if (to != null) to = to.clamp(1, surah.ayahs).toInt();
+      if (from != null && to != null && from > to) {
+        final tmp = from;
+        from = to;
+        to = tmp;
+      }
+      Navigator.of(context)
+          .pop((unit: 'surah', surah: surah, from: from, to: to));
+    } else {
+      var from = _numFrom, to = _numTo;
+      if (from != null && to != null && from > to) {
+        final tmp = from;
+        from = to;
+        to = tmp;
+      }
+      Navigator.of(context)
+          .pop((unit: _unit, surah: null, from: from, to: to));
     }
-    final surah = kSurahs[_num! - 1];
-    int? from = int.tryParse(_from.text.trim());
-    int? to = int.tryParse(_to.text.trim());
-    if (from != null) from = from.clamp(1, surah.ayahs).toInt();
-    if (to != null) to = to.clamp(1, surah.ayahs).toInt();
-    if (from != null && to != null && from > to) {
-      final tmp = from;
-      from = to;
-      to = tmp;
-    }
-    Navigator.of(context).pop((surah: surah, from: from, to: to));
   }
 
   @override
   Widget build(BuildContext context) {
-    final maxAyahs = _num == null ? null : kSurahs[_num! - 1].ayahs;
     return AlertDialog(
       title: const Text('مستوى الحلقة'),
       content: SizedBox(
@@ -471,40 +527,91 @@ class _LevelEditorDialogState extends State<_LevelEditorDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            DropdownButtonFormField<int>(
-              isExpanded: true,
-              value: _num,
-              decoration: const InputDecoration(
-                  labelText: 'السورة', isDense: true),
-              items: [
-                for (final s in kSurahs)
-                  DropdownMenuItem(
-                      value: s.number, child: Text('${s.number}. ${s.name}')),
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'juz', label: Text('جزء')),
+                ButtonSegment(value: 'hizb', label: Text('حزب')),
+                ButtonSegment(value: 'surah', label: Text('سورة')),
               ],
-              onChanged: (v) => setState(() => _num = v),
+              selected: {_unit},
+              onSelectionChanged: (s) => setState(() {
+                _unit = s.first;
+                if (_unit != 'surah') {
+                  if (_numFrom != null && _numFrom! > _maxUnit) _numFrom = null;
+                  if (_numTo != null && _numTo! > _maxUnit) _numTo = null;
+                }
+              }),
             ),
             const SizedBox(height: 12),
-            Row(children: [
-              Expanded(
-                child: TextField(
-                  controller: _from,
-                  keyboardType: TextInputType.number,
-                  decoration: InputDecoration(
-                      labelText: 'من آية',
-                      isDense: true,
-                      helperText: maxAyahs == null ? null : '1–$maxAyahs'),
-                ),
+            if (_unit == 'surah') ...[
+              DropdownButtonFormField<int>(
+                isExpanded: true,
+                value: _surahNum,
+                decoration:
+                    const InputDecoration(labelText: 'السورة', isDense: true),
+                items: [
+                  for (final s in kSurahs)
+                    DropdownMenuItem(
+                        value: s.number,
+                        child: Text('${s.number}. ${s.name}')),
+                ],
+                onChanged: (v) => setState(() => _surahNum = v),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TextField(
-                  controller: _to,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                      labelText: 'إلى آية', isDense: true),
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(
+                  child: TextField(
+                    controller: _ayahFrom,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                        labelText: 'من آية',
+                        isDense: true,
+                        helperText: _surahNum == null
+                            ? null
+                            : '1–${kSurahs[_surahNum! - 1].ayahs}'),
+                  ),
                 ),
-              ),
-            ]),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: _ayahTo,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                        labelText: 'إلى آية', isDense: true),
+                  ),
+                ),
+              ]),
+            ] else ...[
+              Row(children: [
+                Expanded(
+                  child: DropdownButtonFormField<int>(
+                    isExpanded: true,
+                    value: _numFrom,
+                    decoration: const InputDecoration(
+                        labelText: 'من', isDense: true),
+                    items: [
+                      for (var i = 1; i <= _maxUnit; i++)
+                        DropdownMenuItem(value: i, child: Text('$i')),
+                    ],
+                    onChanged: (v) => setState(() => _numFrom = v),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: DropdownButtonFormField<int>(
+                    isExpanded: true,
+                    value: _numTo,
+                    decoration: const InputDecoration(
+                        labelText: 'إلى', isDense: true),
+                    items: [
+                      for (var i = 1; i <= _maxUnit; i++)
+                        DropdownMenuItem(value: i, child: Text('$i')),
+                    ],
+                    onChanged: (v) => setState(() => _numTo = v),
+                  ),
+                ),
+              ]),
+            ],
           ],
         ),
       ),
