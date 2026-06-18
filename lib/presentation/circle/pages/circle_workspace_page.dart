@@ -13,6 +13,7 @@ import '../../../core/ui/widgets/werd_widgets.dart';
 import '../../../domain/auth/models/app_user.dart';
 import '../../../domain/circle/models/circle.dart';
 import '../../../domain/circle/repositories/circle_repository.dart';
+import '../../../domain/calendar/repositories/calendar_repository.dart';
 import '../../../domain/session/models/session.dart';
 import '../../calendar/bloc/calendar_bloc.dart';
 import '../../exam/pages/teacher_exams_page.dart';
@@ -126,14 +127,6 @@ class _CircleHeader extends StatelessWidget {
   final bool canManage;
   const _CircleHeader({required this.circle, required this.canManage});
 
-  String get _daysLabel {
-    final ordered =
-        _scheduleDayOrder.where((d) => circle.dayTimes.containsKey(d)).toList();
-    final src = ordered.isNotEmpty ? ordered : circle.days;
-    if (src.isEmpty) return 'لم تُحدَّد';
-    return src.map((d) => _scheduleDayLabels[d] ?? d).join(' · ');
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -158,8 +151,7 @@ class _CircleHeader extends StatelessWidget {
           icon: Icons.person_outline,
           label: 'المعلم المسؤول',
           value: circle.teacherName.isEmpty ? '—' : circle.teacherName),
-      _InfoCard(
-          icon: Icons.event_outlined, label: 'أيام الحلقة', value: _daysLabel),
+      _DaysInfoCard(circleId: circle.id),
       _InfoCard(
           icon: Icons.menu_book_outlined,
           label: 'مستوى الحلقة',
@@ -285,6 +277,33 @@ class _InfoCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// «أيام الحلقة» card — derives the meeting days from the circle's actual
+/// sessions (their distinct weekdays), since scheduling is session-based.
+class _DaysInfoCard extends StatelessWidget {
+  final String circleId;
+  const _DaysInfoCard({required this.circleId});
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<Session>>(
+      future: getIt<CalendarRepository>().getSessions(circleId),
+      builder: (context, snap) {
+        final sessions = snap.data ?? const <Session>[];
+        final wds = sessions.map((s) => s.scheduledAt.weekday).toSet();
+        final days = [
+          for (final code in _scheduleDayOrder)
+            if (wds.contains(_codeToWeekday[code])) _scheduleDayLabels[code]!
+        ];
+        return _InfoCard(
+          icon: Icons.event_outlined,
+          label: 'أيام الحلقة',
+          value: days.isEmpty ? 'لم تُحدَّد' : days.join(' · '),
+        );
+      },
     );
   }
 }
