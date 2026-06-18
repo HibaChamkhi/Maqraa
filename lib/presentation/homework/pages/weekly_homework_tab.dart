@@ -11,19 +11,6 @@ import '../../../domain/circle/models/circle.dart';
 import '../../../domain/circle/repositories/circle_repository.dart';
 import '../../../domain/homework/models/weekly_homework.dart';
 
-Color _typeColor(String type) {
-  switch (type) {
-    case 'إملاء':
-      return const Color(0xFF0C447C);
-    case 'مراجعة':
-      return AppColors.warning;
-    case 'تسميع':
-      return AppColors.primary;
-    default:
-      return AppColors.textMuted;
-  }
-}
-
 /// «الجدول الأسبوعي» — weekly homework grid. Teacher fills الواجب/النوع/ملاحظات
 /// per day; التمام shows done/total (tap → who). Student taps a row to confirm.
 class WeeklyHomeworkTab extends StatefulWidget {
@@ -132,41 +119,29 @@ class _WeeklyHomeworkTabState extends State<WeeklyHomeworkTab> {
     final plan = week.planOf(code);
     final wajib = TextEditingController(text: plan.wajib);
     final notes = TextEditingController(text: plan.notes);
-    var type = plan.type.isEmpty ? kWajibTypes.first : plan.type;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('${WeeklyHomework.dayLabels[code]} — الواجب'),
         content: SizedBox(
           width: 340,
-          child: StatefulBuilder(
-            builder: (ctx, setLocal) => Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SegmentedButton<String>(
-                  segments: [
-                    for (final t in kWajibTypes)
-                      ButtonSegment(value: t, label: Text(t)),
-                  ],
-                  selected: {type},
-                  onSelectionChanged: (s) => setLocal(() => type = s.first),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: wajib,
-                  minLines: 1,
-                  maxLines: 2,
-                  decoration: const InputDecoration(labelText: 'الواجب'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: notes,
-                  minLines: 1,
-                  maxLines: 3,
-                  decoration: const InputDecoration(labelText: 'ملاحظات'),
-                ),
-              ],
-            ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: wajib,
+                minLines: 1,
+                maxLines: 3,
+                decoration: const InputDecoration(labelText: 'الواجب'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: notes,
+                minLines: 1,
+                maxLines: 3,
+                decoration: const InputDecoration(labelText: 'ملاحظات'),
+              ),
+            ],
           ),
         ),
         actions: [
@@ -187,7 +162,6 @@ class _WeeklyHomeworkTabState extends State<WeeklyHomeworkTab> {
         dayCode: code,
         wajib: wajib.text,
         notes: notes.text,
-        type: type,
       );
     }
   }
@@ -435,30 +409,7 @@ class _Row extends StatelessWidget {
                   ? Text(canManage ? '— اضغطي للإضافة —' : '—',
                       style: theme.textTheme.bodySmall
                           ?.copyWith(color: AppColors.textMuted))
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(plan.wajib,
-                            style: theme.textTheme.bodyMedium),
-                        if (plan.type.isNotEmpty) ...[
-                          const SizedBox(height: 3),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 7, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: _typeColor(plan.type)
-                                  .withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(99),
-                            ),
-                            child: Text(plan.type,
-                                style: TextStyle(
-                                    fontSize: 9,
-                                    color: _typeColor(plan.type),
-                                    fontWeight: FontWeight.w700)),
-                          ),
-                        ],
-                      ],
-                    ),
+                  : Text(plan.wajib, style: theme.textTheme.bodyMedium),
             ),
             // notes
             Expanded(
