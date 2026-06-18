@@ -389,10 +389,11 @@ class _Row extends StatelessWidget {
     return InkWell(
       onTap: canManage ? onEdit : (empty ? null : onTick),
       child: Container(
-        color: isToday ? AppColors.sky : null,
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-        decoration: const BoxDecoration(
-          border: Border(top: BorderSide(color: AppColors.border, width: .5)),
+        decoration: BoxDecoration(
+          color: isToday ? AppColors.sky : null,
+          border: const Border(
+              top: BorderSide(color: AppColors.border, width: .5)),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
