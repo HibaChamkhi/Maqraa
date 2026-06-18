@@ -437,6 +437,46 @@ class CircleRemoteDataSource {
     await _members(circleId).doc(uid).delete();
   }
 
+  // --- attendance history ---
+
+  CollectionReference<Map<String, dynamic>> _attendance(String circleId) =>
+      _circles.doc(circleId).collection('attendance');
+
+  /// Mark (or clear, when [state] is null) a student's attendance for a day.
+  /// Stored at circles/{id}/attendance/{dateId} as { records: { uid: state } }.
+  Future<void> markAttendance({
+    required String circleId,
+    required String dateId,
+    required String uid,
+    AttendanceState? state,
+  }) async {
+    await _attendance(circleId).doc(dateId).set(<String, dynamic>{
+      'records': <String, dynamic>{
+        uid: state?.name ?? FieldValue.delete(),
+      },
+    }, SetOptions(merge: true));
+  }
+
+  /// Read attendance for the given day ids → { dateId: { uid: state } }.
+  Future<Map<String, Map<String, AttendanceState>>> getWeekAttendance({
+    required String circleId,
+    required List<String> dateIds,
+  }) async {
+    final result = <String, Map<String, AttendanceState>>{};
+    for (final dateId in dateIds) {
+      final doc = await _attendance(circleId).doc(dateId).get();
+      final records =
+          (doc.data()?['records'] as Map<String, dynamic>?) ?? const {};
+      final map = <String, AttendanceState>{};
+      records.forEach((uid, v) {
+        final s = AttendanceState.fromName(v as String?);
+        if (s != null) map[uid] = s;
+      });
+      result[dateId] = map;
+    }
+    return result;
+  }
+
   // --- helpers ---
 
   Future<String> _currentUserName() async {

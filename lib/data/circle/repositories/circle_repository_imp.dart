@@ -159,4 +159,28 @@ class CircleRepositoryImpl implements CircleRepository {
   @override
   Future<void> removeMember({required String circleId, required String uid}) =>
       remoteDataSource.removeMember(circleId: circleId, uid: uid);
+
+  @override
+  Future<void> markAttendance({
+    required String circleId,
+    required String dateId,
+    required String uid,
+    AttendanceState? state,
+  }) =>
+      remoteDataSource.markAttendance(
+        circleId: circleId,
+        dateId: dateId,
+        uid: uid,
+        state: state,
+      );
+
+  @override
+  Future<Map<String, Map<String, AttendanceState>>> getWeekAttendance({
+    required String circleId,
+    required List<String> dateIds,
+  }) =>
+      remoteDataSource.getWeekAttendance(
+        circleId: circleId,
+        dateIds: dateIds,
+      );
 }

@@ -1375,6 +1375,7 @@ class _StudentsView extends StatefulWidget {
 
 class _StudentsViewState extends State<_StudentsView> {
   String _query = '';
+  bool _weekly = false;
 
   @override
   Widget build(BuildContext context) {
@@ -1405,33 +1406,55 @@ class _StudentsViewState extends State<_StudentsView> {
                 onAdd: () => _addStudent(context),
                 onExport: () => _exportCsv(students),
               ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.md, 0, AppSpacing.md, AppSpacing.sm),
+                child: Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: SegmentedButton<bool>(
+                    segments: const [
+                      ButtonSegment(value: false, label: Text('اليوم')),
+                      ButtonSegment(value: true, label: Text('الأسبوع')),
+                    ],
+                    selected: {_weekly},
+                    onSelectionChanged: (s) =>
+                        setState(() => _weekly = s.first),
+                  ),
+                ),
+              ),
               Expanded(
                 child: students.isEmpty
                     ? Center(
                         child: Text('لا توجد طالبات بعد',
                             style: Theme.of(context).textTheme.bodyMedium),
                       )
-                    : LayoutBuilder(builder: (context, c) {
-                        final onEdit = widget.canManage
-                            ? (CircleMember m) => _editStudent(context, m)
-                            : null;
-                        if (c.maxWidth >= 720) {
-                          return _StudentsTable(
-                              students: students, onEdit: onEdit);
-                        }
-                        return ListView.builder(
-                          padding: const EdgeInsets.fromLTRB(
-                              AppSpacing.md, 4, AppSpacing.md, 24),
-                          itemCount: students.length,
-                          itemBuilder: (context, i) => _StudentCard(
-                            member: students[i],
+                    : _weekly
+                        ? _WeeklyAttendance(
+                            circle: widget.circle,
+                            students: students,
                             canManage: widget.canManage,
-                            onTap: onEdit == null
-                                ? null
-                                : () => onEdit(students[i]),
-                          ),
-                        );
-                      }),
+                          )
+                        : LayoutBuilder(builder: (context, c) {
+                            final onEdit = widget.canManage
+                                ? (CircleMember m) => _editStudent(context, m)
+                                : null;
+                            if (c.maxWidth >= 720) {
+                              return _StudentsTable(
+                                  students: students, onEdit: onEdit);
+                            }
+                            return ListView.builder(
+                              padding: const EdgeInsets.fromLTRB(
+                                  AppSpacing.md, 4, AppSpacing.md, 24),
+                              itemCount: students.length,
+                              itemBuilder: (context, i) => _StudentCard(
+                                member: students[i],
+                                canManage: widget.canManage,
+                                onTap: onEdit == null
+                                    ? null
+                                    : () => onEdit(students[i]),
+                              ),
+                            );
+                          }),
               ),
             ],
           );
@@ -2228,6 +2251,304 @@ class _StudentDetail extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+//  Weekly attendance grid (students × meeting days)
+// ---------------------------------------------------------------------------
+
+class _WeeklyAttendance extends StatefulWidget {
+  final Circle circle;
+  final List<CircleMember> students;
+  final bool canManage;
+  const _WeeklyAttendance({
+    required this.circle,
+    required this.students,
+    required this.canManage,
+  });
+
+  @override
+  State<_WeeklyAttendance> createState() => _WeeklyAttendanceState();
+}
+
+class _WeeklyAttendanceState extends State<_WeeklyAttendance> {
+  late DateTime _weekStart;
+  late List<String> _codes;
+  late List<String> _dateIds;
+  late Future<Map<String, Map<String, AttendanceState>>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final daysSinceSat = (today.weekday - DateTime.saturday) % 7;
+    _weekStart = today.subtract(Duration(days: daysSinceSat));
+    final src = widget.circle.days.isNotEmpty
+        ? widget.circle.days
+        : _scheduleDayOrder;
+    _codes = src.where((c) => _scheduleDayOrder.contains(c)).toList()
+      ..sort((a, b) => _scheduleDayOrder
+          .indexOf(a)
+          .compareTo(_scheduleDayOrder.indexOf(b)));
+    if (_codes.isEmpty) _codes = List.of(_scheduleDayOrder);
+    _dateIds = [
+      for (final c in _codes)
+        DateFormat('yyyy-MM-dd').format(
+            _weekStart.add(Duration(days: _scheduleDayOrder.indexOf(c)))),
+    ];
+    _future = _load();
+  }
+
+  Future<Map<String, Map<String, AttendanceState>>> _load() =>
+      getIt<CircleRepository>()
+          .getWeekAttendance(circleId: widget.circle.id, dateIds: _dateIds);
+
+  AttendanceState? _nextState(AttendanceState? s) {
+    switch (s) {
+      case null:
+        return AttendanceState.present;
+      case AttendanceState.present:
+        return AttendanceState.absent;
+      case AttendanceState.absent:
+        return AttendanceState.excused;
+      default:
+        return null;
+    }
+  }
+
+  Future<void> _cycle(
+      String dateId, String uid, AttendanceState? current) async {
+    await getIt<CircleRepository>().markAttendance(
+      circleId: widget.circle.id,
+      dateId: dateId,
+      uid: uid,
+      state: _nextState(current),
+    );
+    if (mounted) setState(() => _future = _load());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    const nameW = 150.0, dayW = 58.0, pctW = 64.0;
+    final totalW = nameW + dayW * _codes.length + pctW;
+    return FutureBuilder<Map<String, Map<String, AttendanceState>>>(
+      future: _future,
+      builder: (context, snap) {
+        if (!snap.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final data = snap.data!;
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SizedBox(
+            width: totalW,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(
+                  color: AppColors.gray,
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: nameW,
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 12),
+                          child: Text('الطالبة',
+                              style: TextStyle(
+                                  color: AppColors.textMuted, fontSize: 12)),
+                        ),
+                      ),
+                      for (final c in _codes)
+                        SizedBox(
+                          width: dayW,
+                          child: Center(
+                            child: Text(_scheduleDayLabels[c] ?? c,
+                                style: const TextStyle(
+                                    color: AppColors.textMuted, fontSize: 12)),
+                          ),
+                        ),
+                      const SizedBox(
+                        width: pctW,
+                        child: Center(
+                          child: Text('النسبة',
+                              style: TextStyle(
+                                  color: AppColors.textMuted, fontSize: 12)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: ListView.separated(
+                    itemCount: widget.students.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (context, i) {
+                      final m = widget.students[i];
+                      var recorded = 0, attended = 0;
+                      final cells = <Widget>[];
+                      for (var j = 0; j < _codes.length; j++) {
+                        final dateId = _dateIds[j];
+                        final st = data[dateId]?[m.uid];
+                        if (st != null) {
+                          recorded++;
+                          if (st == AttendanceState.present ||
+                              st == AttendanceState.late_) attended++;
+                        }
+                        cells.add(SizedBox(
+                          width: dayW,
+                          child: Center(
+                            child: _AttCell(
+                              state: st,
+                              onTap: widget.canManage
+                                  ? () => _cycle(dateId, m.uid, st)
+                                  : null,
+                            ),
+                          ),
+                        ));
+                      }
+                      final pct = recorded == 0
+                          ? 0
+                          : (attended / recorded * 100).round();
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: nameW,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12),
+                                child: _nameCell(theme, m),
+                              ),
+                            ),
+                            ...cells,
+                            SizedBox(
+                                width: pctW,
+                                child: Center(child: _pctChip(pct))),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                _legend(theme),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _nameCell(ThemeData theme, CircleMember m) {
+    return Row(
+      children: [
+        CircleAvatar(
+          radius: 13,
+          backgroundColor: AppColors.sky,
+          child: Text(m.name.isNotEmpty ? m.name.characters.first : '؟',
+              style: const TextStyle(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 11)),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(m.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall),
+        ),
+      ],
+    );
+  }
+
+  Widget _pctChip(int pct) {
+    final color = pct >= 75
+        ? AppColors.success
+        : (pct >= 50 ? AppColors.warning : AppColors.error);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+      ),
+      child: Text('$pct٪',
+          style:
+              TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700)),
+    );
+  }
+
+  Widget _legend(ThemeData theme) {
+    Widget item(IconData ic, Color c, String t) => Padding(
+          padding: const EdgeInsets.only(left: 14),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(ic, size: 14, color: c),
+            const SizedBox(width: 4),
+            Text(t,
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: AppColors.textMuted)),
+          ]),
+        );
+    return Padding(
+      padding: const EdgeInsets.all(AppSpacing.sm),
+      child: Row(children: [
+        item(Icons.check_circle, AppColors.success, 'حاضرة'),
+        item(Icons.cancel, AppColors.error, 'غائبة'),
+        item(Icons.remove_circle, AppColors.warning, 'معذورة'),
+        Text('— لا جلسة',
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: AppColors.textMuted)),
+      ]),
+    );
+  }
+}
+
+class _AttCell extends StatelessWidget {
+  final AttendanceState? state;
+  final VoidCallback? onTap;
+  const _AttCell({required this.state, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    IconData? ic;
+    Color color;
+    switch (state) {
+      case AttendanceState.present:
+        ic = Icons.check_circle;
+        color = AppColors.success;
+        break;
+      case AttendanceState.absent:
+        ic = Icons.cancel;
+        color = AppColors.error;
+        break;
+      case AttendanceState.excused:
+        ic = Icons.remove_circle;
+        color = AppColors.warning;
+        break;
+      case AttendanceState.late_:
+        ic = Icons.schedule;
+        color = AppColors.warning;
+        break;
+      case null:
+        ic = null;
+        color = AppColors.textMuted;
+        break;
+    }
+    final child = ic == null
+        ? Text('—', style: TextStyle(color: color))
+        : Icon(ic, size: 20, color: color);
+    if (onTap == null) return child;
+    return InkWell(
+      borderRadius: BorderRadius.circular(20),
+      onTap: onTap,
+      child: Padding(padding: const EdgeInsets.all(4), child: child),
     );
   }
 }

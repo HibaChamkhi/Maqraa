@@ -111,4 +111,19 @@ abstract class CircleRepository {
 
   /// Remove a student from a حلقة.
   Future<void> removeMember({required String circleId, required String uid});
+
+  /// Mark (or clear, when [state] is null) a student's attendance for a given
+  /// day, identified by [dateId] (yyyy-MM-dd).
+  Future<void> markAttendance({
+    required String circleId,
+    required String dateId,
+    required String uid,
+    AttendanceState? state,
+  });
+
+  /// Read attendance for the given day ids. Returns dateId → (uid → state).
+  Future<Map<String, Map<String, AttendanceState>>> getWeekAttendance({
+    required String circleId,
+    required List<String> dateIds,
+  });
 }
