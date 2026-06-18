@@ -144,37 +144,32 @@ class _CircleHeader extends StatelessWidget {
         Text('الحلقات / ${circle.name}',
             style:
                 theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted)),
-        const SizedBox(height: 2),
-        Text(circle.name, style: theme.textTheme.headlineSmall),
-        const SizedBox(height: 2),
+        const SizedBox(height: 4),
+        Text(circle.name,
+            style: theme.textTheme.headlineMedium
+                ?.copyWith(fontWeight: FontWeight.w700)),
+        const SizedBox(height: 4),
         _MemberCount(circleId: circle.id),
       ],
     );
 
-    final infoCards = Wrap(
-      spacing: AppSpacing.sm,
-      runSpacing: AppSpacing.sm,
-      alignment: WrapAlignment.end,
-      children: [
-        _InfoCard(
-            icon: Icons.person_outline,
-            label: 'المعلم المسؤول',
-            value: circle.teacherName.isEmpty ? '—' : circle.teacherName),
-        _InfoCard(
-            icon: Icons.event_outlined,
-            label: 'أيام الحلقة',
-            value: _daysLabel),
-        _InfoCard(
-            icon: Icons.menu_book_outlined,
-            label: 'مستوى الحلقة',
-            value: circle.level.isEmpty ? '—' : circle.level),
-      ],
-    );
+    final cards = <Widget>[
+      _InfoCard(
+          icon: Icons.person_outline,
+          label: 'المعلم المسؤول',
+          value: circle.teacherName.isEmpty ? '—' : circle.teacherName),
+      _InfoCard(
+          icon: Icons.event_outlined, label: 'أيام الحلقة', value: _daysLabel),
+      _InfoCard(
+          icon: Icons.menu_book_outlined,
+          label: 'مستوى الحلقة',
+          value: circle.level.isEmpty ? '—' : circle.level),
+    ];
 
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(
-          AppSpacing.md, 0, AppSpacing.md, AppSpacing.md),
+          AppSpacing.md, AppSpacing.sm, AppSpacing.md, AppSpacing.md),
       color: AppColors.background,
       child: LayoutBuilder(builder: (context, c) {
         final wide = c.maxWidth >= 760;
@@ -184,11 +179,20 @@ class _CircleHeader extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (invite != null) ...[
-                SizedBox(width: 240, child: invite),
+                SizedBox(width: 260, child: invite),
                 const SizedBox(width: AppSpacing.md),
               ],
-              Expanded(child: infoCards),
-              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Row(
+                  children: [
+                    for (var i = 0; i < cards.length; i++) ...[
+                      if (i > 0) const SizedBox(width: AppSpacing.sm),
+                      Expanded(child: cards[i]),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: AppSpacing.lg),
               titleBlock,
             ],
           );
@@ -198,7 +202,14 @@ class _CircleHeader extends StatelessWidget {
           children: [
             Align(alignment: Alignment.centerRight, child: titleBlock),
             const SizedBox(height: AppSpacing.md),
-            infoCards,
+            Row(
+              children: [
+                for (var i = 0; i < cards.length; i++) ...[
+                  if (i > 0) const SizedBox(width: AppSpacing.sm),
+                  Expanded(child: cards[i]),
+                ],
+              ],
+            ),
             if (invite != null) ...[
               const SizedBox(height: AppSpacing.md),
               invite,
@@ -242,29 +253,38 @@ class _InfoCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Container(
-      constraints: const BoxConstraints(minWidth: 150, maxWidth: 220),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      height: 88,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppRadius.md),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(color: AppColors.border),
+        boxShadow: const [
+          BoxShadow(
+              color: Color(0x0A1F2937), blurRadius: 10, offset: Offset(0, 3)),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Row(children: [
-            Icon(icon, size: 15, color: AppColors.primary),
+            Icon(icon, size: 16, color: AppColors.primary),
             const SizedBox(width: 6),
-            Text(label,
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: AppColors.textMuted)),
+            Expanded(
+              child: Text(label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: AppColors.textMuted)),
+            ),
           ]),
-          const SizedBox(height: 4),
+          const SizedBox(height: 8),
           Text(value,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.titleSmall),
+              style: theme.textTheme.titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700)),
         ],
       ),
     );
