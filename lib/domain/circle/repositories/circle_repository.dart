@@ -25,6 +25,9 @@ abstract class CircleRepository {
   /// US-05: list all members of a circle (active + pending).
   Future<List<CircleMember>> getMembers(String circleId);
 
+  /// Live members of a circle — emits on every roster change.
+  Stream<List<CircleMember>> membersStream(String circleId);
+
   /// US-41: list pending join requests for a circle.
   Future<List<CircleMember>> getPendingRequests(String circleId);
 

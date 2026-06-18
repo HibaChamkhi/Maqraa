@@ -1,6 +1,6 @@
 import 'package:http_interceptor/http_interceptor.dart';
 import 'package:injectable/injectable.dart';
-import 'AuthInterceptor.dart';
+import 'auth_interceptor.dart';
 import 'client_factory.dart';
 
 abstract class HttpInterceptor {

@@ -156,12 +156,15 @@ class CircleBloc extends Bloc<CircleEvent, CircleState> {
   Future<void> _onMembers(
       CircleMembersRequested event, Emitter<CircleState> emit) async {
     emit(state.copyWith(status: UIStatus.loading, message: ''));
-    try {
-      final members = await circleRepository.getMembers(event.circleId);
-      emit(state.copyWith(status: UIStatus.success, members: members));
-    } on Exception catch (e) {
-      emit(state.copyWith(status: UIStatus.error, message: mapExceptionToMessage(e)));
-    }
+    // Subscribe to live roster changes so newly-joined students appear at once.
+    await emit.forEach<List<CircleMember>>(
+      circleRepository.membersStream(event.circleId),
+      onData: (members) =>
+          state.copyWith(status: UIStatus.success, members: members),
+      onError: (e, _) => state.copyWith(
+          status: UIStatus.error,
+          message: e is Exception ? mapExceptionToMessage(e) : '$e'),
+    );
   }
 
   Future<void> _onPending(

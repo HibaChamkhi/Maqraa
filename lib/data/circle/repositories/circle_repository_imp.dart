@@ -34,6 +34,10 @@ class CircleRepositoryImpl implements CircleRepository {
       remoteDataSource.getMembers(circleId);
 
   @override
+  Stream<List<CircleMember>> membersStream(String circleId) =>
+      remoteDataSource.membersStream(circleId);
+
+  @override
   Future<List<CircleMember>> getPendingRequests(String circleId) =>
       remoteDataSource.getPendingRequests(circleId);
 

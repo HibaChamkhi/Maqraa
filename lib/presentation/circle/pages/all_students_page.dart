@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/di/injection.dart';
@@ -21,25 +23,62 @@ class AllStudentsPage extends StatefulWidget {
 typedef _Row = ({CircleMember member, Circle circle});
 
 class _AllStudentsPageState extends State<AllStudentsPage> {
-  late final Future<List<_Row>> _future = _load();
+  final _repo = getIt<CircleRepository>();
+  final List<StreamSubscription<List<CircleMember>>> _subs = [];
+  final Map<String, Circle> _circleById = {};
+  final Map<String, List<CircleMember>> _membersByCircle = {};
+  bool _loading = true;
   String _query = '';
 
-  Future<List<_Row>> _load() async {
-    final repo = getIt<CircleRepository>();
-    final circles = await repo.getMyCircles();
-    final rows = <_Row>[];
-    for (final c in circles) {
-      List<CircleMember> members;
-      try {
-        members = await repo.getMembers(c.id);
-      } catch (_) {
-        members = const [];
+  @override
+  void initState() {
+    super.initState();
+    _start();
+  }
+
+  Future<void> _start() async {
+    try {
+      final circles = await _repo.getMyCircles();
+      if (!mounted) return;
+      if (circles.isEmpty) {
+        setState(() => _loading = false);
+        return;
       }
+      for (final c in circles) {
+        _circleById[c.id] = c;
+        _subs.add(_repo.membersStream(c.id).listen((members) {
+          if (!mounted) return;
+          setState(() {
+            _membersByCircle[c.id] = members;
+            _loading = false;
+          });
+        }, onError: (_) {
+          if (mounted) setState(() => _loading = false);
+        }));
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final s in _subs) {
+      s.cancel();
+    }
+    super.dispose();
+  }
+
+  List<_Row> _allRows() {
+    final rows = <_Row>[];
+    _membersByCircle.forEach((cid, members) {
+      final c = _circleById[cid];
+      if (c == null) return;
       for (final m in members.where((m) =>
           m.role == UserRole.student && m.status == MemberStatus.active)) {
         rows.add((member: m, circle: c));
       }
-    }
+    });
     rows.sort((a, b) =>
         a.member.memorizedPercent.compareTo(b.member.memorizedPercent));
     return rows;
@@ -49,65 +88,61 @@ class _AllStudentsPageState extends State<AllStudentsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('الطالبات')),
-      body: FutureBuilder<List<_Row>>(
-        future: _future,
-        builder: (context, snap) {
-          if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final all = snap.data ?? const [];
-          final rows = all
-              .where((r) => r.member.name.contains(_query.trim()))
-              .toList();
-          return Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(AppSpacing.md),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        onChanged: (v) => setState(() => _query = v),
-                        decoration: const InputDecoration(
-                          isDense: true,
-                          hintText: 'بحث عن طالبة...',
-                          prefixIcon: Icon(Icons.search),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : Builder(builder: (context) {
+              final all = _allRows();
+              final rows = all
+                  .where((r) => r.member.name.contains(_query.trim()))
+                  .toList();
+              return Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            onChanged: (v) => setState(() => _query = v),
+                            decoration: const InputDecoration(
+                              isDense: true,
+                              hintText: 'بحث عن طالبة...',
+                              prefixIcon: Icon(Icons.search),
+                            ),
+                          ),
                         ),
-                      ),
+                        const SizedBox(width: 12),
+                        Text('${all.length} طالبة',
+                            style: Theme.of(context).textTheme.bodySmall),
+                      ],
                     ),
-                    const SizedBox(width: 12),
-                    Text('${all.length} طالبة',
-                        style: Theme.of(context).textTheme.bodySmall),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: rows.isEmpty
-                    ? Center(
-                        child: Text('لا توجد طالبات بعد',
-                            style: Theme.of(context).textTheme.bodyMedium))
-                    : LayoutBuilder(builder: (context, c) {
-                        void open(Circle circle) =>
-                            Navigator.of(context).push(MaterialPageRoute(
-                              builder: (_) => CircleWorkspacePage(
-                                  circle: circle, user: widget.user),
-                            ));
-                        if (c.maxWidth >= 720) {
-                          return _AllTable(rows: rows, onOpen: open);
-                        }
-                        return ListView.builder(
-                          padding: const EdgeInsets.fromLTRB(
-                              AppSpacing.md, 0, AppSpacing.md, AppSpacing.md),
-                          itemCount: rows.length,
-                          itemBuilder: (context, i) =>
-                              _StudentMiniCard(row: rows[i], onOpen: open),
-                        );
-                      }),
-              ),
-            ],
-          );
-        },
-      ),
+                  ),
+                  Expanded(
+                    child: rows.isEmpty
+                        ? Center(
+                            child: Text('لا توجد طالبات بعد',
+                                style: Theme.of(context).textTheme.bodyMedium))
+                        : LayoutBuilder(builder: (context, c) {
+                            void open(Circle circle) =>
+                                Navigator.of(context).push(MaterialPageRoute(
+                                  builder: (_) => CircleWorkspacePage(
+                                      circle: circle, user: widget.user),
+                                ));
+                            if (c.maxWidth >= 720) {
+                              return _AllTable(rows: rows, onOpen: open);
+                            }
+                            return ListView.builder(
+                              padding: const EdgeInsets.fromLTRB(AppSpacing.md,
+                                  0, AppSpacing.md, AppSpacing.md),
+                              itemCount: rows.length,
+                              itemBuilder: (context, i) =>
+                                  _StudentMiniCard(row: rows[i], onOpen: open),
+                            );
+                          }),
+                  ),
+                ],
+              );
+            }),
     );
   }
 }

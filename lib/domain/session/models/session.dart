@@ -1,5 +1,5 @@
-/// Live-session domain models (US-30/31/32/33/42).
-/// Backed by `circles/{circleId}/sessions/{sessionId}` in Firestore.
+// Live-session domain models (US-30/31/32/33/42).
+// Backed by `circles/{circleId}/sessions/{sessionId}` in Firestore.
 
 /// Lifecycle of a session.
 /// - scheduled: created with a future date/time, not started yet.

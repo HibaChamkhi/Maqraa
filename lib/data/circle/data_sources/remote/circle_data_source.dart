@@ -107,6 +107,16 @@ class CircleRemoteDataSource {
     final doc = query.docs.first;
     final circle = CircleDto.fromMap(doc.id, doc.data());
 
+    // Gender separation (US-43): the joining account must match the circle.
+    final profileDoc = await _users.doc(uid).get();
+    final userGender = Gender.fromName(profileDoc.data()?['gender'] as String?);
+    if (userGender != null && userGender != circle.gender) {
+      throw BadRequestException(
+          message: circle.gender == Gender.female
+              ? 'هذه الحلقة مخصّصة للبنات'
+              : 'هذه الحلقة مخصّصة للأولاد');
+    }
+
     final existing = await _members(circle.id).doc(uid).get();
     if (existing.exists) {
       throw BadRequestException(message: 'أنتِ عضوة في هذه الحلقة بالفعل');
@@ -168,6 +178,13 @@ class CircleRemoteDataSource {
     return query.docs
         .map((d) => CircleMemberDto.fromMap(d.id, d.data()))
         .toList(growable: false);
+  }
+
+  /// Live members of a circle — emits whenever the roster changes.
+  Stream<List<CircleMember>> membersStream(String circleId) {
+    return _members(circleId).snapshots().map((q) => q.docs
+        .map((d) => CircleMemberDto.fromMap(d.id, d.data()))
+        .toList(growable: false));
   }
 
   // --- US-41 ---

@@ -15,8 +15,8 @@ import 'package:get_it/get_it.dart' as _i174;
 import 'package:http/http.dart' as _i519;
 import 'package:injectable/injectable.dart' as _i526;
 import 'package:maqraa/core/di/core_module.dart' as _i919;
-import 'package:maqraa/core/interceptor/AuthInterceptor.dart' as _i577;
-import 'package:maqraa/core/interceptor/HttpInterceptor.dart' as _i185;
+import 'package:maqraa/core/interceptor/auth_interceptor.dart' as _i577;
+import 'package:maqraa/core/interceptor/http_interceptor.dart' as _i185;
 import 'package:maqraa/core/network/network_info.dart' as _i293;
 import 'package:maqraa/core/notifications/notification_service.dart' as _i529;
 import 'package:maqraa/data/achievement/data_sources/remote/achievement_data_source.dart'

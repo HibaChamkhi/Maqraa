@@ -1,5 +1,5 @@
-/// Exam domain models (US-20/21).
-/// Backed by `circles/{circleId}/exams/{examId}` and its `results` subcollection.
+// Exam domain models (US-20/21).
+// Backed by `circles/{circleId}/exams/{examId}` and its `results` subcollection.
 
 /// An exam document under circles/{circleId}/exams/{examId}.
 class Exam {
