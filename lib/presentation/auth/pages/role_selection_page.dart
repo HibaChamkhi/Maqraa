@@ -40,7 +40,7 @@ class RoleSelectionPage extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text('كيف ستستخدمين «وصال»؟',
+                    Text('كيف ستستخدمين «وِصَال»؟',
                         textAlign: TextAlign.center, style: theme.textTheme.titleLarge),
                     const SizedBox(height: 20),
                     for (final r in _roles) ...[
