@@ -15,13 +15,37 @@ class WardDrawer extends StatelessWidget {
   /// Label of the currently-open section, to highlight it.
   final String current;
 
-  const WardDrawer({super.key, required this.user, this.current = 'الرئيسية'});
+  /// When true, renders as a fixed full-height side rail (wide screens)
+  /// instead of a pop-over drawer.
+  final bool permanent;
+
+  const WardDrawer({
+    super.key,
+    required this.user,
+    this.current = 'الرئيسية',
+    this.permanent = false,
+  });
 
   bool get _isTeacher =>
       user.role == UserRole.teacher || user.role == UserRole.supervisor;
 
   @override
   Widget build(BuildContext context) {
+    final panel = _panel(context);
+    if (permanent) {
+      return SizedBox(width: 272, child: panel);
+    }
+    return Drawer(
+      width: 272,
+      backgroundColor: Colors.transparent,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.horizontal(left: Radius.circular(26)),
+      ),
+      child: panel,
+    );
+  }
+
+  Widget _panel(BuildContext context) {
     final items = _isTeacher
         ? const [
             ('الرئيسية', Icons.home_outlined),
@@ -44,24 +68,22 @@ class WardDrawer extends StatelessWidget {
             ('المساعدة', Icons.help_outline),
           ];
 
-    return Drawer(
-      width: 272,
-      backgroundColor: Colors.transparent,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.horizontal(left: Radius.circular(26)),
-      ),
-      child: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF0F6B5B), Color(0xFF09463A)],
-          ),
-          borderRadius: BorderRadius.horizontal(left: Radius.circular(26)),
+    final radius = permanent
+        ? BorderRadius.zero
+        : const BorderRadius.horizontal(left: Radius.circular(26));
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF0F6B5B), Color(0xFF09463A)],
         ),
-        child: SafeArea(
-          child: Column(
-            children: [
+        borderRadius: radius,
+      ),
+      child: SafeArea(
+        child: Column(
+          children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
               child: Row(
@@ -96,7 +118,7 @@ class WardDrawer extends StatelessWidget {
               label: 'الملف الشخصي',
               icon: Icons.person_outline,
               onTap: () {
-                Navigator.of(context).pop();
+                _closeIfDrawer(context);
                 Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const ProfilePage()));
               },
@@ -105,20 +127,25 @@ class WardDrawer extends StatelessWidget {
               label: 'تسجيل الخروج',
               icon: Icons.logout,
               onTap: () {
-                Navigator.of(context).pop();
+                _closeIfDrawer(context);
                 context.read<AuthBloc>().add(const AuthLogoutRequested());
               },
             ),
             const SizedBox(height: 8),
-            ],
-          ),
+          ],
         ),
       ),
     );
   }
 
+  /// Close the pop-over drawer if one is open (no-op for the permanent rail).
+  void _closeIfDrawer(BuildContext context) {
+    final s = Scaffold.maybeOf(context);
+    if (s != null && s.isDrawerOpen) s.closeDrawer();
+  }
+
   void _go(BuildContext context, String label) {
-    Navigator.of(context).pop(); // close drawer
+    _closeIfDrawer(context);
     switch (label) {
       case 'الرئيسية':
         Navigator.of(context).popUntil((r) => r.isFirst);

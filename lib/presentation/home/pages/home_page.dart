@@ -62,6 +62,37 @@ class _HomePageState extends State<HomePage> {
         _circlesFuture = getIt<CircleRepository>().getMyCircles();
       });
 
+  /// Responsive shell: on wide screens the green sidebar is a permanent
+  /// right-side rail (like the reference); on narrow screens it's a pop-over
+  /// drawer opened from the ≡ button.
+  Widget _shell({required AppUser user, required Widget content}) {
+    return LayoutBuilder(builder: (context, c) {
+      if (c.maxWidth >= 900) {
+        return Scaffold(
+          body: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              WardDrawer(user: user, permanent: true),
+              Expanded(
+                child: Column(children: [
+                  const _TopBar(menu: false),
+                  Expanded(child: content),
+                ]),
+              ),
+            ],
+          ),
+        );
+      }
+      return Scaffold(
+        drawer: WardDrawer(user: user),
+        body: Column(children: [
+          const _TopBar(),
+          Expanded(child: content),
+        ]),
+      );
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = context.select<AuthBloc, AppUser?>((b) => b.state.user);
@@ -76,12 +107,9 @@ class _HomePageState extends State<HomePage> {
         }
         final circles = snap.data ?? [];
         if (circles.isEmpty) {
-          return Scaffold(
-            drawer: WardDrawer(user: user),
-            body: Column(children: [
-              const _TopBar(),
-              Expanded(child: _EmptyState(user: user, onChanged: _reload)),
-            ]),
+          return _shell(
+            user: user,
+            content: _EmptyState(user: user, onChanged: _reload),
           );
         }
         final circle = circles.first;
@@ -102,12 +130,9 @@ class _HomePageState extends State<HomePage> {
         }
 
         // Teachers / supervisors get the overview dashboard (الرئيسية).
-        return Scaffold(
-          drawer: WardDrawer(user: user),
-          body: Column(children: [
-            const _TopBar(),
-            Expanded(child: TeacherOverviewPage(user: user, circles: circles)),
-          ]),
+        return _shell(
+          user: user,
+          content: TeacherOverviewPage(user: user, circles: circles),
         );
       },
     );
