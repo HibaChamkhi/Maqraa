@@ -8,6 +8,7 @@ import '../../../core/ui/styles/theme.dart';
 import '../../../core/ui/widgets/werd_widgets.dart';
 import '../../../domain/auth/models/app_user.dart';
 import '../../../domain/circle/models/circle.dart';
+import '../../../domain/circle/repositories/circle_repository.dart';
 import '../../calendar/pages/manage_calendar_page.dart';
 import '../../exam/pages/teacher_exams_page.dart';
 import '../../session/pages/live_session_page.dart';
@@ -87,14 +88,7 @@ class CircleWorkspacePage extends StatelessWidget {
         body: TabBarView(
           children: [
             _StudentsTab(circle: circle, canManage: _canManage),
-            _LinkTab(
-              icon: Icons.calendar_month_outlined,
-              label: 'جدول الجلسات الأسبوعي',
-              buttonText: 'فتح التقويم',
-              onOpen: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) =>
-                      ManageCalendarPage(circleId: circle.id, user: user))),
-            ),
+            _ScheduleTab(circle: circle, user: user, canManage: _canManage),
             _LinkTab(
               icon: Icons.podcasts_outlined,
               label: 'الجلسات المباشرة',
@@ -151,6 +145,216 @@ class _LinkTab extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+//  الجدول tab — recurring weekly meeting schedule (days + per-day time)
+// ---------------------------------------------------------------------------
+
+const _scheduleDayOrder = ['sat', 'sun', 'mon', 'tue', 'wed', 'thu', 'fri'];
+const _scheduleDayLabels = {
+  'sat': 'السبت',
+  'sun': 'الأحد',
+  'mon': 'الإثنين',
+  'tue': 'الثلاثاء',
+  'wed': 'الأربعاء',
+  'thu': 'الخميس',
+  'fri': 'الجمعة',
+};
+
+class _ScheduleTab extends StatefulWidget {
+  final Circle circle;
+  final AppUser user;
+  final bool canManage;
+  const _ScheduleTab(
+      {required this.circle, required this.user, required this.canManage});
+
+  @override
+  State<_ScheduleTab> createState() => _ScheduleTabState();
+}
+
+class _ScheduleTabState extends State<_ScheduleTab> {
+  late Map<String, String> _times = {...widget.circle.dayTimes};
+  late int _duration = widget.circle.durationMinutes;
+  bool _saving = false;
+
+  Future<void> _pickTime(String day) async {
+    final current = _times[day];
+    final init = current != null
+        ? TimeOfDay(
+            hour: int.parse(current.split(':')[0]),
+            minute: int.parse(current.split(':')[1]))
+        : const TimeOfDay(hour: 8, minute: 0);
+    final picked = await showTimePicker(context: context, initialTime: init);
+    if (picked != null) {
+      setState(() => _times[day] =
+          '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}');
+    }
+  }
+
+  void _toggle(String day) => setState(() {
+        if (_times.containsKey(day)) {
+          _times.remove(day);
+        } else {
+          _times[day] = '08:00';
+        }
+      });
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      await getIt<CircleRepository>().updateSchedule(
+        circleId: widget.circle.id,
+        dayTimes: _times,
+        durationMinutes: _duration,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('تم حفظ الجدول الأسبوعي')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('تعذّر الحفظ: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    if (!widget.canManage) {
+      final entries = _scheduleDayOrder.where(_times.containsKey).toList();
+      return entries.isEmpty
+          ? Center(
+              child: Text('لم يُحدَّد جدول الحلقة بعد',
+                  style: theme.textTheme.bodyMedium))
+          : ListView(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              children: [
+                for (final d in entries)
+                  ListTile(
+                    leading:
+                        const Icon(Icons.event_outlined, color: AppColors.primary),
+                    title: Text(_scheduleDayLabels[d]!),
+                    trailing: Text(
+                        '${_times[d]} · ${_duration}د',
+                        style: theme.textTheme.titleSmall),
+                  ),
+              ],
+            );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      children: [
+        Text('أيام ومواعيد الحلقة', style: theme.textTheme.titleMedium),
+        const SizedBox(height: 4),
+        Text('اختاري أيام اللقاء ووقت كل يوم — يظهر تلقائيًا في الجدول الأسبوعي.',
+            style:
+                theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted)),
+        const SizedBox(height: AppSpacing.md),
+        for (final d in _scheduleDayOrder)
+          _DayRow(
+            label: _scheduleDayLabels[d]!,
+            selected: _times.containsKey(d),
+            time: _times[d],
+            onToggle: () => _toggle(d),
+            onPickTime: () => _pickTime(d),
+          ),
+        const SizedBox(height: AppSpacing.md),
+        Row(
+          children: [
+            Text('مدة اللقاء', style: theme.textTheme.titleSmall),
+            const SizedBox(width: 12),
+            DropdownButton<int>(
+              value: _duration,
+              items: const [
+                DropdownMenuItem(value: 30, child: Text('30 دقيقة')),
+                DropdownMenuItem(value: 45, child: Text('45 دقيقة')),
+                DropdownMenuItem(value: 60, child: Text('60 دقيقة')),
+                DropdownMenuItem(value: 90, child: Text('90 دقيقة')),
+              ],
+              onChanged: (v) => setState(() => _duration = v ?? 60),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.md),
+        ElevatedButton.icon(
+          onPressed: _saving ? null : _save,
+          icon: _saving
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: Colors.white))
+              : const Icon(Icons.save_outlined),
+          label: const Text('حفظ الجدول'),
+        ),
+        const Divider(height: AppSpacing.xl),
+        TextButton.icon(
+          onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => ManageCalendarPage(
+                  circleId: widget.circle.id, user: widget.user))),
+          icon: const Icon(Icons.add),
+          label: const Text('إضافة جلسة فردية (مرة واحدة)'),
+        ),
+      ],
+    );
+  }
+}
+
+class _DayRow extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final String? time;
+  final VoidCallback onToggle;
+  final VoidCallback onPickTime;
+  const _DayRow({
+    required this.label,
+    required this.selected,
+    required this.time,
+    required this.onToggle,
+    required this.onPickTime,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: selected ? AppColors.sky : AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(
+            color: selected ? AppColors.primary : AppColors.border),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: CheckboxListTile(
+              value: selected,
+              onChanged: (_) => onToggle(),
+              activeColor: AppColors.primary,
+              controlAffinity: ListTileControlAffinity.leading,
+              title: Text(label),
+            ),
+          ),
+          if (selected)
+            Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: OutlinedButton.icon(
+                onPressed: onPickTime,
+                icon: const Icon(Icons.access_time, size: 16),
+                label: Text(time ?? 'الوقت'),
+              ),
+            ),
+        ],
       ),
     );
   }

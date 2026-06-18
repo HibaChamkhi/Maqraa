@@ -220,6 +220,20 @@ class CircleRemoteDataSource {
     await _circles.doc(circleId).update({'privacy': privacy.name});
   }
 
+  /// Set the circle's recurring weekly meeting schedule (days + per-day start
+  /// time + default duration). Drives the global weekly calendar.
+  Future<void> updateSchedule({
+    required String circleId,
+    required Map<String, String> dayTimes,
+    required int durationMinutes,
+  }) async {
+    await _circles.doc(circleId).update({
+      'days': dayTimes.keys.toList(),
+      'dayTimes': dayTimes,
+      'durationMinutes': durationMinutes,
+    });
+  }
+
   // --- shared ---
 
   Future<Circle> getCircle(String circleId) async {

@@ -48,6 +48,14 @@ abstract class CircleRepository {
     required Privacy privacy,
   });
 
+  /// Set the circle's recurring weekly meeting schedule (per-day start time
+  /// + default duration). Drives the global weekly calendar.
+  Future<void> updateSchedule({
+    required String circleId,
+    required Map<String, String> dayTimes,
+    required int durationMinutes,
+  });
+
   /// Fetch a single circle by id.
   Future<Circle> getCircle(String circleId);
 

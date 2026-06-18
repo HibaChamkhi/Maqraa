@@ -10,12 +10,11 @@ import '../../../domain/calendar/repositories/calendar_repository.dart';
 import '../../../domain/session/models/session.dart';
 import '../../../domain/task/models/daily_task.dart';
 import '../../../domain/task/repositories/task_repository.dart';
-import '../../circle/pages/section_circle_picker_page.dart';
-import 'manage_calendar_page.dart';
+import '../../circle/pages/circle_workspace_page.dart';
 
 /// الجدول الأسبوعي والجلسات — a global weekly timetable that aggregates the
-/// sessions of every circle the teacher runs, colour-coded per circle, with a
-/// «جلسة اليوم» card and a today's-tasks reminders panel.
+/// recurring meeting times of every circle (plus one-off sessions),
+/// colour-coded per circle, with a «جلسة اليوم» card and today's-tasks panel.
 class WeekSchedulePage extends StatefulWidget {
   final AppUser user;
   const WeekSchedulePage({super.key, required this.user});
@@ -34,20 +33,42 @@ const _palette = <(Color, Color)>[
   (Color(0xFFFBEAF0), Color(0xFF993556)),
 ];
 
+const _weekdayCode = {
+  1: 'mon',
+  2: 'tue',
+  3: 'wed',
+  4: 'thu',
+  5: 'fri',
+  6: 'sat',
+  7: 'sun',
+};
+
 class _Ev {
-  final Session session;
+  final DateTime start;
+  final int durationMin;
   final String circleName;
+  final String title;
   final int colorIndex;
-  _Ev(this.session, this.circleName, this.colorIndex);
+  final SessionStatus? status;
+  _Ev({
+    required this.start,
+    required this.durationMin,
+    required this.circleName,
+    required this.title,
+    required this.colorIndex,
+    this.status,
+  });
+  DateTime get end => start.add(Duration(minutes: durationMin));
 }
 
 typedef _Reminder = ({String title, String subtitle});
+typedef _CircleColor = ({Circle circle, int color});
 
 class _Data {
-  final List<Circle> circles;
-  final List<_Ev> events;
+  final List<_CircleColor> circles;
+  final List<_Ev> oneOff;
   final List<_Reminder> reminders;
-  _Data(this.circles, this.events, this.reminders);
+  _Data(this.circles, this.oneOff, this.reminders);
 }
 
 class _WeekSchedulePageState extends State<WeekSchedulePage> {
@@ -74,17 +95,27 @@ class _WeekSchedulePageState extends State<WeekSchedulePage> {
     final circles = await circleRepo.getMyCircles();
     final todayId = DateFormat('yyyy-MM-dd').format(DateTime.now());
 
-    final events = <_Ev>[];
+    final colored = <_CircleColor>[];
+    final oneOff = <_Ev>[];
     final reminders = <_Reminder>[];
     for (var i = 0; i < circles.length; i++) {
       final c = circles[i];
       final color = i % _palette.length;
+      colored.add((circle: c, color: color));
       final sessions = await calRepo.getSessions(c.id);
       for (final s in sessions) {
-        events.add(_Ev(s, c.name, color));
+        oneOff.add(_Ev(
+          start: s.scheduledAt,
+          durationMin: c.durationMinutes,
+          circleName: c.name,
+          title: s.title,
+          colorIndex: color,
+          status: s.status,
+        ));
       }
       try {
-        final tasks = await taskRepo.getTasksForDay(circleId: c.id, dateId: todayId);
+        final tasks =
+            await taskRepo.getTasksForDay(circleId: c.id, dateId: todayId);
         for (final DailyTask t in tasks) {
           reminders.add((
             title: 'تسميع ${t.name}',
@@ -93,13 +124,37 @@ class _WeekSchedulePageState extends State<WeekSchedulePage> {
         }
       } catch (_) {/* circle may have no tasks yet */}
     }
-    return _Data(circles, events, reminders);
+    return _Data(colored, oneOff, reminders);
   }
 
   void _reload() => setState(() => _future = _load());
 
   void _shiftWeek(int weeks) =>
       setState(() => _weekStart = _weekStart.add(Duration(days: 7 * weeks)));
+
+  /// Recurring meeting blocks generated from each circle's dayTimes.
+  List<_Ev> _recurring(List<_CircleColor> circles, List<DateTime> days) {
+    final out = <_Ev>[];
+    for (final d in days) {
+      final code = _weekdayCode[d.weekday];
+      for (final cc in circles) {
+        final t = cc.circle.dayTimes[code];
+        if (t == null) continue;
+        final p = t.split(':');
+        if (p.length != 2) continue;
+        final start = DateTime(
+            d.year, d.month, d.day, int.tryParse(p[0]) ?? 0, int.tryParse(p[1]) ?? 0);
+        out.add(_Ev(
+          start: start,
+          durationMin: cc.circle.durationMinutes,
+          circleName: cc.circle.name,
+          title: cc.circle.name,
+          colorIndex: cc.color,
+        ));
+      }
+    }
+    return out;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -114,11 +169,20 @@ class _WeekSchedulePageState extends State<WeekSchedulePage> {
             return const Center(child: CircularProgressIndicator());
           }
           final d = snap.data!;
-          final days = [for (var i = 0; i < 7; i++) _weekStart.add(Duration(days: i))];
-          final weekEvents = d.events
-              .where((e) => !e.session.scheduledAt.isBefore(days.first) &&
-                  e.session.scheduledAt.isBefore(days.last.add(const Duration(days: 1))))
-              .toList();
+          final days = [
+            for (var i = 0; i < 7; i++) _weekStart.add(Duration(days: i))
+          ];
+          final weekEvents = [
+            ..._recurring(d.circles, days),
+            ...d.oneOff.where((e) =>
+                !e.start.isBefore(days.first) &&
+                e.start.isBefore(days.last.add(const Duration(days: 1)))),
+          ];
+          final today = DateTime.now();
+          final todayEvents = [
+            ..._recurring(d.circles, [DateTime(today.year, today.month, today.day)]),
+            ...d.oneOff.where((e) => _sameDay(e.start, today)),
+          ]..sort((a, b) => a.start.compareTo(b.start));
 
           return LayoutBuilder(builder: (context, c) {
             final wide = c.maxWidth >= 900;
@@ -134,12 +198,8 @@ class _WeekSchedulePageState extends State<WeekSchedulePage> {
                   onToggle: (v) => setState(() => _listView = v),
                   onNew: () => Navigator.of(context)
                       .push(MaterialPageRoute(
-                        builder: (_) => SectionCirclePickerPage(
-                          title: 'جلسة جديدة',
-                          icon: Icons.calendar_month_outlined,
-                          pageBuilder: (circle) => ManageCalendarPage(
-                              circleId: circle.id, user: widget.user),
-                        ),
+                        builder: (_) => _PickCircleForScheduleSheet(
+                            circles: d.circles, user: widget.user),
                       ))
                       .then((_) => _reload()),
                 ),
@@ -161,9 +221,7 @@ class _WeekSchedulePageState extends State<WeekSchedulePage> {
 
             if (!wide) {
               return Padding(
-                padding: const EdgeInsets.all(AppSpacing.md),
-                child: main,
-              );
+                  padding: const EdgeInsets.all(AppSpacing.md), child: main);
             }
             return Padding(
               padding: const EdgeInsets.all(AppSpacing.md),
@@ -176,8 +234,7 @@ class _WeekSchedulePageState extends State<WeekSchedulePage> {
                     width: 300,
                     child: ListView(
                       children: [
-                        _TodaySessionCard(
-                            events: d.events, sameDay: _sameDay),
+                        _TodaySessionCard(events: todayEvents),
                         const SizedBox(height: AppSpacing.md),
                         _RemindersCard(reminders: d.reminders),
                       ],
@@ -188,6 +245,43 @@ class _WeekSchedulePageState extends State<WeekSchedulePage> {
             );
           });
         },
+      ),
+    );
+  }
+}
+
+/// Lightweight chooser: tap a circle to edit its weekly schedule (الجدول tab).
+class _PickCircleForScheduleSheet extends StatelessWidget {
+  final List<_CircleColor> circles;
+  final AppUser user;
+  const _PickCircleForScheduleSheet(
+      {required this.circles, required this.user});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('جدولة حلقة')),
+      body: ListView(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        children: [
+          Text('اختاري الحلقة لتحديد أيامها ومواعيدها',
+              style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: AppSpacing.sm),
+          for (final cc in circles)
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.groups_2_outlined,
+                    color: AppColors.primary),
+                title: Text(cc.circle.name),
+                trailing:
+                    const Icon(Icons.chevron_left, color: AppColors.textMuted),
+                onTap: () => Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(
+                        builder: (_) => CircleWorkspacePage(
+                            circle: cc.circle, user: user))),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -215,7 +309,8 @@ class _Toolbar extends StatelessWidget {
     final end = weekStart.add(const Duration(days: 6));
     final fmtDay = DateFormat('d', 'ar');
     final fmtMonthY = DateFormat('MMMM y', 'ar');
-    final range = '${fmtDay.format(weekStart)} - ${fmtDay.format(end)} ${fmtMonthY.format(end)}';
+    final range =
+        '${fmtDay.format(weekStart)} - ${fmtDay.format(end)} ${fmtMonthY.format(end)}';
     return Wrap(
       alignment: WrapAlignment.spaceBetween,
       crossAxisAlignment: WrapCrossAlignment.center,
@@ -228,15 +323,14 @@ class _Toolbar extends StatelessWidget {
             IconButton(
                 onPressed: onPrev, icon: const Icon(Icons.chevron_right)),
             Text(range, style: Theme.of(context).textTheme.titleMedium),
-            IconButton(
-                onPressed: onNext, icon: const Icon(Icons.chevron_left)),
+            IconButton(onPressed: onNext, icon: const Icon(Icons.chevron_left)),
           ],
         ),
         if (isTeacher)
           ElevatedButton.icon(
             onPressed: onNew,
             icon: const Icon(Icons.add, size: 18),
-            label: const Text('جلسة جديدة'),
+            label: const Text('جدولة حلقة'),
             style: ElevatedButton.styleFrom(
                 minimumSize: const Size(0, 44),
                 padding: const EdgeInsets.symmetric(horizontal: 16)),
@@ -268,8 +362,7 @@ class _ViewToggle extends StatelessWidget {
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Icon(icon,
-                size: 16,
-                color: active ? Colors.white : AppColors.textMuted),
+                size: 16, color: active ? Colors.white : AppColors.textMuted),
             const SizedBox(width: 6),
             Text(label,
                 style: TextStyle(
@@ -330,16 +423,15 @@ class _WeekGrid extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
-          // header row
           Row(
             children: [
               const SizedBox(width: gutter),
-              for (final d in days)
+              for (final dd in days)
                 Expanded(
                   child: _DayHeader(
-                    name: dayNames.format(d),
-                    day: d.day,
-                    isToday: sameDay(d, today),
+                    name: dayNames.format(dd),
+                    day: dd.day,
+                    isToday: sameDay(dd, today),
                   ),
                 ),
             ],
@@ -352,7 +444,6 @@ class _WeekGrid extends StatelessWidget {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // time gutter
                     SizedBox(
                       width: gutter,
                       child: Column(
@@ -361,7 +452,8 @@ class _WeekGrid extends StatelessWidget {
                             SizedBox(
                               height: rowH,
                               child: Padding(
-                                padding: const EdgeInsets.only(top: 2, right: 4),
+                                padding:
+                                    const EdgeInsets.only(top: 2, right: 4),
                                 child: Text(
                                   '${h.toString().padLeft(2, '0')}:00',
                                   style: const TextStyle(
@@ -373,13 +465,11 @@ class _WeekGrid extends StatelessWidget {
                         ],
                       ),
                     ),
-                    for (final d in days)
+                    for (final dd in days)
                       Expanded(
                         child: _DayColumn(
-                          day: d,
                           events: events
-                              .where((e) =>
-                                  sameDay(e.session.scheduledAt, d))
+                              .where((e) => sameDay(e.start, dd))
                               .toList(),
                           startHour: startHour,
                           slots: slots,
@@ -410,8 +500,8 @@ class _DayHeader extends StatelessWidget {
       child: Column(
         children: [
           Text(name,
-              style: const TextStyle(
-                  fontSize: 11, color: AppColors.textMuted)),
+              style:
+                  const TextStyle(fontSize: 11, color: AppColors.textMuted)),
           const SizedBox(height: 4),
           Container(
             width: 26,
@@ -434,12 +524,10 @@ class _DayHeader extends StatelessWidget {
 }
 
 class _DayColumn extends StatelessWidget {
-  final DateTime day;
   final List<_Ev> events;
   final int startHour, slots;
   final double rowH;
   const _DayColumn({
-    required this.day,
     required this.events,
     required this.startHour,
     required this.slots,
@@ -454,15 +542,14 @@ class _DayColumn extends StatelessWidget {
       ),
       child: Stack(
         children: [
-          // hour lines
           Column(
             children: [
               for (var i = 0; i < slots; i++)
                 Container(
                   height: rowH,
                   decoration: const BoxDecoration(
-                    border:
-                        Border(top: BorderSide(color: AppColors.border, width: .5)),
+                    border: Border(
+                        top: BorderSide(color: AppColors.border, width: .5)),
                   ),
                 ),
             ],
@@ -474,18 +561,16 @@ class _DayColumn extends StatelessWidget {
   }
 
   Widget _block(BuildContext context, _Ev e) {
-    final start = e.session.scheduledAt;
-    final end = start.add(const Duration(hours: 1)); // default 1h
-    final minutesFromTop = (start.hour - startHour) * 60 + start.minute;
+    final minutesFromTop = (e.start.hour - startHour) * 60 + e.start.minute;
     final top = (minutesFromTop / 60) * rowH;
-    final height = rowH - 4;
+    final height = (e.durationMin / 60) * rowH - 4;
     final (bg, fg) = _palette[e.colorIndex];
     final fmt = DateFormat('HH:mm');
     return Positioned(
       top: top.clamp(0, slots * rowH).toDouble(),
       left: 3,
       right: 3,
-      height: height,
+      height: height < 22 ? 22 : height,
       child: Material(
         color: bg,
         borderRadius: BorderRadius.circular(AppRadius.sm),
@@ -507,7 +592,7 @@ class _DayColumn extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Text(
-                          '${fmt.format(start)} - ${fmt.format(end)}',
+                          '${fmt.format(e.start)} - ${fmt.format(e.end)}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(fontSize: 9, color: fg)),
@@ -539,15 +624,13 @@ class _AgendaList extends StatelessWidget {
     final fmtHeader = DateFormat('EEEE d MMMM', 'ar');
     final fmt = DateFormat('HH:mm');
     final sections = <Widget>[];
-    for (final d in days) {
-      final dayEvents = events
-          .where((e) => _sameDay(e.session.scheduledAt, d))
-          .toList()
-        ..sort((a, b) => a.session.scheduledAt.compareTo(b.session.scheduledAt));
+    for (final dd in days) {
+      final dayEvents = events.where((e) => _sameDay(e.start, dd)).toList()
+        ..sort((a, b) => a.start.compareTo(b.start));
       if (dayEvents.isEmpty) continue;
       sections.add(Padding(
         padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
-        child: Text(fmtHeader.format(d), style: theme.textTheme.titleSmall),
+        child: Text(fmtHeader.format(dd), style: theme.textTheme.titleSmall),
       ));
       for (final e in dayEvents) {
         final (bg, fg) = _palette[e.colorIndex];
@@ -567,16 +650,16 @@ class _AgendaList extends StatelessWidget {
               child: Icon(Icons.videocam_outlined, color: fg),
             ),
             title: Text(e.circleName, style: theme.textTheme.titleSmall),
-            subtitle: Text(
-                '${fmt.format(e.session.scheduledAt)} - ${fmt.format(e.session.scheduledAt.add(const Duration(hours: 1)))} · ${e.session.title}'),
+            subtitle:
+                Text('${fmt.format(e.start)} - ${fmt.format(e.end)} · ${e.title}'),
           ),
         ));
       }
     }
     if (sections.isEmpty) {
       return Center(
-        child: Text('لا توجد جلسات هذا الأسبوع',
-            style: theme.textTheme.bodyMedium),
+        child:
+            Text('لا توجد جلسات هذا الأسبوع', style: theme.textTheme.bodyMedium),
       );
     }
     return ListView(children: sections);
@@ -586,22 +669,15 @@ class _AgendaList extends StatelessWidget {
 // ===================== side cards =====================
 class _TodaySessionCard extends StatelessWidget {
   final List<_Ev> events;
-  final bool Function(DateTime, DateTime) sameDay;
-  const _TodaySessionCard({required this.events, required this.sameDay});
+  const _TodaySessionCard({required this.events});
 
   @override
   Widget build(BuildContext context) {
-    final now = DateTime.now();
-    final todays = events
-        .where((e) => sameDay(e.session.scheduledAt, now))
-        .toList()
-      ..sort((a, b) => a.session.scheduledAt.compareTo(b.session.scheduledAt));
     final fmt = DateFormat('h:mm a', 'ar');
-
-    final live = todays.where((e) => e.session.status == SessionStatus.live);
+    final live = events.where((e) => e.status == SessionStatus.live);
     final pick = live.isNotEmpty
         ? live.first
-        : (todays.isNotEmpty ? todays.first : null);
+        : (events.isNotEmpty ? events.first : null);
 
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
@@ -632,19 +708,21 @@ class _TodaySessionCard extends StatelessWidget {
                     fontSize: 18,
                     fontWeight: FontWeight.w700)),
             const SizedBox(height: 6),
-            Text(
-                '${fmt.format(pick.session.scheduledAt)} - ${fmt.format(pick.session.scheduledAt.add(const Duration(hours: 1)))}',
+            Text('${fmt.format(pick.start)} - ${fmt.format(pick.end)}',
                 style: const TextStyle(color: Colors.white70, fontSize: 13)),
-            const SizedBox(height: 6),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.18),
-                borderRadius: BorderRadius.circular(AppRadius.pill),
+            if (pick.status != null) ...[
+              const SizedBox(height: 6),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(AppRadius.pill),
+                ),
+                child: Text(pick.status!.arabicLabel,
+                    style: const TextStyle(color: Colors.white, fontSize: 11)),
               ),
-              child: Text(pick.session.status.arabicLabel,
-                  style: const TextStyle(color: Colors.white, fontSize: 11)),
-            ),
+            ],
             const SizedBox(height: 14),
             SizedBox(
               width: double.infinity,
@@ -713,8 +791,8 @@ class _RemindersCard extends StatelessWidget {
                           Text(r.subtitle,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                  color: AppColors.textMuted)),
+                              style: theme.textTheme.bodySmall
+                                  ?.copyWith(color: AppColors.textMuted)),
                         ],
                       ),
                     ),

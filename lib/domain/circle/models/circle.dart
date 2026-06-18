@@ -95,6 +95,12 @@ class Circle {
   /// Session days, e.g. ['sun','tue','thu'].
   final List<String> days;
 
+  /// Recurring meeting start time per day code, e.g. {'sun':'08:00','tue':'10:00'}.
+  final Map<String, String> dayTimes;
+
+  /// Default meeting length in minutes (applies to every recurring day).
+  final int durationMinutes;
+
   final DateTime? createdAt;
 
   const Circle({
@@ -108,6 +114,8 @@ class Circle {
     this.supervisorIds = const [],
     this.level = '',
     this.days = const [],
+    this.dayTimes = const {},
+    this.durationMinutes = 60,
     this.createdAt,
   });
 
@@ -121,6 +129,8 @@ class Circle {
     List<String>? supervisorIds,
     String? level,
     List<String>? days,
+    Map<String, String>? dayTimes,
+    int? durationMinutes,
     DateTime? createdAt,
   }) {
     return Circle(
@@ -134,6 +144,8 @@ class Circle {
       supervisorIds: supervisorIds ?? this.supervisorIds,
       level: level ?? this.level,
       days: days ?? this.days,
+      dayTimes: dayTimes ?? this.dayTimes,
+      durationMinutes: durationMinutes ?? this.durationMinutes,
       createdAt: createdAt ?? this.createdAt,
     );
   }
