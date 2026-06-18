@@ -18,6 +18,7 @@ import '../../../domain/calendar/repositories/calendar_repository.dart';
 import '../../../domain/session/models/session.dart';
 import '../../calendar/bloc/calendar_bloc.dart';
 import '../../exam/pages/teacher_exams_page.dart';
+import '../../homework/pages/weekly_homework_tab.dart';
 import '../../session/pages/live_session_page.dart';
 import '../bloc/circle_bloc.dart';
 
@@ -91,16 +92,12 @@ class CircleWorkspacePage extends StatelessWidget {
               child: TabBarView(
                 children: [
                   _StudentsTab(circle: circle, canManage: _canManage),
+                  // الجدول = weekly homework (الواجب الأسبوعي)
+                  WeeklyHomeworkTab(
+                      circle: circle, user: user, canManage: _canManage),
+                  // الجلسات = the session-times manager (moved here)
                   _ScheduleTab(
                       circle: circle, user: user, canManage: _canManage),
-                  _LinkTab(
-                    icon: Icons.podcasts_outlined,
-                    label: 'الجلسات المباشرة',
-                    buttonText: 'فتح الجلسات',
-                    onOpen: () => Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) =>
-                            LiveSessionPage(circleId: circle.id, user: user))),
-                  ),
                   _LinkTab(
                     icon: Icons.assignment_outlined,
                     label: 'اختبارات الحلقة',
@@ -635,15 +632,17 @@ class _ScheduleTab extends StatelessWidget {
     return BlocProvider(
       create: (_) =>
           getIt<CalendarBloc>()..add(CalendarSessionsRequested(circle.id)),
-      child: _ScheduleView(circle: circle, canManage: canManage),
+      child: _ScheduleView(circle: circle, user: user, canManage: canManage),
     );
   }
 }
 
 class _ScheduleView extends StatelessWidget {
   final Circle circle;
+  final AppUser user;
   final bool canManage;
-  const _ScheduleView({required this.circle, required this.canManage});
+  const _ScheduleView(
+      {required this.circle, required this.user, required this.canManage});
 
   @override
   Widget build(BuildContext context) {
@@ -676,13 +675,11 @@ class _ScheduleView extends StatelessWidget {
 
         return Column(
           children: [
-            if (canManage)
-              Padding(
-                padding: const EdgeInsets.all(AppSpacing.md),
-                child: Row(
-                  children: [
-                    Text('الجلسات القادمة', style: theme.textTheme.titleMedium),
-                    const Spacer(),
+            Padding(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              child: Row(
+                children: [
+                  if (canManage)
                     ElevatedButton.icon(
                       onPressed: () => _openForm(context, circle.id),
                       icon: const Icon(Icons.add, size: 18),
@@ -690,9 +687,20 @@ class _ScheduleView extends StatelessWidget {
                       style: ElevatedButton.styleFrom(
                           minimumSize: const Size(0, 44)),
                     ),
-                  ],
-                ),
+                  const Spacer(),
+                  OutlinedButton.icon(
+                    onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                            builder: (_) => LiveSessionPage(
+                                circleId: circle.id, user: user))),
+                    icon: const Icon(Icons.podcasts_outlined, size: 18),
+                    label: const Text('الجلسة المباشرة'),
+                    style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(0, 44)),
+                  ),
+                ],
               ),
+            ),
             Expanded(
               child: upcoming.isEmpty
                   ? Center(
