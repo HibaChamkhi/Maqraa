@@ -432,7 +432,8 @@ class _Row extends StatelessWidget {
                           : Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('$doneCount/$total',
+                                Text(
+                                    '${total == 0 ? 0 : (doneCount / total * 100).round()}%',
                                     style: theme.textTheme.bodySmall),
                                 const SizedBox(height: 3),
                                 ClipRRect(
