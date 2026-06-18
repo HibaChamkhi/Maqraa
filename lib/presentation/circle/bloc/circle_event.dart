@@ -121,3 +121,51 @@ class CircleLoadRequested extends CircleEvent {
 class CircleMyCirclesRequested extends CircleEvent {
   const CircleMyCirclesRequested();
 }
+
+/// Manually add a student to a حلقة.
+class CircleStudentAdded extends CircleEvent {
+  final String circleId;
+  final String name;
+  final int? juz;
+
+  const CircleStudentAdded({required this.circleId, required this.name, this.juz});
+
+  @override
+  List<Object?> get props => [circleId, name, juz];
+}
+
+/// Update a student's per-enrollment data (progress / attendance / rating).
+class CircleMemberUpdated extends CircleEvent {
+  final String circleId;
+  final String uid;
+  final AttendanceState? attendance;
+  final PerformanceTag? performance;
+  final int? memorizedPages;
+  final int? juz;
+  final bool touchRecitation;
+
+  const CircleMemberUpdated({
+    required this.circleId,
+    required this.uid,
+    this.attendance,
+    this.performance,
+    this.memorizedPages,
+    this.juz,
+    this.touchRecitation = false,
+  });
+
+  @override
+  List<Object?> get props =>
+      [circleId, uid, attendance, performance, memorizedPages, juz, touchRecitation];
+}
+
+/// Remove a student from a حلقة.
+class CircleMemberRemoved extends CircleEvent {
+  final String circleId;
+  final String uid;
+
+  const CircleMemberRemoved({required this.circleId, required this.uid});
+
+  @override
+  List<Object?> get props => [circleId, uid];
+}

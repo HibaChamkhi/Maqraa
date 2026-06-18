@@ -71,4 +71,37 @@ class CircleRepositoryImpl implements CircleRepository {
 
   @override
   Future<List<Circle>> getMyCircles() => remoteDataSource.getMyCircles();
+
+  @override
+  Future<CircleMember> addStudentManually({
+    required String circleId,
+    required String name,
+    int? juz,
+  }) =>
+      remoteDataSource.addStudentManually(
+          circleId: circleId, name: name, juz: juz);
+
+  @override
+  Future<void> updateMember({
+    required String circleId,
+    required String uid,
+    AttendanceState? attendance,
+    PerformanceTag? performance,
+    int? memorizedPages,
+    int? juz,
+    bool touchRecitation = false,
+  }) =>
+      remoteDataSource.updateMember(
+        circleId: circleId,
+        uid: uid,
+        attendance: attendance,
+        performance: performance,
+        memorizedPages: memorizedPages,
+        juz: juz,
+        touchRecitation: touchRecitation,
+      );
+
+  @override
+  Future<void> removeMember({required String circleId, required String uid}) =>
+      remoteDataSource.removeMember(circleId: circleId, uid: uid);
 }

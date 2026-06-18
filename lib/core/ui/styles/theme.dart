@@ -24,19 +24,22 @@ import 'package:google_fonts/google_fonts.dart';
 class AppColors {
   AppColors._();
 
-  // --- Brand palette (light) ---
-  static const Color primary = Color(0xFF1FA463); // أخضر رئيسي
-  static const Color primaryDark = Color(0xFF137A55); // أخضر داكن
-  static const Color primaryLight = Color(0xFF14B8A6); // تركواز
-  static const Color sky = Color(0xFFE6F4EC); // أخضر فاتح جدًا (خلفيات أقسام)
-  static const Color pink = Color(0xFFF59E0B); // كهرماني (أوسمة/تمييز)
-  static const Color lavender = Color(0xFFF6F1E8); // بيج (خلفية)
-  static const Color ink = Color(0xFF1F2937); // نص رئيسي (كحلي)
+  // --- Brand palette (official «ورْد» spec) ---
+  static const Color primary = Color(0xFF0F6B5B); // أخضر رئيسي
+  static const Color primaryDark = Color(0xFF0A5446); // أخضر داكن
+  static const Color teal = Color(0xFF14B8A6); // تركوازي
+  static const Color primaryLight = teal; // alias
+  static const Color beige = Color(0xFFF6F2E9); // بيج
+  static const Color gray = Color(0xFFF0F2F5); // رمادي
+  static const Color ink = Color(0xFF1F2937); // نص رئيسي
+  static const Color sky = Color(0xFFE3F0EC); // أخضر فاتح (خلفيات/مسارات)
+  static const Color pink = Color(0xFFF59E0B); // كهرماني (تنبيه/أوسمة) — alias
+  static const Color lavender = beige; // alias (legacy)
 
   // --- Light surfaces ---
-  static const Color background = lavender;
+  static const Color background = beige;
   static const Color surface = Color(0xFFFFFFFF);
-  static const Color surfaceMuted = sky;
+  static const Color surfaceMuted = gray;
 
   // --- Dark surfaces ---
   static const Color darkBackground = Color(0xFF0F1B17);
@@ -75,22 +78,22 @@ class AppText {
   AppText._();
 
   static TextTheme textTheme(Color color) {
-    final heading = GoogleFonts.cairoTextTheme();
-    final body = GoogleFonts.tajawalTextTheme();
+    // Tajawal everywhere: Bold (w700) headings, Medium (w500) subheads, Regular body.
+    final base = GoogleFonts.tajawalTextTheme();
     return TextTheme(
-      displayLarge: heading.displayLarge?.copyWith(color: color, fontWeight: FontWeight.w800),
-      displayMedium: heading.displayMedium?.copyWith(color: color, fontWeight: FontWeight.w800),
-      displaySmall: heading.displaySmall?.copyWith(color: color, fontWeight: FontWeight.w800),
-      headlineLarge: heading.headlineLarge?.copyWith(color: color, fontWeight: FontWeight.w700),
-      headlineMedium: heading.headlineMedium?.copyWith(color: color, fontWeight: FontWeight.w700),
-      headlineSmall: heading.headlineSmall?.copyWith(color: color, fontWeight: FontWeight.w700),
-      titleLarge: heading.titleLarge?.copyWith(color: color, fontWeight: FontWeight.w700),
-      titleMedium: body.titleMedium?.copyWith(color: color, fontWeight: FontWeight.w700),
-      titleSmall: body.titleSmall?.copyWith(color: color, fontWeight: FontWeight.w600),
-      bodyLarge: body.bodyLarge?.copyWith(color: color),
-      bodyMedium: body.bodyMedium?.copyWith(color: color),
-      bodySmall: body.bodySmall?.copyWith(color: color.withValues(alpha: 0.75)),
-      labelLarge: body.labelLarge?.copyWith(color: color, fontWeight: FontWeight.w700),
+      displayLarge: base.displayLarge?.copyWith(color: color, fontWeight: FontWeight.w700),
+      displayMedium: base.displayMedium?.copyWith(color: color, fontWeight: FontWeight.w700),
+      displaySmall: base.displaySmall?.copyWith(color: color, fontWeight: FontWeight.w700),
+      headlineLarge: base.headlineLarge?.copyWith(color: color, fontWeight: FontWeight.w700),
+      headlineMedium: base.headlineMedium?.copyWith(color: color, fontWeight: FontWeight.w700),
+      headlineSmall: base.headlineSmall?.copyWith(color: color, fontWeight: FontWeight.w700),
+      titleLarge: base.titleLarge?.copyWith(color: color, fontWeight: FontWeight.w700),
+      titleMedium: base.titleMedium?.copyWith(color: color, fontWeight: FontWeight.w500),
+      titleSmall: base.titleSmall?.copyWith(color: color, fontWeight: FontWeight.w500),
+      bodyLarge: base.bodyLarge?.copyWith(color: color),
+      bodyMedium: base.bodyMedium?.copyWith(color: color),
+      bodySmall: base.bodySmall?.copyWith(color: color.withValues(alpha: 0.75)),
+      labelLarge: base.labelLarge?.copyWith(color: color, fontWeight: FontWeight.w700),
     );
   }
 }
@@ -132,12 +135,12 @@ class AppTheme {
       // Clean, light app bar (matches the mobile mockups: white header, dark
       // title, no colored band).
       appBarTheme: AppBarTheme(
-        backgroundColor: isDark ? AppColors.darkBackground : AppColors.background,
+        backgroundColor: isDark ? AppColors.darkSurface : AppColors.surface,
         foregroundColor: onSurface,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
-        titleTextStyle: GoogleFonts.cairo(
+        titleTextStyle: GoogleFonts.tajawal(
           fontSize: 20,
           fontWeight: FontWeight.w700,
           color: onSurface,

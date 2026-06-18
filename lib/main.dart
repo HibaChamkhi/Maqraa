@@ -42,11 +42,11 @@ class MyApp extends StatelessWidget {
     return BlocProvider(
       create: (_) => getIt<AuthBloc>()..add(const AuthCheckRequested()),
       child: MaterialApp(
-        title: 'وصال',
+        title: 'وِصَال',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light,
-        darkTheme: AppTheme.dark,
-        themeMode: ThemeMode.system, // light/dark toggle ready (US-23)
+        darkTheme: AppTheme.light, // «ورْد» is a light-only design
+        themeMode: ThemeMode.light,
         // Arabic + full RTL support (US-22).
         locale: const Locale('ar'),
         supportedLocales: const [Locale('ar'), Locale('en')],

@@ -53,4 +53,25 @@ abstract class CircleRepository {
 
   /// Circles the current user is a member of (used by the home screen).
   Future<List<Circle>> getMyCircles();
+
+  /// Manually add a student to a حلقة (teacher).
+  Future<CircleMember> addStudentManually({
+    required String circleId,
+    required String name,
+    int? juz,
+  });
+
+  /// Update a student's per-enrollment data (progress / attendance / rating).
+  Future<void> updateMember({
+    required String circleId,
+    required String uid,
+    AttendanceState? attendance,
+    PerformanceTag? performance,
+    int? memorizedPages,
+    int? juz,
+    bool touchRecitation,
+  });
+
+  /// Remove a student from a حلقة.
+  Future<void> removeMember({required String circleId, required String uid});
 }

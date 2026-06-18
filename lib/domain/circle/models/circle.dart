@@ -30,51 +30,120 @@ enum MemberStatus {
   }
 }
 
+/// Attendance state for a student in their حلقة (per-enrollment).
+enum AttendanceState {
+  present, // حاضر
+  excused, // مستأذن
+  absent, // غياب
+  late_; // متأخر
+
+  String get arabicLabel {
+    switch (this) {
+      case AttendanceState.present:
+        return 'حاضر';
+      case AttendanceState.excused:
+        return 'مستأذن';
+      case AttendanceState.absent:
+        return 'غياب';
+      case AttendanceState.late_:
+        return 'متأخر';
+    }
+  }
+
+  static AttendanceState? fromName(String? value) =>
+      AttendanceState.values.where((s) => s.name == value).firstOrNull;
+}
+
+/// Teacher's qualitative rating of a student's memorization (per-enrollment).
+enum PerformanceTag {
+  excellent, // ممتاز
+  good, // جيد
+  average, // متوسط
+  needsFollowUp; // يحتاج متابعة
+
+  String get arabicLabel {
+    switch (this) {
+      case PerformanceTag.excellent:
+        return 'ممتاز';
+      case PerformanceTag.good:
+        return 'جيد';
+      case PerformanceTag.average:
+        return 'متوسط';
+      case PerformanceTag.needsFollowUp:
+        return 'يحتاج متابعة';
+    }
+  }
+
+  static PerformanceTag? fromName(String? value) =>
+      PerformanceTag.values.where((s) => s.name == value).firstOrNull;
+}
+
 /// A memorization circle «حلقة».
 class Circle {
   final String id;
   final String name;
   final String teacherId;
+  final String teacherName;
   final Gender gender;
   final Privacy privacy;
   final String inviteCode;
   final List<String> supervisorIds;
+
+  /// Memorization level / range, e.g. "جزء ٥ - ٣٠".
+  final String level;
+
+  /// Session days, e.g. ['sun','tue','thu'].
+  final List<String> days;
+
   final DateTime? createdAt;
 
   const Circle({
     required this.id,
     required this.name,
     required this.teacherId,
+    this.teacherName = '',
     required this.gender,
     this.privacy = Privacy.private,
     required this.inviteCode,
     this.supervisorIds = const [],
+    this.level = '',
+    this.days = const [],
     this.createdAt,
   });
 
   Circle copyWith({
     String? name,
     String? teacherId,
+    String? teacherName,
     Gender? gender,
     Privacy? privacy,
     String? inviteCode,
     List<String>? supervisorIds,
+    String? level,
+    List<String>? days,
     DateTime? createdAt,
   }) {
     return Circle(
       id: id,
       name: name ?? this.name,
       teacherId: teacherId ?? this.teacherId,
+      teacherName: teacherName ?? this.teacherName,
       gender: gender ?? this.gender,
       privacy: privacy ?? this.privacy,
       inviteCode: inviteCode ?? this.inviteCode,
       supervisorIds: supervisorIds ?? this.supervisorIds,
+      level: level ?? this.level,
+      days: days ?? this.days,
       createdAt: createdAt ?? this.createdAt,
     );
   }
 }
 
-/// A member document under circles/{circleId}/members/{uid}.
+/// An enrollment: `circles/{circleId}/members/{uid}`.
+///
+/// This is the join between a user and ONE specific حلقة. All per-circle student
+/// data lives here, so the same person enrolled in two حلقات is tracked
+/// independently (different progress, attendance, partner per حلقة).
 class CircleMember {
   final String uid;
   final String name;
@@ -82,19 +151,46 @@ class CircleMember {
   final MemberStatus status;
   final DateTime? joinedAt;
 
+  // --- per-enrollment progress & follow-up ---
+  final int memorizedPages; // الأجزاء/الصفحات المحفوظة في هذه الحلقة
+  final int totalPages; // المرجع (افتراضيًا 604)
+  final AttendanceState? attendance; // حالة الحضور
+  final DateTime? lastRecitationAt; // آخر تسميع
+  final PerformanceTag? performance; // تقييم المعلّمة
+  final String? partnerId; // الرفيقة في هذه الحلقة
+  final int? juz; // الجزء الحالي للطالبة
+
   const CircleMember({
     required this.uid,
     required this.name,
     required this.role,
     required this.status,
     this.joinedAt,
+    this.memorizedPages = 0,
+    this.totalPages = 604,
+    this.attendance,
+    this.lastRecitationAt,
+    this.performance,
+    this.partnerId,
+    this.juz,
   });
+
+  double get memorizedRatio =>
+      totalPages == 0 ? 0 : (memorizedPages / totalPages).clamp(0, 1);
+  int get memorizedPercent => (memorizedRatio * 100).round();
 
   CircleMember copyWith({
     String? name,
     UserRole? role,
     MemberStatus? status,
     DateTime? joinedAt,
+    int? memorizedPages,
+    int? totalPages,
+    AttendanceState? attendance,
+    DateTime? lastRecitationAt,
+    PerformanceTag? performance,
+    String? partnerId,
+    int? juz,
   }) {
     return CircleMember(
       uid: uid,
@@ -102,6 +198,13 @@ class CircleMember {
       role: role ?? this.role,
       status: status ?? this.status,
       joinedAt: joinedAt ?? this.joinedAt,
+      memorizedPages: memorizedPages ?? this.memorizedPages,
+      totalPages: totalPages ?? this.totalPages,
+      attendance: attendance ?? this.attendance,
+      lastRecitationAt: lastRecitationAt ?? this.lastRecitationAt,
+      performance: performance ?? this.performance,
+      partnerId: partnerId ?? this.partnerId,
+      juz: juz ?? this.juz,
     );
   }
 }

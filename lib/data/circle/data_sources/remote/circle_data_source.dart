@@ -64,6 +64,7 @@ class CircleRemoteDataSource {
       id: docRef.id,
       name: trimmed,
       teacherId: uid,
+      teacherName: teacherName,
       gender: gender,
       privacy: privacy,
       inviteCode: inviteCode,
@@ -245,6 +246,59 @@ class CircleRemoteDataSource {
       }
     }
     return circles;
+  }
+
+  // --- manual roster management (teacher) ---
+
+  /// Manually add a student to a حلقة (no self-join). Creates an enrollment
+  /// with a generated id; if the student later gets an account they can be linked.
+  Future<CircleMember> addStudentManually({
+    required String circleId,
+    required String name,
+    int? juz,
+  }) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) {
+      throw BadRequestException(message: 'اسم الطالبة مطلوب');
+    }
+    final ref = _members(circleId).doc();
+    final member = CircleMember(
+      uid: ref.id,
+      name: trimmed,
+      role: UserRole.student,
+      status: MemberStatus.active,
+      juz: juz,
+    );
+    await ref.set(CircleMemberDto.toMap(member));
+    return member;
+  }
+
+  /// Update a student's per-enrollment data (progress / attendance / rating).
+  /// All changes are scoped to THIS حلقة only.
+  Future<void> updateMember({
+    required String circleId,
+    required String uid,
+    AttendanceState? attendance,
+    PerformanceTag? performance,
+    int? memorizedPages,
+    int? juz,
+    bool touchRecitation = false,
+  }) async {
+    final data = <String, dynamic>{};
+    if (attendance != null) data['attendance'] = attendance.name;
+    if (performance != null) data['performance'] = performance.name;
+    if (memorizedPages != null) data['memorizedPages'] = memorizedPages;
+    if (juz != null) data['juz'] = juz;
+    if (touchRecitation) data['lastRecitationAt'] = FieldValue.serverTimestamp();
+    if (data.isNotEmpty) await _members(circleId).doc(uid).update(data);
+  }
+
+  /// Remove a student from a حلقة.
+  Future<void> removeMember({
+    required String circleId,
+    required String uid,
+  }) async {
+    await _members(circleId).doc(uid).delete();
   }
 
   // --- helpers ---

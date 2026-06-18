@@ -10,11 +10,14 @@ class CircleDto {
       id: id,
       name: (map['name'] ?? '') as String,
       teacherId: (map['teacherId'] ?? '') as String,
+      teacherName: (map['teacherName'] ?? '') as String,
       gender: Gender.fromName(map['gender'] as String?) ?? Gender.female,
       privacy: Privacy.fromName(map['privacy'] as String?),
       inviteCode: (map['inviteCode'] ?? '') as String,
       supervisorIds:
           ((map['supervisorIds'] as List?)?.cast<String>()) ?? const [],
+      level: (map['level'] ?? '') as String,
+      days: ((map['days'] as List?)?.cast<String>()) ?? const [],
       createdAt: (map['createdAt'] as Timestamp?)?.toDate(),
     );
   }
@@ -23,10 +26,13 @@ class CircleDto {
     return {
       'name': circle.name,
       'teacherId': circle.teacherId,
+      'teacherName': circle.teacherName,
       'gender': circle.gender.name,
       'privacy': circle.privacy.name,
       'inviteCode': circle.inviteCode,
       'supervisorIds': circle.supervisorIds,
+      'level': circle.level,
+      'days': circle.days,
       'createdAt': circle.createdAt != null
           ? Timestamp.fromDate(circle.createdAt!)
           : FieldValue.serverTimestamp(),
@@ -34,7 +40,7 @@ class CircleDto {
   }
 }
 
-/// Maps `circles/{circleId}/members/{uid}` <-> [CircleMember].
+/// Maps `circles/{circleId}/members/{uid}` <-> [CircleMember] (the enrollment).
 class CircleMemberDto {
   static CircleMember fromMap(String uid, Map<String, dynamic> map) {
     return CircleMember(
@@ -43,6 +49,13 @@ class CircleMemberDto {
       role: UserRole.fromName(map['role'] as String?) ?? UserRole.student,
       status: MemberStatus.fromName(map['status'] as String?),
       joinedAt: (map['joinedAt'] as Timestamp?)?.toDate(),
+      memorizedPages: (map['memorizedPages'] as num?)?.toInt() ?? 0,
+      totalPages: (map['totalPages'] as num?)?.toInt() ?? 604,
+      attendance: AttendanceState.fromName(map['attendance'] as String?),
+      lastRecitationAt: (map['lastRecitationAt'] as Timestamp?)?.toDate(),
+      performance: PerformanceTag.fromName(map['performance'] as String?),
+      partnerId: map['partnerId'] as String?,
+      juz: (map['juz'] as num?)?.toInt(),
     );
   }
 
@@ -55,6 +68,15 @@ class CircleMemberDto {
       'joinedAt': member.joinedAt != null
           ? Timestamp.fromDate(member.joinedAt!)
           : FieldValue.serverTimestamp(),
+      'memorizedPages': member.memorizedPages,
+      'totalPages': member.totalPages,
+      'attendance': member.attendance?.name,
+      'lastRecitationAt': member.lastRecitationAt != null
+          ? Timestamp.fromDate(member.lastRecitationAt!)
+          : null,
+      'performance': member.performance?.name,
+      'partnerId': member.partnerId,
+      'juz': member.juz,
     };
   }
 }
