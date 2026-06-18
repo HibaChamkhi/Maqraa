@@ -77,9 +77,11 @@ class _HomePageState extends State<HomePage> {
         final circles = snap.data ?? [];
         if (circles.isEmpty) {
           return Scaffold(
-            appBar: _appBar(context),
             drawer: WardDrawer(user: user),
-            body: _EmptyState(user: user, onChanged: _reload),
+            body: Column(children: [
+              const _TopBar(),
+              Expanded(child: _EmptyState(user: user, onChanged: _reload)),
+            ]),
           );
         }
         final circle = circles.first;
@@ -91,69 +93,105 @@ class _HomePageState extends State<HomePage> {
             user: user,
             circle: circle,
             more: Scaffold(
-              appBar: _appBar(context),
-              body: _Dashboard(user: user, circle: circle),
+              body: Column(children: [
+                const _TopBar(menu: false),
+                Expanded(child: _Dashboard(user: user, circle: circle)),
+              ]),
             ),
           );
         }
 
         // Teachers / supervisors get the overview dashboard (الرئيسية).
         return Scaffold(
-          appBar: _appBar(context),
           drawer: WardDrawer(user: user),
-          body: TeacherOverviewPage(user: user, circles: circles),
+          body: Column(children: [
+            const _TopBar(),
+            Expanded(child: TeacherOverviewPage(user: user, circles: circles)),
+          ]),
         );
       },
     );
   }
 
-  PreferredSizeWidget _appBar(BuildContext context) => AppBar(
-        titleSpacing: 8,
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: const [
-            Text('وِصَال'),
-            SizedBox(width: 6),
-            Icon(Icons.spa_outlined, color: AppColors.primary),
-          ],
-        ),
-        actions: [
-          IconButton(
-              onPressed: () {}, icon: const Icon(Icons.notifications_outlined)),
-          IconButton(
-              onPressed: () {}, icon: const Icon(Icons.chat_bubble_outline)),
-          PopupMenuButton<String>(
-            onSelected: (v) {
-              if (v == 'profile') {
-                Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const ProfilePage()));
-              } else if (v == 'logout') {
-                context.read<AuthBloc>().add(const AuthLogoutRequested());
-              }
-            },
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'profile', child: Text('الملف الشخصي')),
-              PopupMenuItem(value: 'logout', child: Text('تسجيل الخروج')),
-            ],
-            child: const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 8),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircleAvatar(
-                    radius: 15,
-                    backgroundColor: AppColors.sky,
-                    child: Icon(Icons.person, size: 18, color: AppColors.primary),
-                  ),
-                  SizedBox(width: 2),
-                  Icon(Icons.keyboard_arrow_down, size: 18),
-                ],
-              ),
-            ),
+}
+
+/// Top bar rendered INSIDE the Scaffold body (not as `appBar:`) so the side
+/// menu's scrim covers it too when the drawer is open. The ≡ button opens the
+/// drawer via [Scaffold.of] (this widget sits below the Scaffold).
+class _TopBar extends StatelessWidget {
+  /// Whether to show the ≡ menu button (false on screens without a drawer).
+  final bool menu;
+  const _TopBar({this.menu = true});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Material(
+      color: AppColors.surface,
+      child: SafeArea(
+        bottom: false,
+        child: Container(
+          height: 56,
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          decoration: const BoxDecoration(
+            border: Border(bottom: BorderSide(color: AppColors.border)),
           ),
-          const SizedBox(width: 6),
-        ],
-      );
+          child: Row(
+            children: [
+              if (menu)
+                IconButton(
+                  icon: const Icon(Icons.menu),
+                  onPressed: () => Scaffold.of(context).openDrawer(),
+                )
+              else
+                const SizedBox(width: 8),
+              Text('وِصَال', style: theme.textTheme.titleLarge),
+              const SizedBox(width: 6),
+              const Icon(Icons.spa_outlined, color: AppColors.primary),
+              const Spacer(),
+              IconButton(
+                  onPressed: () {},
+                  icon: const Icon(Icons.notifications_outlined)),
+              IconButton(
+                  onPressed: () {},
+                  icon: const Icon(Icons.chat_bubble_outline)),
+              PopupMenuButton<String>(
+                onSelected: (v) {
+                  if (v == 'profile') {
+                    Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const ProfilePage()));
+                  } else if (v == 'logout') {
+                    context.read<AuthBloc>().add(const AuthLogoutRequested());
+                  }
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'profile', child: Text('الملف الشخصي')),
+                  PopupMenuItem(value: 'logout', child: Text('تسجيل الخروج')),
+                ],
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircleAvatar(
+                        radius: 15,
+                        backgroundColor: AppColors.sky,
+                        child: Icon(Icons.person,
+                            size: 18, color: AppColors.primary),
+                      ),
+                      SizedBox(width: 2),
+                      Icon(Icons.keyboard_arrow_down, size: 18),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// Shown when the user isn't in any circle yet.
