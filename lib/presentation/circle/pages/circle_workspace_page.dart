@@ -805,15 +805,26 @@ class _StudentsViewState extends State<_StudentsView> {
 
   void _editStudent(BuildContext context, CircleMember member) {
     final bloc = context.read<CircleBloc>();
-    showModalBottomSheet(
+    showDialog(
       context: context,
-      isScrollControlled: true,
-      builder: (_) => _StudentEditor(
-        circleId: widget.circle.id,
-        member: member,
-        bloc: bloc,
-      ),
+      builder: (ctx) {
+        final w = MediaQuery.of(ctx).size.width;
+        return Dialog(
+          insetPadding: const EdgeInsets.all(24),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadius.lg)),
+          child: SizedBox(
+            width: w < 520 ? w - 48 : 460,
+            child: _StudentEditor(
+              circleId: widget.circle.id,
+              member: member,
+              bloc: bloc,
+            ),
+          ),
+        );
+      },
     );
+  }
   }
 
   String _csvCell(String v) {
