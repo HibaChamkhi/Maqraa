@@ -19,11 +19,16 @@ class WardDrawer extends StatelessWidget {
   /// instead of a pop-over drawer.
   final bool permanent;
 
+  /// On wide screens, navigation pushes into this content-area navigator so
+  /// the rail + top bar stay put. When null, the root navigator is used.
+  final GlobalKey<NavigatorState>? contentNavigator;
+
   const WardDrawer({
     super.key,
     required this.user,
     this.current = 'الرئيسية',
     this.permanent = false,
+    this.contentNavigator,
   });
 
   bool get _isTeacher =>
@@ -125,7 +130,7 @@ class WardDrawer extends StatelessWidget {
               icon: Icons.person_outline,
               onTap: () {
                 _closeIfDrawer(context);
-                Navigator.of(context).push(
+                _nav(context).push(
                     MaterialPageRoute(builder: (_) => const ProfilePage()));
               },
             ),
@@ -150,22 +155,27 @@ class WardDrawer extends StatelessWidget {
     if (s != null && s.isDrawerOpen) s.closeDrawer();
   }
 
+  /// The navigator to drive: the content-area one on wide screens, else root.
+  NavigatorState _nav(BuildContext context) =>
+      contentNavigator?.currentState ?? Navigator.of(context);
+
   void _go(BuildContext context, String label) {
     _closeIfDrawer(context);
+    final nav = _nav(context);
     switch (label) {
       case 'الرئيسية':
-        Navigator.of(context).popUntil((r) => r.isFirst);
+        nav.popUntil((r) => r.isFirst);
         break;
       case 'الحلقات':
       case 'الطالبات':
       case 'حلقتي':
-        Navigator.of(context)
-            .push(MaterialPageRoute(builder: (_) => const CirclesListPage()));
+        nav.popUntil((r) => r.isFirst);
+        nav.push(MaterialPageRoute(builder: (_) => const CirclesListPage()));
         break;
       default:
         // الجدول / الاختبارات / الإشعارات / واجب اليوم / تقدّمي — reachable from
         // the home grid for now; deeper wiring comes with each section.
-        Navigator.of(context).popUntil((r) => r.isFirst);
+        nav.popUntil((r) => r.isFirst);
     }
   }
 }

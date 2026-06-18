@@ -56,6 +56,10 @@ class _HomePageState extends State<HomePage> {
   /// toggles it.
   bool _railOpen = true;
 
+  /// Nested navigator for the content area on wide screens, so the rail + top
+  /// bar persist while the section content swaps.
+  final GlobalKey<NavigatorState> _contentNav = GlobalKey<NavigatorState>();
+
   @override
   void initState() {
     super.initState();
@@ -83,10 +87,20 @@ class _HomePageState extends State<HomePage> {
                     duration: const Duration(milliseconds: 200),
                     curve: Curves.easeInOut,
                     child: _railOpen
-                        ? WardDrawer(user: user, permanent: true)
+                        ? WardDrawer(
+                            user: user,
+                            permanent: true,
+                            contentNavigator: _contentNav,
+                          )
                         : const SizedBox(height: double.infinity),
                   ),
-                  Expanded(child: content),
+                  Expanded(
+                    child: Navigator(
+                      key: _contentNav,
+                      onGenerateRoute: (_) =>
+                          MaterialPageRoute(builder: (_) => content),
+                    ),
+                  ),
                 ],
               ),
             ),
