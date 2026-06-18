@@ -1914,6 +1914,7 @@ class _StudentsTable extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final names = {for (final s in students) s.uid: s.name};
     Widget head(String t, int flex) => Expanded(
           flex: flex,
           child: Text(t,
@@ -1939,11 +1940,11 @@ class _StudentsTable extends StatelessWidget {
               child: Row(
                 children: [
                   head('الطالبة', 3),
-                  head('الحضور', 2),
-                  head('آخر تسميع', 2),
+                  head('تسميع اليوم', 2),
                   head('تقدّم الحفظ', 3),
-                  head('الحالة', 2),
-                  if (onEdit != null) head('إجراءات', 1),
+                  head('التقييم', 2),
+                  head('الشريكة', 2),
+                  head('إجراءات', 1),
                 ],
               ),
             ),
@@ -1952,8 +1953,15 @@ class _StudentsTable extends StatelessWidget {
               child: ListView.separated(
                 itemCount: students.length,
                 separatorBuilder: (_, __) => const Divider(height: 1),
-                itemBuilder: (context, i) =>
-                    _StudentRow(member: students[i], onEdit: onEdit),
+                itemBuilder: (context, i) {
+                  final m = students[i];
+                  return _StudentRow(
+                    member: m,
+                    onEdit: onEdit,
+                    partnerName:
+                        m.partnerId == null ? null : names[m.partnerId],
+                  );
+                },
               ),
             ),
           ],
@@ -1963,121 +1971,262 @@ class _StudentsTable extends StatelessWidget {
   }
 }
 
-class _StudentRow extends StatelessWidget {
+class _StudentRow extends StatefulWidget {
   final CircleMember member;
   final void Function(CircleMember)? onEdit;
-  const _StudentRow({required this.member, required this.onEdit});
+  final String? partnerName;
+  const _StudentRow({
+    required this.member,
+    required this.onEdit,
+    this.partnerName,
+  });
+
+  @override
+  State<_StudentRow> createState() => _StudentRowState();
+}
+
+class _StudentRowState extends State<_StudentRow> {
+  bool _expanded = false;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final member = widget.member;
     final initial = member.name.isNotEmpty ? member.name.characters.first : '؟';
     final last = member.lastRecitationAt;
     final pending = member.status == MemberStatus.pending;
+    final partner = widget.partnerName;
 
-    return InkWell(
-      onTap: onEdit == null ? null : () => onEdit!(member),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        child: Row(
-          children: [
-            Expanded(
-              flex: 3,
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    radius: 16,
-                    backgroundColor: AppColors.sky,
-                    child: Text(initial,
-                        style: const TextStyle(
-                            color: AppColors.primary,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 13)),
+    return Column(
+      children: [
+        InkWell(
+          onTap: () => setState(() => _expanded = !_expanded),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            child: Row(
+              children: [
+                // الطالبة
+                Expanded(
+                  flex: 3,
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 16,
+                        backgroundColor: AppColors.sky,
+                        child: Text(initial,
+                            style: const TextStyle(
+                                color: AppColors.primary,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13)),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(member.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.titleSmall),
+                            if (member.juz != null)
+                              Text('جزء ${member.juz}',
+                                  style: theme.textTheme.bodySmall
+                                      ?.copyWith(color: AppColors.textMuted)),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 10),
+                ),
+                // تسميع اليوم (الحضور + وقت آخر تسميع)
+                Expanded(
+                  flex: 2,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      pending
+                          ? const StatusChip(
+                              label: 'بانتظار', color: AppColors.warning)
+                          : StatusChip(
+                              label: member.attendance?.arabicLabel ?? '—',
+                              color: attendanceColor(member.attendance),
+                            ),
+                      if (last != null) ...[
+                        const SizedBox(height: 2),
+                        Text(DateFormat('d/M h:mm', 'ar').format(last),
+                            style: theme.textTheme.bodySmall?.copyWith(
+                                color: AppColors.textMuted, fontSize: 10)),
+                      ],
+                    ],
+                  ),
+                ),
+                // تقدّم الحفظ
+                Expanded(
+                  flex: 3,
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('${member.memorizedPercent}%',
+                            style: theme.textTheme.bodySmall),
+                        const SizedBox(height: 3),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(999),
+                          child: LinearProgressIndicator(
+                            value: member.memorizedRatio,
+                            minHeight: 6,
+                            backgroundColor: AppColors.sky,
+                            valueColor: const AlwaysStoppedAnimation(
+                                AppColors.primary),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                // التقييم
+                Expanded(
+                  flex: 2,
+                  child: StatusChip(
+                    label: member.performance?.arabicLabel ?? 'بلا تقييم',
+                    color: performanceColor(member.performance),
+                  ),
+                ),
+                // الشريكة
+                Expanded(
+                  flex: 2,
+                  child: (partner == null || partner.isEmpty)
+                      ? Text('—',
+                          style: theme.textTheme.bodySmall
+                              ?.copyWith(color: AppColors.textMuted))
+                      : Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            CircleAvatar(
+                              radius: 10,
+                              backgroundColor: AppColors.primary,
+                              child: Text(partner.characters.first,
+                                  style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w700)),
+                            ),
+                            const SizedBox(width: 5),
+                            Flexible(
+                              child: Text(partner,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodySmall),
+                            ),
+                          ],
+                        ),
+                ),
+                // إجراءات
+                Expanded(
+                  flex: 1,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (widget.onEdit != null)
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          icon: const Icon(Icons.edit_outlined,
+                              size: 18, color: AppColors.primary),
+                          onPressed: () => widget.onEdit!(member),
+                        ),
+                      const SizedBox(width: 4),
+                      Icon(
+                        _expanded ? Icons.expand_less : Icons.expand_more,
+                        size: 18,
+                        color: AppColors.textMuted,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (_expanded)
+          _StudentDetail(member: member, partnerName: partner),
+      ],
+    );
+  }
+}
+
+/// Expandable per-student detail panel under a table row.
+/// Shows the fields available today; weekly attendance, streak, exam history
+/// and contact will plug in once that data is modelled.
+class _StudentDetail extends StatelessWidget {
+  final CircleMember member;
+  final String? partnerName;
+  const _StudentDetail({required this.member, required this.partnerName});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final last = member.lastRecitationAt;
+    final partner =
+        (partnerName == null || partnerName!.isEmpty) ? '—' : partnerName!;
+    final items = <(IconData, String, String)>[
+      (Icons.menu_book_outlined, 'الجزء', member.juz?.toString() ?? '—'),
+      (
+        Icons.event_available_outlined,
+        'حالة الحضور',
+        member.attendance?.arabicLabel ?? '—'
+      ),
+      (
+        Icons.mic_none_outlined,
+        'آخر تسميع',
+        last == null ? 'لم تُسمّع' : DateFormat('EEEE d/M h:mm', 'ar').format(last)
+      ),
+      (
+        Icons.auto_stories_outlined,
+        'الصفحات المحفوظة',
+        '${member.memorizedPages}/${member.totalPages}'
+      ),
+      (Icons.people_alt_outlined, 'الشريكة (تلاوة متبادلة)', partner),
+    ];
+    return Container(
+      width: double.infinity,
+      color: AppColors.beige,
+      padding: const EdgeInsets.all(AppSpacing.md),
+      child: Wrap(
+        spacing: AppSpacing.lg,
+        runSpacing: AppSpacing.sm,
+        children: [
+          for (final it in items)
+            SizedBox(
+              width: 200,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(it.$1, size: 16, color: AppColors.primary),
+                  const SizedBox(width: 6),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(member.name,
-                            maxLines: 1,
+                        Text(it.$2,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                                color: AppColors.textMuted, fontSize: 10)),
+                        Text(it.$3,
+                            maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.titleSmall),
-                        if (member.juz != null)
-                          Text('جزء ${member.juz}',
-                              style: theme.textTheme.bodySmall
-                                  ?.copyWith(color: AppColors.textMuted)),
+                            style: theme.textTheme.bodySmall),
                       ],
                     ),
                   ),
                 ],
               ),
             ),
-            Expanded(
-              flex: 2,
-              child: pending
-                  ? const StatusChip(
-                      label: 'بانتظار', color: AppColors.warning)
-                  : StatusChip(
-                      label: member.attendance?.arabicLabel ?? '—',
-                      color: attendanceColor(member.attendance),
-                    ),
-            ),
-            Expanded(
-              flex: 2,
-              child: Text(
-                last == null
-                    ? 'لم تُسمّع'
-                    : DateFormat('d/M h:mm', 'ar').format(last),
-                style: theme.textTheme.bodySmall,
-              ),
-            ),
-            Expanded(
-              flex: 3,
-              child: Padding(
-                padding: const EdgeInsets.only(left: 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text('${member.memorizedPercent}%',
-                        style: theme.textTheme.bodySmall),
-                    const SizedBox(height: 3),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(999),
-                      child: LinearProgressIndicator(
-                        value: member.memorizedRatio,
-                        minHeight: 6,
-                        backgroundColor: AppColors.sky,
-                        valueColor:
-                            const AlwaysStoppedAnimation(AppColors.primary),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            Expanded(
-              flex: 2,
-              child: StatusChip(
-                label: member.performance?.arabicLabel ?? 'بلا تقييم',
-                color: performanceColor(member.performance),
-              ),
-            ),
-            if (onEdit != null)
-              Expanded(
-                flex: 1,
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: IconButton(
-                    icon: const Icon(Icons.edit_outlined,
-                        size: 18, color: AppColors.primary),
-                    onPressed: () => onEdit!(member),
-                  ),
-                ),
-              ),
-          ],
-        ),
+        ],
       ),
     );
   }
