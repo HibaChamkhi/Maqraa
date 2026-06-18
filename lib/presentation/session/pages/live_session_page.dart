@@ -103,10 +103,23 @@ class _LiveSessionView extends StatelessWidget {
                     Text('لا توجد حاضرات بعد',
                         style: theme.textTheme.bodySmall)
                   else
-                    ...state.attendance.map((a) => Card(
+                    ...state.attendance.map((a) => Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          decoration: BoxDecoration(
+                            color: AppColors.surface,
+                            borderRadius: BorderRadius.circular(AppRadius.md),
+                            border: Border.all(color: AppColors.border),
+                          ),
                           child: ListTile(
-                            leading: const CircleAvatar(
-                              child: Icon(Icons.person_outline),
+                            leading: CircleAvatar(
+                              backgroundColor: AppColors.sky,
+                              child: Text(
+                                  a.name.isNotEmpty
+                                      ? a.name.characters.first
+                                      : '؟',
+                                  style: const TextStyle(
+                                      color: AppColors.primary,
+                                      fontWeight: FontWeight.w700)),
                             ),
                             title: Text(a.name),
                             trailing: const Icon(Icons.check_circle,
@@ -147,42 +160,64 @@ class _ActiveCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      color: AppColors.success.withValues(alpha: 0.10),
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.podcasts, color: AppColors.success),
-                const SizedBox(width: AppSpacing.sm),
-                Text('جلسة مباشرة', style: theme.textTheme.titleMedium),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Text(session.title, style: theme.textTheme.titleLarge),
-            const SizedBox(height: AppSpacing.xs),
-            Text(dateFormat.format(session.scheduledAt),
-                style: theme.textTheme.bodySmall),
-            if (session.link.isNotEmpty) ...[
-              const SizedBox(height: AppSpacing.sm),
-              SelectableText(session.link,
-                  style: theme.textTheme.bodyMedium
-                      ?.copyWith(color: theme.colorScheme.primary)),
-            ],
-            const SizedBox(height: AppSpacing.lg),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.error),
-              onPressed: onEnd,
-              icon: const Icon(Icons.stop_circle_outlined),
-              label: const Text('إنهاء الجلسة'),
-            ),
-          ],
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+          colors: [Color(0xFF0F6B5B), Color(0xFF09463A)],
         ),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Align(
+            alignment: Alignment.centerRight,
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(AppRadius.pill),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.podcasts, color: Colors.white, size: 14),
+                  SizedBox(width: 6),
+                  Text('جلسة مباشرة',
+                      style: TextStyle(color: Colors.white, fontSize: 12)),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Text(session.title,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700)),
+          const SizedBox(height: AppSpacing.xs),
+          Text(dateFormat.format(session.scheduledAt),
+              style: const TextStyle(color: Colors.white70, fontSize: 13)),
+          if (session.link.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.sm),
+            SelectableText(session.link,
+                style: const TextStyle(color: Colors.white, fontSize: 14)),
+          ],
+          const SizedBox(height: AppSpacing.lg),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: AppColors.error,
+            ),
+            onPressed: onEnd,
+            icon: const Icon(Icons.stop_circle_outlined),
+            label: const Text('إنهاء الجلسة'),
+          ),
+        ],
       ),
     );
   }
@@ -203,22 +238,35 @@ class _NoActiveCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     if (scheduled.isEmpty) {
-      return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          child: Column(
-            children: [
-              const Icon(Icons.event_busy,
-                  size: 40, color: AppColors.textMuted),
-              const SizedBox(height: AppSpacing.sm),
-              Text('لا توجد جلسات مجدولة',
-                  style: theme.textTheme.titleMedium),
-              const SizedBox(height: AppSpacing.xs),
-              Text('أضيفي جلسة من التقويم لبدئها هنا',
-                  style: theme.textTheme.bodySmall,
-                  textAlign: TextAlign.center),
-            ],
-          ),
+      return Container(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          boxShadow: const [
+            BoxShadow(
+                color: Color(0x0F1F2937), blurRadius: 14, offset: Offset(0, 4)),
+          ],
+        ),
+        child: Column(
+          children: [
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                  color: AppColors.sky,
+                  borderRadius: BorderRadius.circular(AppRadius.lg)),
+              child: const Icon(Icons.event_busy,
+                  size: 36, color: AppColors.primary),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            Text('لا توجد جلسات مجدولة', style: theme.textTheme.titleMedium),
+            const SizedBox(height: AppSpacing.xs),
+            Text('أضيفي جلسة من تبويب «الجدول» لبدئها هنا',
+                style: theme.textTheme.bodySmall?.copyWith(
+                    color: AppColors.textMuted),
+                textAlign: TextAlign.center),
+          ],
         ),
       );
     }
@@ -227,14 +275,30 @@ class _NoActiveCard extends StatelessWidget {
       children: [
         Text('جلسات مجدولة', style: theme.textTheme.titleMedium),
         const SizedBox(height: AppSpacing.sm),
-        ...scheduled.map((s) => Card(
+        ...scheduled.map((s) => Container(
+              margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(AppRadius.md),
+                border: Border.all(color: AppColors.border),
+              ),
               child: ListTile(
-                leading: const Icon(Icons.event_outlined),
-                title: Text(s.title),
-                subtitle: Text(dateFormat.format(s.scheduledAt)),
-                trailing: FilledButton(
+                leading: Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                      color: AppColors.sky,
+                      borderRadius: BorderRadius.circular(AppRadius.sm)),
+                  child: const Icon(Icons.event_outlined,
+                      color: AppColors.primary),
+                ),
+                title: Text(s.title, style: theme.textTheme.titleSmall),
+                subtitle: Text(dateFormat.format(s.scheduledAt),
+                    style: theme.textTheme.bodySmall),
+                trailing: FilledButton.icon(
                   onPressed: () => onStart(s),
-                  child: const Text('بدء'),
+                  icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                  label: const Text('بدء'),
                 ),
               ),
             )),

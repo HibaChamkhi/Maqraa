@@ -1,7 +1,11 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart' hide TextDirection;
+import 'package:share_plus/share_plus.dart';
 
 import '../../../core/di/injection.dart';
 import '../../../core/model /ui_state.dart';
@@ -279,6 +283,14 @@ class _InviteCard extends StatelessWidget {
           const SnackBar(content: Text('تم نسخ رمز الدعوة')));
     }
 
+    void share() {
+      SharePlus.instance.share(ShareParams(
+        subject: 'دعوة للانضمام إلى حلقة في وِصَال',
+        text:
+            'انضمي إلى حلقتنا في تطبيق «وِصَال» باستخدام رمز الدعوة: $code',
+      ));
+    }
+
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
@@ -316,7 +328,7 @@ class _InviteCard extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           OutlinedButton.icon(
-            onPressed: copy,
+            onPressed: share,
             icon: const Icon(Icons.share_outlined, size: 18),
             label: const Text('مشاركة الدعوة'),
           ),
@@ -632,8 +644,7 @@ class _StudentsViewState extends State<_StudentsView> {
                 canManage: widget.canManage,
                 onSearch: (v) => setState(() => _query = v),
                 onAdd: () => _addStudent(context),
-                onExport: () => ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('سيتوفّر تصدير القائمة قريبًا'))),
+                onExport: () => _exportCsv(students),
               ),
               Expanded(
                 child: students.isEmpty
@@ -723,6 +734,40 @@ class _StudentsViewState extends State<_StudentsView> {
         bloc: bloc,
       ),
     );
+  }
+
+  String _csvCell(String v) {
+    if (v.contains(',') || v.contains('"') || v.contains('\n')) {
+      return '"${v.replaceAll('"', '""')}"';
+    }
+    return v;
+  }
+
+  Future<void> _exportCsv(List<CircleMember> students) async {
+    final rows = <List<String>>[
+      ['الطالبة', 'الجزء', 'الحضور', 'تقدّم الحفظ %', 'الحالة', 'آخر تسميع'],
+      for (final m in students)
+        [
+          m.name,
+          m.juz?.toString() ?? '',
+          m.attendance?.arabicLabel ?? '',
+          m.memorizedPercent.toString(),
+          m.performance?.arabicLabel ?? '',
+          m.lastRecitationAt != null
+              ? DateFormat('yyyy-MM-dd HH:mm').format(m.lastRecitationAt!)
+              : '',
+        ],
+    ];
+    final csv = rows.map((r) => r.map(_csvCell).join(',')).join('\r\n');
+    // Prefix a BOM so Excel opens the Arabic text correctly.
+    final bytes = Uint8List.fromList(utf8.encode('﻿$csv'));
+    final safe = widget.circle.name.replaceAll(RegExp(r'\s+'), '_');
+    await SharePlus.instance.share(ShareParams(
+      text: 'قائمة طالبات ${widget.circle.name}',
+      files: [
+        XFile.fromData(bytes, mimeType: 'text/csv', name: 'students_$safe.csv'),
+      ],
+    ));
   }
 }
 
