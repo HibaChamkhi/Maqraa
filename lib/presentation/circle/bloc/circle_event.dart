@@ -134,6 +134,18 @@ class CircleStudentAdded extends CircleEvent {
   List<Object?> get props => [circleId, name, juz];
 }
 
+/// Add an existing account holder to a حلقة by email/phone.
+class CircleStudentLinkedByContact extends CircleEvent {
+  final String circleId;
+  final String contact;
+
+  const CircleStudentLinkedByContact(
+      {required this.circleId, required this.contact});
+
+  @override
+  List<Object?> get props => [circleId, contact];
+}
+
 /// Update a student's per-enrollment data (progress / attendance / rating).
 class CircleMemberUpdated extends CircleEvent {
   final String circleId;

@@ -301,11 +301,20 @@ class _InviteCard extends StatelessWidget {
           const SnackBar(content: Text('تم نسخ رمز الدعوة')));
     }
 
-    void share() {
-      Share.share(
-        'انضمي إلى حلقتنا في تطبيق «وِصَال» باستخدام رمز الدعوة: $code',
-        subject: 'دعوة للانضمام إلى حلقة في وِصَال',
-      );
+    Future<void> share() async {
+      try {
+        await Share.share(
+          'انضمي إلى حلقتنا في تطبيق «وِصَال» باستخدام رمز الدعوة: $code',
+          subject: 'دعوة للانضمام إلى حلقة في وِصَال',
+        );
+      } catch (_) {
+        // Web desktop often has no share support — fall back to copy.
+        await Clipboard.setData(ClipboardData(text: code));
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('تم نسخ رمز الدعوة للمشاركة')));
+        }
+      }
     }
 
     return Container(
@@ -702,42 +711,98 @@ class _StudentsViewState extends State<_StudentsView> {
     final bloc = context.read<CircleBloc>();
     final nameController = TextEditingController();
     final juzController = TextEditingController();
-    final ok = await showDialog<bool>(
+    final contactController = TextEditingController();
+    var hasAccount = false;
+
+    await showDialog<void>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('إضافة طالبة'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameController,
-              decoration: const InputDecoration(labelText: 'اسم الطالبة'),
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (dialogCtx, setLocal) => AlertDialog(
+          title: const Text('إضافة طالبة'),
+          content: SizedBox(
+            width: 360,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SegmentedButton<bool>(
+                  segments: const [
+                    ButtonSegment(value: false, label: Text('بدون حساب')),
+                    ButtonSegment(value: true, label: Text('لديها حساب')),
+                  ],
+                  selected: {hasAccount},
+                  onSelectionChanged: (s) =>
+                      setLocal(() => hasAccount = s.first),
+                ),
+                const SizedBox(height: 16),
+                if (hasAccount) ...[
+                  TextField(
+                    controller: contactController,
+                    decoration: const InputDecoration(
+                      labelText: 'البريد الإلكتروني أو رقم الهاتف',
+                      prefixIcon: Icon(Icons.alternate_email),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'نبحث عن حسابها ونضيفها للحلقة مباشرة.',
+                    style: Theme.of(dialogCtx)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: AppColors.textMuted),
+                  ),
+                ] else ...[
+                  TextField(
+                    controller: nameController,
+                    decoration: const InputDecoration(labelText: 'اسم الطالبة'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: juzController,
+                    keyboardType: TextInputType.number,
+                    decoration:
+                        const InputDecoration(labelText: 'الجزء (اختياري)'),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'تُضاف بالاسم فقط للمتابعة (بدون تسجيل دخول).',
+                    style: Theme.of(dialogCtx)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: AppColors.textMuted),
+                  ),
+                ],
+              ],
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: juzController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'الجزء (اختياري)'),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(dialogCtx),
+                child: const Text('إلغاء')),
+            ElevatedButton(
+              onPressed: () {
+                if (hasAccount) {
+                  if (contactController.text.trim().isEmpty) return;
+                  bloc.add(CircleStudentLinkedByContact(
+                    circleId: widget.circle.id,
+                    contact: contactController.text.trim(),
+                  ));
+                } else {
+                  if (nameController.text.trim().isEmpty) return;
+                  bloc.add(CircleStudentAdded(
+                    circleId: widget.circle.id,
+                    name: nameController.text,
+                    juz: int.tryParse(juzController.text.trim()),
+                  ));
+                }
+                Navigator.pop(dialogCtx);
+              },
+              child: const Text('إضافة'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('إلغاء')),
-          ElevatedButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('إضافة')),
-        ],
       ),
     );
-    if (ok == true && nameController.text.trim().isNotEmpty) {
-      bloc.add(CircleStudentAdded(
-        circleId: widget.circle.id,
-        name: nameController.text,
-        juz: int.tryParse(juzController.text.trim()),
-      ));
-    }
   }
 
   void _editStudent(BuildContext context, CircleMember member) {
@@ -779,10 +844,20 @@ class _StudentsViewState extends State<_StudentsView> {
     // Prefix a BOM so Excel opens the Arabic text correctly.
     final bytes = Uint8List.fromList(utf8.encode('﻿$csv'));
     final safe = widget.circle.name.replaceAll(RegExp(r'\s+'), '_');
-    await Share.shareXFiles(
-      [XFile.fromData(bytes, mimeType: 'text/csv', name: 'students_$safe.csv')],
-      text: 'قائمة طالبات ${widget.circle.name}',
-    );
+    try {
+      await Share.shareXFiles(
+        [XFile.fromData(bytes, mimeType: 'text/csv', name: 'students_$safe.csv')],
+        text: 'قائمة طالبات ${widget.circle.name}',
+      );
+    } catch (_) {
+      // Sharing files isn't supported everywhere (e.g. desktop web) — copy
+      // the CSV text to the clipboard instead so nothing crashes.
+      await Clipboard.setData(ClipboardData(text: csv));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('تعذّرت المشاركة — تم نسخ القائمة إلى الحافظة')));
+      }
+    }
   }
 }
 

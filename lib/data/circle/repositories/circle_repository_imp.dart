@@ -94,6 +94,14 @@ class CircleRepositoryImpl implements CircleRepository {
           circleId: circleId, name: name, juz: juz);
 
   @override
+  Future<CircleMember> addStudentByContact({
+    required String circleId,
+    required String contact,
+  }) =>
+      remoteDataSource.addStudentByContact(
+          circleId: circleId, contact: contact);
+
+  @override
   Future<void> updateMember({
     required String circleId,
     required String uid,

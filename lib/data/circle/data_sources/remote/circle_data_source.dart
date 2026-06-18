@@ -287,6 +287,48 @@ class CircleRemoteDataSource {
     return member;
   }
 
+  /// Add an EXISTING account holder to the حلقة by their email or phone.
+  /// Looks the user up in `users`, enrolls them with their real uid, and adds
+  /// the circle to their membership so it appears in their own app.
+  Future<CircleMember> addStudentByContact({
+    required String circleId,
+    required String contact,
+  }) async {
+    final value = contact.trim();
+    if (value.isEmpty) {
+      throw BadRequestException(message: 'أدخلي البريد الإلكتروني أو رقم الهاتف');
+    }
+    var query =
+        await _users.where('email', isEqualTo: value).limit(1).get();
+    if (query.docs.isEmpty) {
+      query = await _users.where('phone', isEqualTo: value).limit(1).get();
+    }
+    if (query.docs.isEmpty) {
+      throw BadRequestException(
+          message: 'لا يوجد مستخدم بهذا البريد أو رقم الهاتف');
+    }
+    final doc = query.docs.first;
+    final uid = doc.id;
+    final name = (doc.data()['name'] ?? '') as String;
+
+    final existing = await _members(circleId).doc(uid).get();
+    if (existing.exists) {
+      throw BadRequestException(message: 'هذه الطالبة مضافة بالفعل');
+    }
+    final member = CircleMember(
+      uid: uid,
+      name: name.isEmpty ? value : name,
+      role: UserRole.student,
+      status: MemberStatus.active,
+    );
+    await _members(circleId).doc(uid).set(CircleMemberDto.toMap(member));
+    await _users.doc(uid).set(
+      {'circleIds': FieldValue.arrayUnion([circleId])},
+      SetOptions(merge: true),
+    );
+    return member;
+  }
+
   /// Update a student's per-enrollment data (progress / attendance / rating).
   /// All changes are scoped to THIS حلقة only.
   Future<void> updateMember({
