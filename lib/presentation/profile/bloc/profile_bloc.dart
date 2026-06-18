@@ -25,6 +25,8 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
       final user = await profileRepository.updateProfile(
         uid: event.uid,
         name: event.name,
+        email: event.email,
+        phone: event.phone,
         photoUrl: event.photoUrl,
       );
       emit(state.copyWith(status: UIStatus.success, user: user));

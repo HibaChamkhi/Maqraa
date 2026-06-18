@@ -5,6 +5,8 @@ abstract class ProfileRepository {
   Future<AppUser> updateProfile({
     required String uid,
     String? name,
+    String? email,
+    String? phone,
     String? photoUrl,
   });
 }

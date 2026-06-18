@@ -51,7 +51,38 @@ class AnnouncementRemoteDataSource {
       authorName: await _currentUserName(),
     );
     await ref.set(AnnouncementDto.toMap(announcement));
+    await _notifyMembers(circleId: circleId, authorUid: uid, text: trimmed);
     return announcement;
+  }
+
+  /// Fan-out a notification to every active circle member (except the author)
+  /// so the announcement shows up in their notifications feed.
+  Future<void> _notifyMembers({
+    required String circleId,
+    required String authorUid,
+    required String text,
+  }) async {
+    try {
+      final circleDoc = await _circles.doc(circleId).get();
+      final circleName = (circleDoc.data()?['name'] ?? '') as String;
+      final members = await _circles.doc(circleId).collection('members').get();
+      final batch = firestore.batch();
+      for (final m in members.docs) {
+        if (m.id == authorUid) continue;
+        final nref =
+            _users.doc(m.id).collection('notifications').doc();
+        batch.set(nref, {
+          'title': circleName.isEmpty ? 'إعلان جديد' : 'إعلان في $circleName',
+          'body': text,
+          'type': 'adminMessage',
+          'read': false,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+      await batch.commit();
+    } catch (_) {
+      // Never fail the announcement because the fan-out had an issue.
+    }
   }
 
   Future<List<Announcement>> getAnnouncements(String circleId) async {

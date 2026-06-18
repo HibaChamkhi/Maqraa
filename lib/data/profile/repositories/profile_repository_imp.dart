@@ -14,8 +14,16 @@ class ProfileRepositoryImpl implements ProfileRepository {
   Future<AppUser> updateProfile({
     required String uid,
     String? name,
+    String? email,
+    String? phone,
     String? photoUrl,
   }) {
-    return remoteDataSource.updateProfile(uid: uid, name: name, photoUrl: photoUrl);
+    return remoteDataSource.updateProfile(
+      uid: uid,
+      name: name,
+      email: email,
+      phone: phone,
+      photoUrl: photoUrl,
+    );
   }
 }

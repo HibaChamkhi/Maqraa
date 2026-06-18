@@ -2,244 +2,284 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/di/injection.dart';
-import '../../../core/model /ui_state.dart';
 import '../../../domain/auth/models/app_user.dart';
+import '../../../domain/circle/models/circle.dart';
+import '../../../domain/circle/repositories/circle_repository.dart';
+import '../../achievement/bloc/achievement_bloc.dart';
 import '../../auth/bloc/auth_bloc.dart';
-import '../bloc/profile_bloc.dart';
+import '../../progress/bloc/progress_bloc.dart';
+import 'profile_theme.dart';
+import 'settings_page.dart';
+import 'teacher_profile_page.dart';
 
 /// US-36 (view/edit profile) + US-37 (secure password change).
+/// Routes to the student or teacher profile, both using the same card layout.
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider(
-      create: (_) => getIt<ProfileBloc>(),
-      child: const _ProfileView(),
+    final user = context.select<AuthBloc, AppUser?>((b) => b.state.user);
+    if (user == null) return const SizedBox.shrink();
+
+    final isTeacher =
+        user.role == UserRole.teacher || user.role == UserRole.supervisor;
+    if (isTeacher) {
+      return TeacherProfilePage(user: user);
+    }
+
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider(
+          create: (_) => getIt<ProgressBloc>()..add(const LoadMyProgress()),
+        ),
+        BlocProvider(
+          create: (_) =>
+              getIt<AchievementBloc>()..add(const AchievementRequested()),
+        ),
+      ],
+      child: _StudentProfileView(user: user),
     );
   }
 }
 
-class _ProfileView extends StatefulWidget {
-  const _ProfileView();
+class _StudentProfileView extends StatefulWidget {
+  const _StudentProfileView({required this.user});
+
+  final AppUser user;
 
   @override
-  State<_ProfileView> createState() => _ProfileViewState();
+  State<_StudentProfileView> createState() => _StudentProfileViewState();
 }
 
-class _ProfileViewState extends State<_ProfileView> {
-  late final TextEditingController _name;
+class _StudentProfileViewState extends State<_StudentProfileView> {
+  late final Future<List<Circle>> _circles;
 
   @override
   void initState() {
     super.initState();
-    final user = context.read<AuthBloc>().state.user;
-    _name = TextEditingController(text: user?.name ?? '');
+    _circles = getIt<CircleRepository>().getMyCircles();
   }
 
-  @override
-  void dispose() {
-    _name.dispose();
-    super.dispose();
-  }
-
-  void _save(AppUser user) {
-    context.read<ProfileBloc>().add(
-          ProfileUpdateRequested(uid: user.uid, name: _name.text.trim()),
-        );
-  }
+  void _push(Widget page) =>
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final user = context.select<AuthBloc, AppUser?>((b) => b.state.user);
-    if (user == null) return const SizedBox.shrink();
-
+    final user = widget.user;
     return Scaffold(
-      appBar: AppBar(title: const Text('ملفي الشخصي')),
-      body: BlocConsumer<ProfileBloc, ProfileState>(
-        listenWhen: (p, c) => p.status != c.status,
-        listener: (context, state) {
-          if (state.status == UIStatus.error) {
-            ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text(state.message)));
-          } else if (state.status == UIStatus.success && state.user != null) {
-            // Refresh the global user so the new data shows everywhere.
-            context.read<AuthBloc>().add(const AuthCheckRequested());
-            ScaffoldMessenger.of(context)
-                .showSnackBar(const SnackBar(content: Text('تم حفظ التعديلات')));
-          }
-        },
-        builder: (context, state) {
-          final saving = state.status == UIStatus.loading;
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 460),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Center(
-                    child: CircleAvatar(
-                      radius: 44,
-                      backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.12),
-                      backgroundImage:
-                          user.photoUrl != null ? NetworkImage(user.photoUrl!) : null,
-                      child: user.photoUrl == null
-                          ? Icon(Icons.person, size: 44, color: theme.colorScheme.primary)
-                          : null,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Center(child: Text(user.role?.arabicLabel ?? '', style: theme.textTheme.bodyMedium)),
-                  const SizedBox(height: 24),
-                  TextField(
-                    controller: _name,
-                    decoration: const InputDecoration(
-                      labelText: 'الاسم',
-                      prefixIcon: Icon(Icons.person_outline),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  _ReadOnlyTile(icon: Icons.email_outlined, label: 'البريد', value: user.email),
-                  if (user.phone != null)
-                    _ReadOnlyTile(icon: Icons.phone_outlined, label: 'الهاتف', value: user.phone!),
-                  _ReadOnlyTile(
-                    icon: Icons.wc_outlined,
-                    label: 'الجنس',
-                    value: user.gender?.arabicLabel ?? '-',
-                  ),
-                  const SizedBox(height: 24),
-                  ElevatedButton.icon(
-                    onPressed: saving ? null : () => _save(user),
-                    icon: const Icon(Icons.save_outlined),
-                    label: Text(saving ? 'جارٍ الحفظ...' : 'حفظ التعديلات'),
-                  ),
-                  const SizedBox(height: 12),
-                  OutlinedButton.icon(
-                    onPressed: () => showDialog(
-                      context: context,
-                      builder: (_) => BlocProvider.value(
-                        value: context.read<AuthBloc>(),
-                        child: const _ChangePasswordDialog(),
-                      ),
-                    ),
-                    icon: const Icon(Icons.lock_reset_outlined),
-                    label: const Text('تغيير كلمة المرور'),
-                  ),
-                ],
+      backgroundColor: ProfileTheme.bg,
+      body: SafeArea(
+        child: Column(
+          children: [
+            _TopBar(
+              onBack: () => Navigator.of(context).maybePop(),
+              onSettings: () => _push(SettingsPage(user: user)),
+            ),
+            Expanded(
+              child: FutureBuilder<List<Circle>>(
+                future: _circles,
+                builder: (context, snap) {
+                  final circle = (snap.data ?? const []).isNotEmpty
+                      ? snap.data!.first
+                      : null;
+                  return ListView(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+                    children: [
+                      LayoutBuilder(builder: (context, c) {
+                        final identity = _IdentityCard(user: user);
+                        final account = _AccountCard(user: user);
+                        final circleCard = _CircleCard(circle: circle);
+                        if (c.maxWidth >= 820) {
+                          return IntrinsicHeight(
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Expanded(child: circleCard),
+                                const SizedBox(width: 16),
+                                Expanded(child: account),
+                                const SizedBox(width: 16),
+                                Expanded(child: identity),
+                              ],
+                            ),
+                          );
+                        }
+                        return Column(
+                          children: [
+                            identity,
+                            const SizedBox(height: 16),
+                            account,
+                            const SizedBox(height: 16),
+                            circleCard,
+                          ],
+                        );
+                      }),
+                      const SizedBox(height: 16),
+                      const _StudentStats(),
+                    ],
+                  );
+                },
               ),
             ),
-          );
-        },
+          ],
+        ),
       ),
     );
   }
 }
 
-class _ReadOnlyTile extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
+class _TopBar extends StatelessWidget {
+  const _TopBar({required this.onBack, required this.onSettings});
 
-  const _ReadOnlyTile({required this.icon, required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: Icon(icon),
-      title: Text(label),
-      subtitle: Text(value),
-    );
-  }
-}
-
-class _ChangePasswordDialog extends StatefulWidget {
-  const _ChangePasswordDialog();
-
-  @override
-  State<_ChangePasswordDialog> createState() => _ChangePasswordDialogState();
-}
-
-class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
-  final _formKey = GlobalKey<FormState>();
-  final _current = TextEditingController();
-  final _next = TextEditingController();
-  final _confirm = TextEditingController();
-
-  @override
-  void dispose() {
-    _current.dispose();
-    _next.dispose();
-    _confirm.dispose();
-    super.dispose();
-  }
+  final VoidCallback onBack;
+  final VoidCallback onSettings;
 
   @override
   Widget build(BuildContext context) {
-    return BlocListener<AuthBloc, AuthState>(
-      listenWhen: (p, c) => p.status != c.status,
-      listener: (context, state) {
-        if (state.status == UIStatus.error) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text(state.message)));
-        } else if (state.status == UIStatus.success) {
-          Navigator.of(context).pop();
-          ScaffoldMessenger.of(context)
-              .showSnackBar(const SnackBar(content: Text('تم تغيير كلمة المرور')));
-        }
-      },
-      child: AlertDialog(
-        title: const Text('تغيير كلمة المرور'),
-        content: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: _current,
-                obscureText: true,
-                decoration: const InputDecoration(labelText: 'كلمة المرور الحالية'),
-                validator: (v) => (v == null || v.isEmpty) ? 'مطلوب' : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _next,
-                obscureText: true,
-                decoration: const InputDecoration(labelText: 'كلمة المرور الجديدة'),
-                validator: (v) => (v == null || v.length < 6) ? '٦ أحرف على الأقل' : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _confirm,
-                obscureText: true,
-                decoration: const InputDecoration(labelText: 'تأكيد كلمة المرور'),
-                validator: (v) => v != _next.text ? 'غير متطابقة' : null,
-              ),
-            ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.settings_outlined, color: ProfileTheme.ink),
+            onPressed: onSettings,
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('إلغاء'),
+          Expanded(
+            child: Text('الملف الشخصي',
+                textAlign: TextAlign.center, style: ProfileTheme.appBarTitle),
           ),
-          ElevatedButton(
-            onPressed: () {
-              if (_formKey.currentState!.validate()) {
-                context.read<AuthBloc>().add(
-                      AuthPasswordChangeRequested(
-                        currentPassword: _current.text,
-                        newPassword: _next.text,
-                      ),
-                    );
-              }
-            },
-            child: const Text('تغيير'),
+          IconButton(
+            icon: const Icon(Icons.chevron_right, color: ProfileTheme.ink),
+            onPressed: onBack,
           ),
         ],
       ),
     );
+  }
+}
+
+class _IdentityCard extends StatelessWidget {
+  const _IdentityCard({required this.user});
+  final AppUser user;
+
+  @override
+  Widget build(BuildContext context) {
+    return ProfileCard(
+      title: 'الملف الشخصي',
+      child: Column(
+        children: [
+          CircleAvatar(
+            radius: 44,
+            backgroundColor: ProfileTheme.greenSoft,
+            backgroundImage:
+                user.photoUrl != null ? NetworkImage(user.photoUrl!) : null,
+            child: user.photoUrl == null
+                ? const Icon(Icons.person, size: 44, color: ProfileTheme.green)
+                : null,
+          ),
+          const SizedBox(height: 14),
+          Text(user.name, style: ProfileTheme.name.copyWith(fontSize: 18)),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            decoration: BoxDecoration(
+              color: ProfileTheme.greenSoft,
+              borderRadius: BorderRadius.circular(99),
+            ),
+            child: Text(
+              user.role?.arabicLabel ?? 'طالب',
+              style: const TextStyle(
+                  color: ProfileTheme.green,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AccountCard extends StatelessWidget {
+  const _AccountCard({required this.user});
+  final AppUser user;
+
+  @override
+  Widget build(BuildContext context) {
+    return ProfileCard(
+      title: 'معلومات الحساب',
+      child: Column(
+        children: [
+          InfoRow(label: 'البريد الإلكتروني', value: user.email),
+          InfoRow(label: 'رقم الجوال', value: user.phone ?? '—'),
+          const InfoRow(label: 'اللغة', value: 'العربية'),
+          const InfoRow(label: 'تاريخ الانضمام', value: '—'),
+          const InfoRow(label: 'آخر تسجيل دخول', value: '—'),
+        ],
+      ),
+    );
+  }
+}
+
+class _CircleCard extends StatelessWidget {
+  const _CircleCard({required this.circle});
+  final Circle? circle;
+
+  @override
+  Widget build(BuildContext context) {
+    return ProfileCard(
+      title: 'معلومات الحلقة',
+      child: Column(
+        children: [
+          InfoRow(label: 'اسم الحلقة', value: circle?.name ?? 'لم تنضم لحلقة'),
+          const InfoRow(label: 'المدينة', value: 'الرياض'),
+          const InfoRow(label: 'المستوى', value: 'متوسط'),
+        ],
+      ),
+    );
+  }
+}
+
+/// Student KPI row: progress · streak · badges · pages — real data.
+class _StudentStats extends StatelessWidget {
+  const _StudentStats();
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = context.watch<ProgressBloc>().state.progress;
+    final ach = context.watch<AchievementBloc>().state.achievement;
+    final cards = <Widget>[
+      StatCircle(
+          icon: Icons.eco_outlined,
+          value: '${progress?.percent ?? 0}%',
+          label: 'من الإنجاز',
+          title: 'إجمالي التقدم'),
+      StatCircle(
+          icon: Icons.local_fire_department_outlined,
+          value: '${ach.streakCount}',
+          label: 'يوم متتالي',
+          title: 'سلسلة الالتزام'),
+      StatCircle(
+          icon: Icons.emoji_events_outlined,
+          value: '${ach.badges.length}',
+          label: 'وسام',
+          title: 'الأوسمة'),
+      StatCircle(
+          icon: Icons.menu_book_outlined,
+          value: '${progress?.pagesDone ?? 0}',
+          label: 'صفحة',
+          title: 'المحفوظ'),
+    ];
+    return LayoutBuilder(builder: (context, c) {
+      final perRow = c.maxWidth >= 560 ? 4 : 2;
+      final width = (c.maxWidth - (perRow - 1) * 16) / perRow;
+      return Wrap(
+        spacing: 16,
+        runSpacing: 16,
+        children: [
+          for (final card in cards) SizedBox(width: width, child: card),
+        ],
+      );
+    });
   }
 }

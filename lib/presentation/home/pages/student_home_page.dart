@@ -8,6 +8,7 @@ import '../../../domain/circle/models/circle.dart';
 import '../../../domain/progress/models/progress_info.dart';
 import '../../../domain/progress/repositories/progress_repository.dart';
 import '../../../domain/schedule/repositories/schedule_repository.dart';
+import '../../notification/pages/notifications_page.dart';
 import '../../profile/pages/profile_page.dart';
 import '../../progress/pages/my_progress_page.dart';
 import '../../reminder/pages/reminder_settings_page.dart';
@@ -228,7 +229,9 @@ class _Header extends StatelessWidget {
           children: [
             IconButton(
               icon: const Icon(Icons.notifications_none_rounded),
-              onPressed: () {},
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const NotificationsPage()),
+              ),
             ),
             Positioned(
               right: 6,

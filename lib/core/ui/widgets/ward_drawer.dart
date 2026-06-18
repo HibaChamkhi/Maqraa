@@ -4,7 +4,10 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../domain/auth/models/app_user.dart';
 import '../../../presentation/auth/bloc/auth_bloc.dart';
 import '../../../presentation/circle/pages/circles_list_page.dart';
+import '../../../presentation/help/help_page.dart';
+import '../../../presentation/notification/pages/notifications_page.dart';
 import '../../../presentation/profile/pages/profile_page.dart';
+import '../../../presentation/profile/pages/settings_page.dart';
 import '../styles/theme.dart';
 
 /// The green «ورْد» side navigation drawer (the sidebar in the reference).
@@ -155,6 +158,18 @@ class WardDrawer extends StatelessWidget {
       case 'حلقتي':
         Navigator.of(context)
             .push(MaterialPageRoute(builder: (_) => const CirclesListPage()));
+        break;
+      case 'الإعدادات':
+        Navigator.of(context)
+            .push(MaterialPageRoute(builder: (_) => SettingsPage(user: user)));
+        break;
+      case 'الإشعارات':
+        Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const NotificationsPage()));
+        break;
+      case 'المساعدة':
+        Navigator.of(context)
+            .push(MaterialPageRoute(builder: (_) => const HelpPage()));
         break;
       default:
         // الجدول / الاختبارات / الإشعارات / واجب اليوم / تقدّمي — reachable from

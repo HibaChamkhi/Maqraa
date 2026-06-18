@@ -24,6 +24,8 @@ import '../../circle/pages/join_requests_page.dart';
 import '../../circle/pages/qr_join_page.dart';
 import '../../exam/pages/student_exams_page.dart';
 import '../../exam/pages/teacher_exams_page.dart';
+import '../../help/help_page.dart';
+import '../../notification/pages/notifications_page.dart';
 import '../../partner/pages/my_partner_page.dart';
 import '../../partner/pages/pairing_page.dart';
 import '../../profile/pages/profile_page.dart';
@@ -175,40 +177,45 @@ class _TopBar extends StatelessWidget {
               const Icon(Icons.spa_outlined, color: AppColors.primary),
               const Spacer(),
               IconButton(
-                  onPressed: () {},
+                  onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const NotificationsPage())),
                   icon: const Icon(Icons.notifications_outlined)),
               IconButton(
                   onPressed: () {},
                   icon: const Icon(Icons.chat_bubble_outline)),
               PopupMenuButton<String>(
+                icon: const CircleAvatar(
+                  radius: 15,
+                  backgroundColor: AppColors.sky,
+                  child: Icon(
+                    Icons.person,
+                    size: 18,
+                    color: AppColors.primary,
+                  ),
+                ),
                 onSelected: (v) {
                   if (v == 'profile') {
                     Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const ProfilePage()));
+                      MaterialPageRoute(
+                        builder: (_) => const ProfilePage(),
+                      ),
+                    );
                   } else if (v == 'logout') {
-                    context.read<AuthBloc>().add(const AuthLogoutRequested());
+                    context.read<AuthBloc>().add(
+                      const AuthLogoutRequested(),
+                    );
                   }
                 },
                 itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'profile', child: Text('الملف الشخصي')),
-                  PopupMenuItem(value: 'logout', child: Text('تسجيل الخروج')),
-                ],
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 8),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      CircleAvatar(
-                        radius: 15,
-                        backgroundColor: AppColors.sky,
-                        child: Icon(Icons.person,
-                            size: 18, color: AppColors.primary),
-                      ),
-                      SizedBox(width: 2),
-                      Icon(Icons.keyboard_arrow_down, size: 18),
-                    ],
+                  PopupMenuItem(
+                    value: 'profile',
+                    child: Text('الملف الشخصي'),
                   ),
-                ),
+                  PopupMenuItem(
+                    value: 'logout',
+                    child: Text('تسجيل الخروج'),
+                  ),
+                ],
               ),
               const SizedBox(width: 6),
             ],
@@ -412,6 +419,8 @@ class _Dashboard extends StatelessWidget {
           () => _push(context, const AchievementPage())),
       _Tile('التذكيرات', Icons.notifications_active_outlined,
           () => _push(context, const ReminderSettingsPage())),
+      _Tile('المساعدة والدعم', Icons.help_outline,
+          () => _push(context, const HelpPage())),
     ];
     return GridView.count(
       padding: const EdgeInsets.all(16),
