@@ -5,6 +5,7 @@ import '../../../domain/auth/models/app_user.dart';
 import '../../../presentation/announcement/pages/announcements_page.dart';
 import '../../../presentation/auth/bloc/auth_bloc.dart';
 import '../../../presentation/calendar/pages/week_schedule_page.dart';
+import '../../../presentation/circle/pages/all_students_page.dart';
 import '../../../presentation/circle/pages/circles_list_page.dart';
 import '../../../presentation/circle/pages/section_circle_picker_page.dart';
 import '../../../presentation/exam/pages/teacher_exams_page.dart';
@@ -183,9 +184,11 @@ class WardDrawer extends StatelessWidget {
       case 'الرئيسية':
         break; // already reset to the overview above
       case 'الحلقات':
-      case 'الطالبات':
       case 'حلقتي':
         push(const CirclesListPage());
+        break;
+      case 'الطالبات':
+        push(AllStudentsPage(user: user));
         break;
       case 'الجدول':
         push(WeekSchedulePage(user: user));
