@@ -253,6 +253,14 @@ class CircleRemoteDataSource {
     });
   }
 
+  /// Set the circle's short description (نبذة).
+  Future<void> updateDescription({
+    required String circleId,
+    required String description,
+  }) async {
+    await _circles.doc(circleId).update({'description': description.trim()});
+  }
+
   /// Set the circle's recitation (رواية).
   Future<void> updateRiwayah({
     required String circleId,

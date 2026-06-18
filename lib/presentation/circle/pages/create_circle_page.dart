@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/model /ui_state.dart';
 import '../../../core/ui/styles/theme.dart';
+import '../../../core/ui/widgets/centered_content.dart';
 import '../../../domain/circle/models/circle.dart';
 import '../bloc/circle_bloc.dart';
 import 'circle_info_page.dart';
@@ -75,8 +76,8 @@ class _CreateCircleViewState extends State<_CreateCircleView> {
           final loading = state.status == UIStatus.loading;
           return SingleChildScrollView(
             padding: const EdgeInsets.all(AppSpacing.lg),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 440),
+            child: CenteredContent(
+              maxWidth: 480,
               child: Form(
                 key: _formKey,
                 child: Column(

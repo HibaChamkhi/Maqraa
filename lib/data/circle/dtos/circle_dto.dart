@@ -22,6 +22,7 @@ class CircleDto {
       levelFromAyah: (map['levelFromAyah'] as num?)?.toInt(),
       levelToAyah: (map['levelToAyah'] as num?)?.toInt(),
       riwayah: (map['riwayah'] ?? '') as String,
+      description: (map['description'] ?? '') as String,
       days: ((map['days'] as List?)?.cast<String>()) ?? const [],
       dayTimes: ((map['dayTimes'] as Map?)?.map(
               (k, v) => MapEntry(k.toString(), v.toString()))) ??
@@ -46,6 +47,7 @@ class CircleDto {
       'levelFromAyah': circle.levelFromAyah,
       'levelToAyah': circle.levelToAyah,
       'riwayah': circle.riwayah,
+      'description': circle.description,
       'days': circle.days,
       'dayTimes': circle.dayTimes,
       'durationMinutes': circle.durationMinutes,

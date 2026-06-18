@@ -20,12 +20,59 @@ class ExamRepositoryImpl implements ExamRepository {
     required String title,
     required String range,
     required DateTime date,
+    ExamType type = ExamType.other,
+    num totalMarks = 100,
+    num passMark = 50,
   }) =>
       remoteDataSource.scheduleExam(
         circleId: circleId,
         title: title,
         range: range,
         date: date,
+        type: type,
+        totalMarks: totalMarks,
+        passMark: passMark,
+      );
+
+  @override
+  Future<void> updateExam({
+    required String circleId,
+    required String examId,
+    required String title,
+    required String range,
+    required DateTime date,
+    required ExamType type,
+    required num totalMarks,
+    required num passMark,
+  }) =>
+      remoteDataSource.updateExam(
+        circleId: circleId,
+        examId: examId,
+        title: title,
+        range: range,
+        date: date,
+        type: type,
+        totalMarks: totalMarks,
+        passMark: passMark,
+      );
+
+  @override
+  Future<void> deleteExam({
+    required String circleId,
+    required String examId,
+  }) =>
+      remoteDataSource.deleteExam(circleId: circleId, examId: examId);
+
+  @override
+  Future<void> setResultsPublished({
+    required String circleId,
+    required String examId,
+    required bool published,
+  }) =>
+      remoteDataSource.setResultsPublished(
+        circleId: circleId,
+        examId: examId,
+        published: published,
       );
 
   @override
@@ -35,6 +82,8 @@ class ExamRepositoryImpl implements ExamRepository {
     required String uid,
     required String name,
     required num score,
+    ExamAttendance attendance = ExamAttendance.present,
+    String feedback = '',
   }) =>
       remoteDataSource.recordResult(
         circleId: circleId,
@@ -42,6 +91,8 @@ class ExamRepositoryImpl implements ExamRepository {
         uid: uid,
         name: name,
         score: score,
+        attendance: attendance,
+        feedback: feedback,
       );
 
   @override

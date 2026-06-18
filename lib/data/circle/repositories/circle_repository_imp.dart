@@ -70,6 +70,14 @@ class CircleRepositoryImpl implements CircleRepository {
       remoteDataSource.updatePrivacy(circleId: circleId, privacy: privacy);
 
   @override
+  Future<void> updateDescription({
+    required String circleId,
+    required String description,
+  }) =>
+      remoteDataSource.updateDescription(
+          circleId: circleId, description: description);
+
+  @override
   Future<void> updateRiwayah({
     required String circleId,
     required String riwayah,

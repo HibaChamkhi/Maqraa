@@ -104,6 +104,9 @@ class Circle {
   /// The حلقة's recitation (رواية), e.g. «حفص عن عاصم».
   final String riwayah;
 
+  /// A short free-text note the teacher writes, shown under the name.
+  final String description;
+
   /// Arabic display for the level, e.g. «جزء ٥ – ٣٠» or «البقرة · الآيات ١–٥٠».
   String get levelLabel {
     final f = levelFromAyah, t = levelToAyah;
@@ -151,6 +154,7 @@ class Circle {
     this.levelFromAyah,
     this.levelToAyah,
     this.riwayah = '',
+    this.description = '',
     this.days = const [],
     this.dayTimes = const {},
     this.durationMinutes = 60,
@@ -171,6 +175,7 @@ class Circle {
     int? levelFromAyah,
     int? levelToAyah,
     String? riwayah,
+    String? description,
     List<String>? days,
     Map<String, String>? dayTimes,
     int? durationMinutes,
@@ -191,6 +196,7 @@ class Circle {
       levelFromAyah: levelFromAyah ?? this.levelFromAyah,
       levelToAyah: levelToAyah ?? this.levelToAyah,
       riwayah: riwayah ?? this.riwayah,
+      description: description ?? this.description,
       days: days ?? this.days,
       dayTimes: dayTimes ?? this.dayTimes,
       durationMinutes: durationMinutes ?? this.durationMinutes,

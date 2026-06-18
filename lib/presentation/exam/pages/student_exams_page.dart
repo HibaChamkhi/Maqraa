@@ -11,37 +11,43 @@ import '../../../domain/exam/repositories/exam_repository.dart';
 import '../bloc/exam_bloc.dart';
 
 /// US-21 (student side): a student views the circle's exams and their own
-/// score for each one.
+/// result for each one — but only after the teacher publishes it.
 class StudentExamsPage extends StatelessWidget {
   final String circleId;
   final AppUser user;
+
+  /// When true, renders without its own AppBar (e.g. inside a tab).
+  final bool embedded;
 
   const StudentExamsPage({
     super.key,
     required this.circleId,
     required this.user,
+    this.embedded = false,
   });
 
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
       create: (_) => getIt<ExamBloc>()..add(ExamsRequested(circleId)),
-      child: _StudentExamsView(circleId: circleId),
+      child: _StudentExamsView(circleId: circleId, embedded: embedded),
     );
   }
 }
 
 class _StudentExamsView extends StatelessWidget {
   final String circleId;
+  final bool embedded;
 
-  const _StudentExamsView({required this.circleId});
+  const _StudentExamsView({required this.circleId, required this.embedded});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final dateFormat = DateFormat('EEEE d MMMM y', 'ar');
+    final dateFormat = DateFormat('EEEE d MMMM y • h:mm a', 'ar');
     return Scaffold(
-      appBar: AppBar(title: const Text('اختباراتي')),
+      backgroundColor: embedded ? Colors.transparent : null,
+      appBar: embedded ? null : AppBar(title: const Text('اختباراتي')),
       body: BlocBuilder<ExamBloc, ExamState>(
         builder: (context, state) {
           if (state.status == UIStatus.loading && state.exams.isEmpty) {
@@ -65,12 +71,16 @@ class _StudentExamsView extends StatelessWidget {
               final exam = state.exams[i];
               return Card(
                 child: ListTile(
-                  leading: const Icon(Icons.quiz_outlined),
+                  leading: const CircleAvatar(
+                    backgroundColor: AppColors.sky,
+                    child: Icon(Icons.quiz_outlined,
+                        color: AppColors.primary, size: 20),
+                  ),
                   title: Text(exam.title),
-                  subtitle:
-                      Text('${exam.range}\n${dateFormat.format(exam.date)}'),
+                  subtitle: Text(
+                      '${exam.range}\n${dateFormat.format(exam.date)}'),
                   isThreeLine: true,
-                  trailing: _ScoreBadge(circleId: circleId, examId: exam.id),
+                  trailing: _ResultBadge(circleId: circleId, exam: exam),
                 ),
               );
             },
@@ -81,32 +91,80 @@ class _StudentExamsView extends StatelessWidget {
   }
 }
 
-/// Loads & shows the current student's own score for one exam (US-21).
-class _ScoreBadge extends StatefulWidget {
+/// Shows the student's own outcome for one exam, gated by [Exam.resultsPublished].
+class _ResultBadge extends StatefulWidget {
   final String circleId;
-  final String examId;
+  final Exam exam;
 
-  const _ScoreBadge({required this.circleId, required this.examId});
+  const _ResultBadge({required this.circleId, required this.exam});
 
   @override
-  State<_ScoreBadge> createState() => _ScoreBadgeState();
+  State<_ResultBadge> createState() => _ResultBadgeState();
 }
 
-class _ScoreBadgeState extends State<_ScoreBadge> {
+class _ResultBadgeState extends State<_ResultBadge> {
   late final Future<ExamResult?> _future;
 
   @override
   void initState() {
     super.initState();
-    _future = getIt<ExamRepository>().getMyResult(
-      circleId: widget.circleId,
-      examId: widget.examId,
+    // Only fetch the student's result when results are published.
+    _future = widget.exam.resultsPublished
+        ? getIt<ExamRepository>().getMyResult(
+            circleId: widget.circleId,
+            examId: widget.exam.id,
+          )
+        : Future<ExamResult?>.value(null);
+  }
+
+  void _showDetails(ExamResult result) {
+    final exam = widget.exam;
+    final present = result.attendance == ExamAttendance.present;
+    final grade =
+        present ? examGradeLabel(result.score, exam.totalMarks) : '';
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(exam.title),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (present) ...[
+              Text('الدرجة: ${result.score} من ${exam.totalMarks}'),
+              if (grade.isNotEmpty) Text('التقدير: $grade'),
+              Text(result.passed(exam.passMark) ? 'النتيجة: ناجحة' : 'النتيجة: راسبة'),
+            ] else
+              Text('الحالة: ${result.attendance.arabicLabel}'),
+            if (result.feedback.isNotEmpty) ...[
+              const SizedBox(height: AppSpacing.sm),
+              Text('ملاحظة المعلّمة:',
+                  style: Theme.of(ctx).textTheme.titleSmall),
+              Text(result.feedback),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('إغلاق')),
+        ],
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
+    if (!widget.exam.resultsPublished) {
+      return Chip(
+        label: const Text('لم تُنشر'),
+        backgroundColor: AppColors.warning.withValues(alpha: 0.15),
+        labelStyle: theme.textTheme.bodySmall
+            ?.copyWith(color: AppColors.warning, fontWeight: FontWeight.w600),
+      );
+    }
+
     return FutureBuilder<ExamResult?>(
       future: _future,
       builder: (context, snapshot) {
@@ -125,16 +183,29 @@ class _ScoreBadgeState extends State<_ScoreBadge> {
             labelStyle: theme.textTheme.bodySmall,
           );
         }
-        return Container(
-          padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.md, vertical: AppSpacing.sm),
-          decoration: BoxDecoration(
-            color: AppColors.success.withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(AppRadius.pill),
+        if (result.attendance != ExamAttendance.present) {
+          return ActionChip(
+            label: Text(result.attendance.arabicLabel),
+            backgroundColor: AppColors.textMuted.withValues(alpha: 0.12),
+            labelStyle: theme.textTheme.bodySmall,
+            onPressed: () => _showDetails(result),
+          );
+        }
+        final passed = result.passed(widget.exam.passMark);
+        final color = passed ? AppColors.success : AppColors.error;
+        return InkWell(
+          onTap: () => _showDetails(result),
+          borderRadius: BorderRadius.circular(AppRadius.pill),
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(AppRadius.pill),
+            ),
+            child: Text('${result.score}/${widget.exam.totalMarks}',
+                style: theme.textTheme.titleMedium?.copyWith(color: color)),
           ),
-          child: Text('${result.score}',
-              style: theme.textTheme.titleMedium
-                  ?.copyWith(color: AppColors.success)),
         );
       },
     );

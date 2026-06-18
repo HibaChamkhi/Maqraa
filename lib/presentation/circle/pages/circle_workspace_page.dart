@@ -19,6 +19,7 @@ import '../../../domain/calendar/repositories/calendar_repository.dart';
 import '../../../domain/session/models/session.dart';
 import '../../calendar/bloc/calendar_bloc.dart';
 import '../../exam/pages/teacher_exams_page.dart';
+import '../../exam/pages/student_exams_page.dart';
 import '../../homework/pages/weekly_homework_tab.dart';
 import '../../session/pages/live_session_page.dart';
 import '../bloc/circle_bloc.dart';
@@ -128,14 +129,12 @@ class _CircleWorkspacePageState extends State<CircleWorkspacePage> {
                   // الجلسات = the session-times manager (moved here)
                   _ScheduleTab(
                       circle: circle, user: user, canManage: _canManage),
-                  _LinkTab(
-                    icon: Icons.assignment_outlined,
-                    label: 'اختبارات الحلقة',
-                    buttonText: 'فتح الاختبارات',
-                    onOpen: () => Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) => TeacherExamsPage(
-                            circleId: circle.id, user: user))),
-                  ),
+                  // الاختبارات = exams list inline (managers grade, students view)
+                  _canManage
+                      ? TeacherExamsPage(
+                          circleId: circle.id, user: user, embedded: true)
+                      : StudentExamsPage(
+                          circleId: circle.id, user: user, embedded: true),
                 ],
               ),
             ),
@@ -180,15 +179,7 @@ class _CircleHeader extends StatelessWidget {
             style: theme.textTheme.headlineMedium
                 ?.copyWith(fontWeight: FontWeight.w700)),
         const SizedBox(height: 4),
-        Text(
-          [
-            circle.gender == Gender.female ? 'بنات' : 'أولاد',
-            if (circle.riwayah.isNotEmpty) circle.riwayah,
-            if (circle.levelLabel.isNotEmpty) circle.levelLabel,
-          ].join(' · '),
-          style:
-              theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
-        ),
+        _DescriptionLine(circle: circle, canManage: canManage),
         const SizedBox(height: 2),
         _MemberCount(circleId: circle.id),
       ],
@@ -323,6 +314,79 @@ class _InfoCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Teacher-written short note under the circle name (editable by the teacher).
+class _DescriptionLine extends StatefulWidget {
+  final Circle circle;
+  final bool canManage;
+  const _DescriptionLine({required this.circle, required this.canManage});
+
+  @override
+  State<_DescriptionLine> createState() => _DescriptionLineState();
+}
+
+class _DescriptionLineState extends State<_DescriptionLine> {
+  late String _desc = widget.circle.description;
+
+  Future<void> _edit() async {
+    final c = TextEditingController(text: _desc);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('نبذة الحلقة'),
+        content: SizedBox(
+          width: 340,
+          child: TextField(
+            controller: c,
+            minLines: 1,
+            maxLines: 3,
+            decoration: const InputDecoration(
+                hintText: 'وصف مختصر للحلقة (اختياري)'),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('إلغاء')),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('حفظ')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() => _desc = c.text.trim());
+    await getIt<CircleRepository>()
+        .updateDescription(circleId: widget.circle.id, description: c.text.trim());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final text = _desc.isEmpty
+        ? (widget.canManage ? 'أضيفي نبذة عن الحلقة' : '')
+        : _desc;
+    if (text.isEmpty) return const SizedBox.shrink();
+    final label = Flexible(
+      child: Text(text,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.bodySmall?.copyWith(
+              color: _desc.isEmpty ? AppColors.textMuted : AppColors.ink)),
+    );
+    if (!widget.canManage) {
+      return Row(mainAxisSize: MainAxisSize.min, children: [label]);
+    }
+    return InkWell(
+      onTap: _edit,
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        label,
+        const SizedBox(width: 4),
+        const Icon(Icons.edit_outlined, size: 13, color: AppColors.primary),
+      ]),
     );
   }
 }
@@ -771,44 +835,6 @@ class _InviteCard extends StatelessWidget {
             label: const Text('مشاركة الدعوة'),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _LinkTab extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String buttonText;
-  final VoidCallback onOpen;
-
-  const _LinkTab({
-    required this.icon,
-    required this.label,
-    required this.buttonText,
-    required this.onOpen,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 64, color: AppColors.primary),
-            const SizedBox(height: 16),
-            Text(label, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 20),
-            ElevatedButton.icon(
-              onPressed: onOpen,
-              icon: const Icon(Icons.open_in_new, size: 18),
-              label: Text(buttonText),
-              style: ElevatedButton.styleFrom(minimumSize: const Size(220, 48)),
-            ),
-          ],
-        ),
       ),
     );
   }

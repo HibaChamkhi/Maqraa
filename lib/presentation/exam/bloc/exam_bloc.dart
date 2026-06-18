@@ -17,6 +17,9 @@ class ExamBloc extends Bloc<ExamEvent, ExamState> {
   ExamBloc(this.examRepository) : super(const ExamState()) {
     on<ExamsRequested>(_onLoad);
     on<ExamScheduled>(_onSchedule);
+    on<ExamUpdated>(_onUpdate);
+    on<ExamDeleted>(_onDelete);
+    on<ExamPublishToggled>(_onPublishToggled);
     on<ExamResultsRequested>(_onResults);
     on<ExamResultRecorded>(_onRecord);
     on<ExamMyResultRequested>(_onMyResult);
@@ -42,12 +45,81 @@ class ExamBloc extends Bloc<ExamEvent, ExamState> {
         title: event.title,
         range: event.range,
         date: event.date,
+        type: event.type,
+        totalMarks: event.totalMarks,
+        passMark: event.passMark,
       );
       final exams = await examRepository.getExams(event.circleId);
       emit(state.copyWith(
         status: UIStatus.success,
         exams: exams,
         message: 'تم جدولة الاختبار',
+        actionDone: true,
+      ));
+    } on Exception catch (e) {
+      emit(state.copyWith(
+          status: UIStatus.error, message: mapExceptionToMessage(e)));
+    }
+  }
+
+  Future<void> _onUpdate(ExamUpdated event, Emitter<ExamState> emit) async {
+    emit(state.copyWith(status: UIStatus.loading, message: '', actionDone: false));
+    try {
+      await examRepository.updateExam(
+        circleId: event.circleId,
+        examId: event.examId,
+        title: event.title,
+        range: event.range,
+        date: event.date,
+        type: event.type,
+        totalMarks: event.totalMarks,
+        passMark: event.passMark,
+      );
+      final exams = await examRepository.getExams(event.circleId);
+      emit(state.copyWith(
+        status: UIStatus.success,
+        exams: exams,
+        message: 'تم تعديل الاختبار',
+        actionDone: true,
+      ));
+    } on Exception catch (e) {
+      emit(state.copyWith(
+          status: UIStatus.error, message: mapExceptionToMessage(e)));
+    }
+  }
+
+  Future<void> _onDelete(ExamDeleted event, Emitter<ExamState> emit) async {
+    emit(state.copyWith(status: UIStatus.loading, message: '', actionDone: false));
+    try {
+      await examRepository.deleteExam(
+        circleId: event.circleId,
+        examId: event.examId,
+      );
+      final exams = await examRepository.getExams(event.circleId);
+      emit(state.copyWith(
+        status: UIStatus.success,
+        exams: exams,
+        message: 'تم حذف الاختبار',
+        actionDone: true,
+      ));
+    } on Exception catch (e) {
+      emit(state.copyWith(
+          status: UIStatus.error, message: mapExceptionToMessage(e)));
+    }
+  }
+
+  Future<void> _onPublishToggled(
+      ExamPublishToggled event, Emitter<ExamState> emit) async {
+    emit(state.copyWith(status: UIStatus.loading, message: '', actionDone: false));
+    try {
+      await examRepository.setResultsPublished(
+        circleId: event.circleId,
+        examId: event.examId,
+        published: event.published,
+      );
+      emit(state.copyWith(
+        status: UIStatus.success,
+        message: event.published ? 'تم نشر النتائج' : 'تم إخفاء النتائج',
         actionDone: true,
       ));
     } on Exception catch (e) {
@@ -81,6 +153,8 @@ class ExamBloc extends Bloc<ExamEvent, ExamState> {
         uid: event.uid,
         name: event.name,
         score: event.score,
+        attendance: event.attendance,
+        feedback: event.feedback,
       );
       final results = await examRepository.getResults(
         circleId: event.circleId,

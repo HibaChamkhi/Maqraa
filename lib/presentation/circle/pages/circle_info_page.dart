@@ -6,6 +6,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/model /ui_state.dart';
 import '../../../core/ui/styles/theme.dart';
+import '../../../core/ui/widgets/centered_content.dart';
 import '../../../domain/auth/models/app_user.dart';
 import '../../../domain/circle/models/circle.dart';
 import '../bloc/circle_bloc.dart';
@@ -75,8 +76,8 @@ class _CircleInfoView extends StatelessWidget {
           final canManage = _canManage(circle);
           return SingleChildScrollView(
             padding: const EdgeInsets.all(AppSpacing.lg),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 460),
+            child: CenteredContent(
+              maxWidth: 520,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [

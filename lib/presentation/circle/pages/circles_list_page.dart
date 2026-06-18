@@ -15,8 +15,8 @@ import 'circle_workspace_page.dart';
 /// One circle plus its quick stats for the list cards.
 typedef _CircleStat = ({Circle circle, int count, int avg});
 
-/// الحلقات — all circles the current user belongs to, shown as rich «وِصَال»
-/// cards with per-circle student count and memorization average.
+/// الحلقات — all circles the current user belongs to, shown as a KPI summary
+/// strip plus a responsive grid of rich «وِصَال» cards.
 class CirclesListPage extends StatefulWidget {
   const CirclesListPage({super.key});
 
@@ -45,9 +45,7 @@ class _CirclesListPageState extends State<CirclesListPage> {
       final count = students.length;
       final avg = students.isEmpty
           ? 0
-          : (students
-                      .map((s) => s.memorizedPercent)
-                      .reduce((a, b) => a + b) /
+          : (students.map((s) => s.memorizedPercent).reduce((a, b) => a + b) /
                   count)
               .round();
       return (circle: c, count: count, avg: avg);
@@ -55,6 +53,12 @@ class _CirclesListPageState extends State<CirclesListPage> {
   }
 
   void _reload() => setState(() => _future = _load());
+
+  Future<void> _createCircle() async {
+    await Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const CreateCirclePage()));
+    _reload();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -73,26 +77,49 @@ class _CirclesListPageState extends State<CirclesListPage> {
           if (stats.isEmpty) {
             return _empty(context, user);
           }
+
+          final totalStudents =
+              stats.fold<int>(0, (sum, s) => sum + s.count);
+          final overallAvg = totalStudents == 0
+              ? 0
+              : (stats.fold<int>(0, (sum, s) => sum + s.avg * s.count) /
+                      totalStudents)
+                  .round();
+
           return ListView(
             padding: const EdgeInsets.all(AppSpacing.md),
             children: [
+              _KpiStrip(
+                circles: stats.length,
+                students: totalStudents,
+                avg: overallAvg,
+              ),
+              const SizedBox(height: AppSpacing.lg),
               Padding(
                 padding: const EdgeInsets.only(bottom: AppSpacing.sm),
                 child: Text('حلقاتي (${stats.length})',
                     style: Theme.of(context).textTheme.titleMedium),
               ),
-              for (final s in stats) _CircleCard(stat: s, user: user),
-              const SizedBox(height: AppSpacing.xs),
-              if (isTeacher)
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    await Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) => const CreateCirclePage()));
-                    _reload();
-                  },
-                  icon: const Icon(Icons.add),
-                  label: const Text('إنشاء حلقة جديدة'),
-                ),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final w = constraints.maxWidth;
+                  final cols = w >= 1100 ? 3 : (w >= 700 ? 2 : 1);
+                  const gap = AppSpacing.md;
+                  final cardW = (w - gap * (cols - 1)) / cols - 0.5;
+                  final tiles = <Widget>[
+                    for (final s in stats)
+                      _CircleCard(stat: s, user: user),
+                    if (isTeacher) _AddCircleTile(onTap: _createCircle),
+                  ];
+                  return Wrap(
+                    spacing: gap,
+                    runSpacing: gap,
+                    children: tiles
+                        .map((t) => SizedBox(width: cardW, child: t))
+                        .toList(),
+                  );
+                },
+              ),
             ],
           );
         },
@@ -123,11 +150,7 @@ class _CirclesListPageState extends State<CirclesListPage> {
             const SizedBox(height: 20),
             if (isTeacher)
               ElevatedButton.icon(
-                onPressed: () async {
-                  await Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => const CreateCirclePage()));
-                  _reload();
-                },
+                onPressed: _createCircle,
                 icon: const Icon(Icons.add),
                 label: const Text('إنشاء حلقة'),
               )
@@ -159,6 +182,87 @@ class _CirclesListPageState extends State<CirclesListPage> {
   }
 }
 
+/// Top summary strip: total circles, students and overall memorization.
+class _KpiStrip extends StatelessWidget {
+  final int circles;
+  final int students;
+  final int avg;
+
+  const _KpiStrip(
+      {required this.circles, required this.students, required this.avg});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        _KpiTile(
+          value: '$circles',
+          label: 'الحلقات',
+          filled: true,
+          icon: Icons.groups_2_outlined,
+        ),
+        const SizedBox(width: AppSpacing.sm),
+        _KpiTile(
+          value: '$students',
+          label: 'إجمالي الطالبات',
+          icon: Icons.people_outline,
+        ),
+        const SizedBox(width: AppSpacing.sm),
+        _KpiTile(
+          value: '$avg٪',
+          label: 'متوسط الحفظ',
+          icon: Icons.speed_outlined,
+        ),
+      ],
+    );
+  }
+}
+
+class _KpiTile extends StatelessWidget {
+  final String value;
+  final String label;
+  final IconData icon;
+  final bool filled;
+
+  const _KpiTile({
+    required this.value,
+    required this.label,
+    required this.icon,
+    this.filled = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        decoration: BoxDecoration(
+          color: filled ? AppColors.sky : AppColors.surface,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border: filled ? null : Border.all(color: AppColors.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, size: 18, color: AppColors.primary),
+            const SizedBox(height: AppSpacing.sm),
+            Text(value,
+                style: theme.textTheme.titleLarge?.copyWith(
+                    color: filled ? AppColors.primaryDark : AppColors.ink,
+                    fontWeight: FontWeight.w700)),
+            Text(label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: AppColors.textMuted)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _CircleCard extends StatelessWidget {
   final _CircleStat stat;
   final AppUser? user;
@@ -168,16 +272,12 @@ class _CircleCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final c = stat.circle;
-    final subtitle = [
-      if (c.level.isNotEmpty) c.level,
-      c.gender == Gender.female ? 'بنات' : 'بنين',
-      c.privacy.arabicLabel,
-    ].join(' · ');
+    final initial = c.name.isNotEmpty ? c.name.characters.first : '؟';
     return Container(
-      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.border),
         boxShadow: const [
           BoxShadow(
               color: Color(0x0F1F2937), blurRadius: 14, offset: Offset(0, 4)),
@@ -195,33 +295,55 @@ class _CircleCard extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.all(AppSpacing.md),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
                     Container(
                       width: 48,
                       height: 48,
+                      alignment: Alignment.center,
                       decoration: BoxDecoration(
-                        color: AppColors.sky,
+                        color: AppColors.primary,
                         borderRadius: BorderRadius.circular(AppRadius.md),
                       ),
-                      child: const Icon(Icons.groups_2_outlined,
-                          color: AppColors.primary),
+                      child: Text(initial,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700)),
                     ),
                     const SizedBox(width: AppSpacing.md),
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(c.name, style: theme.textTheme.titleMedium),
-                          const SizedBox(height: 2),
-                          Text(subtitle,
-                              style: theme.textTheme.bodySmall
-                                  ?.copyWith(color: AppColors.textMuted)),
-                        ],
-                      ),
+                      child: Text(c.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleMedium),
                     ),
                     const Icon(Icons.chevron_left, color: AppColors.textMuted),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Wrap(
+                  spacing: AppSpacing.xs,
+                  runSpacing: AppSpacing.xs,
+                  children: [
+                    _Pill(
+                      label: c.gender == Gender.female ? 'بنات' : 'بنين',
+                      bg: AppColors.pink.withValues(alpha: 0.14),
+                      fg: AppColors.warning,
+                    ),
+                    _Pill(
+                      label: c.privacy.arabicLabel,
+                      bg: AppColors.gray,
+                      fg: AppColors.textMuted,
+                    ),
+                    if (c.level.isNotEmpty)
+                      _Pill(
+                        label: c.level,
+                        bg: AppColors.sky,
+                        fg: AppColors.primaryDark,
+                      ),
                   ],
                 ),
                 const SizedBox(height: AppSpacing.md),
@@ -235,10 +357,23 @@ class _CircleCard extends StatelessWidget {
                     _MiniStat(
                         icon: Icons.speed_outlined,
                         label: 'معدل الحفظ',
-                        value: '${stat.avg}%'),
+                        value: '${stat.avg}٪'),
                   ],
                 ),
                 const SizedBox(height: 10),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('تقدّم الحفظ',
+                        style: theme.textTheme.bodySmall
+                            ?.copyWith(color: AppColors.textMuted)),
+                    Text('${stat.avg}٪',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                            color: AppColors.primary,
+                            fontWeight: FontWeight.w700)),
+                  ],
+                ),
+                const SizedBox(height: 4),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(AppRadius.pill),
                   child: LinearProgressIndicator(
@@ -258,6 +393,63 @@ class _CircleCard extends StatelessWidget {
   }
 }
 
+/// Dashed-style "create a circle" tile that sits in the grid (teacher only).
+class _AddCircleTile extends StatelessWidget {
+  final VoidCallback onTap;
+  const _AddCircleTile({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Material(
+      color: AppColors.sky.withValues(alpha: 0.5),
+      borderRadius: BorderRadius.circular(AppRadius.lg),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        onTap: onTap,
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 150),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            border: Border.all(color: AppColors.primary, width: 1.4),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.add_circle_outline,
+                  size: 30, color: AppColors.primary),
+              const SizedBox(height: AppSpacing.sm),
+              Text('إنشاء حلقة جديدة',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                      color: AppColors.primary, fontWeight: FontWeight.w700)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Pill extends StatelessWidget {
+  final String label;
+  final Color bg;
+  final Color fg;
+  const _Pill({required this.label, required this.bg, required this.fg});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+      ),
+      child: Text(label,
+          style: TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.w600)),
+    );
+  }
+}
+
 class _MiniStat extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -272,7 +464,7 @@ class _MiniStat extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: AppColors.gray,
+          color: AppColors.beige,
           borderRadius: BorderRadius.circular(AppRadius.md),
         ),
         child: Row(
@@ -284,6 +476,8 @@ class _MiniStat extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodySmall
                           ?.copyWith(color: AppColors.textMuted, fontSize: 11)),
                   Text(value,

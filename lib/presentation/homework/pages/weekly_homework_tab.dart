@@ -8,11 +8,11 @@ import '../../../core/ui/styles/theme.dart';
 import '../../../data/homework/homework_repository.dart';
 import '../../../domain/auth/models/app_user.dart';
 import '../../../domain/circle/models/circle.dart';
-import '../../../domain/circle/repositories/circle_repository.dart';
 import '../../../domain/homework/models/weekly_homework.dart';
 
-/// «الجدول الأسبوعي» — weekly homework grid. Teacher fills الواجب/النوع/ملاحظات
-/// per day; التمام shows done/total (tap → who). Student taps a row to confirm.
+/// «الجدول الأسبوعي» — a weekly plan grid (3 columns): day+date, الواجب, ملاحظات.
+/// The teacher fills it; the student taps her row to confirm «تمّ» (the
+/// completion analytics live in التقارير, not here).
 class WeeklyHomeworkTab extends StatefulWidget {
   final Circle circle;
   final AppUser user;
@@ -31,27 +31,8 @@ class _WeeklyHomeworkTabState extends State<WeeklyHomeworkTab> {
   late final HomeworkRepository _repo =
       HomeworkRepository(getIt<FirebaseFirestore>(), getIt<FirebaseAuth>());
   late DateTime _weekStart = WeeklyHomework.weekStartOf(DateTime.now());
-  List<CircleMember> _students = const [];
 
   String get _weekId => DateFormat('yyyy-MM-dd').format(_weekStart);
-
-  @override
-  void initState() {
-    super.initState();
-    _loadStudents();
-  }
-
-  Future<void> _loadStudents() async {
-    try {
-      final members =
-          await getIt<CircleRepository>().getMembers(widget.circle.id);
-      if (!mounted) return;
-      setState(() => _students = members
-          .where((m) =>
-              m.role == UserRole.student && m.status == MemberStatus.active)
-          .toList());
-    } catch (_) {/* best effort */}
-  }
 
   void _shift(int weeks) =>
       setState(() => _weekStart = _weekStart.add(Duration(days: 7 * weeks)));
@@ -85,33 +66,76 @@ class _WeeklyHomeworkTabState extends State<WeeklyHomeworkTab> {
             builder: (context, weekSnap) {
               final week = weekSnap.data ??
                   WeeklyHomework(weekId: _weekId, weekStart: _weekStart);
+              if (widget.canManage) {
+                return _grid(week, myDone: const {});
+              }
+              // student: also watch own completion for the personal ✓
               return StreamBuilder<List<HomeworkCompletion>>(
                 stream: _repo.completionsStream(widget.circle.id, _weekId),
                 builder: (context, compSnap) {
                   final comps = compSnap.data ?? const [];
-                  HomeworkCompletion? mine;
-                  for (final c in comps) {
-                    if (c.uid == widget.user.uid) mine = c;
-                  }
-                  return _Grid(
-                    week: week,
-                    comps: comps,
-                    total: _students.length,
-                    mine: mine,
-                    canManage: widget.canManage,
-                    onEditDay: (code) => _editDay(week, code),
-                    onTickDay: (code) => _tickDay(
-                        code,
-                        mine?.isDone(code) ?? false,
-                        mine?.partners[code] ?? ''),
-                    onShowWho: (code) => _showWho(code, comps),
-                  );
+                  final mine = comps
+                      .where((c) => c.uid == widget.user.uid)
+                      .fold<HomeworkCompletion?>(null, (p, e) => e);
+                  return _grid(week, myDone: mine?.doneDays ?? const {});
                 },
               );
             },
           ),
         ),
       ],
+    );
+  }
+
+  Widget _grid(WeeklyHomework week, {required Set<String> myDone}) {
+    final theme = Theme.of(context);
+    Widget head(String t, int flex) => Expanded(
+        flex: flex,
+        child: Text(t,
+            style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w700)));
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+          AppSpacing.md, 0, AppSpacing.md, AppSpacing.lg),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border: Border.all(color: AppColors.border),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          children: [
+            Container(
+              color: AppColors.primary,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              child: Row(children: [
+                head('اليوم والتاريخ', 3),
+                head('الواجب', 4),
+                head('ملاحظات', 3),
+              ]),
+            ),
+            Expanded(
+              child: ListView(
+                children: [
+                  for (final code in WeeklyHomework.dayOrder)
+                    _DayRow(
+                      code: code,
+                      date: week.dateOf(code),
+                      plan: week.planOf(code),
+                      canManage: widget.canManage,
+                      myDone: myDone.contains(code),
+                      onEdit: () => _editDay(week, code),
+                      onTick: () => _tickDay(code, myDone.contains(code)),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -166,7 +190,7 @@ class _WeeklyHomeworkTabState extends State<WeeklyHomeworkTab> {
     }
   }
 
-  Future<void> _tickDay(String code, bool done, String partner) async {
+  Future<void> _tickDay(String code, bool done) async {
     if (done) {
       await _repo.setDayDone(
         circleId: widget.circle.id,
@@ -177,7 +201,7 @@ class _WeeklyHomeworkTabState extends State<WeeklyHomeworkTab> {
       );
       return;
     }
-    final partnerC = TextEditingController(text: partner);
+    final partnerC = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -211,146 +235,24 @@ class _WeeklyHomeworkTabState extends State<WeeklyHomeworkTab> {
       );
     }
   }
-
-  void _showWho(String code, List<HomeworkCompletion> comps) {
-    final doneByUid = {for (final c in comps) c.uid: c};
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (_) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          padding: const EdgeInsets.all(AppSpacing.md),
-          children: [
-            Text('من أنجز واجب ${WeeklyHomework.dayLabels[code]}',
-                style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            for (final s in _students)
-              ListTile(
-                dense: true,
-                leading: Icon(
-                  (doneByUid[s.uid]?.isDone(code) ?? false)
-                      ? Icons.check_circle
-                      : Icons.radio_button_unchecked,
-                  color: (doneByUid[s.uid]?.isDone(code) ?? false)
-                      ? AppColors.success
-                      : AppColors.textMuted,
-                ),
-                title: Text(s.name),
-                subtitle: (doneByUid[s.uid]?.partners[code] ?? '').isEmpty
-                    ? null
-                    : Text('رفيقتها: ${doneByUid[s.uid]!.partners[code]}'),
-              ),
-            if (_students.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(8),
-                child: Text('لا توجد طالبات بعد'),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
-class _Grid extends StatelessWidget {
-  final WeeklyHomework week;
-  final List<HomeworkCompletion> comps;
-  final int total;
-  final HomeworkCompletion? mine;
-  final bool canManage;
-  final void Function(String code) onEditDay;
-  final void Function(String code) onTickDay;
-  final void Function(String code) onShowWho;
-  const _Grid({
-    required this.week,
-    required this.comps,
-    required this.total,
-    required this.mine,
-    required this.canManage,
-    required this.onEditDay,
-    required this.onTickDay,
-    required this.onShowWho,
-  });
-
-  static const _flex = [3, 4, 3, 2];
-
-  @override
-  Widget build(BuildContext context) {
-    Widget head(String t, int i) => Expanded(
-        flex: _flex[i],
-        child: Text(t,
-            style: const TextStyle(
-                color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)));
-    return Padding(
-      padding:
-          const EdgeInsets.fromLTRB(AppSpacing.md, 0, AppSpacing.md, AppSpacing.lg),
-      child: Container(
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(AppRadius.lg),
-          border: Border.all(color: AppColors.border),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          children: [
-            Container(
-              color: AppColors.primary,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-              child: Row(children: [
-                head('اليوم والتاريخ', 0),
-                head('الواجب', 1),
-                head('ملاحظات', 2),
-                head(canManage ? 'التمام' : 'تمّ', 3),
-              ]),
-            ),
-            Expanded(
-              child: ListView(
-                children: [
-                  for (final code in WeeklyHomework.dayOrder)
-                    _Row(
-                      code: code,
-                      date: week.dateOf(code),
-                      plan: week.planOf(code),
-                      doneCount: comps.where((c) => c.isDone(code)).length,
-                      total: total,
-                      myDone: mine?.isDone(code) ?? false,
-                      canManage: canManage,
-                      onEdit: () => onEditDay(code),
-                      onTick: () => onTickDay(code),
-                      onWho: () => onShowWho(code),
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _Row extends StatelessWidget {
+class _DayRow extends StatelessWidget {
   final String code;
   final DateTime date;
   final DayPlan plan;
-  final int doneCount;
-  final int total;
-  final bool myDone;
   final bool canManage;
+  final bool myDone;
   final VoidCallback onEdit;
   final VoidCallback onTick;
-  final VoidCallback onWho;
-  const _Row({
+  const _DayRow({
     required this.code,
     required this.date,
     required this.plan,
-    required this.doneCount,
-    required this.total,
-    required this.myDone,
     required this.canManage,
+    required this.myDone,
     required this.onEdit,
     required this.onTick,
-    required this.onWho,
   });
 
   @override
@@ -363,18 +265,17 @@ class _Row extends StatelessWidget {
     return InkWell(
       onTap: canManage ? onEdit : (empty ? null : onTick),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
         decoration: BoxDecoration(
           color: isToday ? AppColors.sky : null,
           border: const Border(
               top: BorderSide(color: AppColors.border, width: .5)),
         ),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // day + date
             Expanded(
-              flex: _Grid._flex[0],
+              flex: 3,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -397,66 +298,35 @@ class _Row extends StatelessWidget {
                     ],
                   ]),
                   Text(dFmt.format(date),
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: AppColors.textMuted, fontSize: 10)),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                          color: AppColors.textMuted, fontSize: 10)),
+                  if (!canManage && myDone)
+                    Row(children: const [
+                      Icon(Icons.check_circle,
+                          size: 12, color: AppColors.success),
+                      SizedBox(width: 3),
+                      Text('تمّ',
+                          style: TextStyle(
+                              fontSize: 10, color: AppColors.success)),
+                    ]),
                 ],
               ),
             ),
-            // wajib + type chip
             Expanded(
-              flex: _Grid._flex[1],
-              child: empty
-                  ? Text(canManage ? '— اضغطي للإضافة —' : '—',
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: AppColors.textMuted))
-                  : Text(plan.wajib, style: theme.textTheme.bodyMedium),
+              flex: 4,
+              child: Text(empty ? (canManage ? '— اضغطي للإضافة —' : '—') : plan.wajib,
+                  style: empty
+                      ? theme.textTheme.bodySmall
+                          ?.copyWith(color: AppColors.textMuted)
+                      : theme.textTheme.bodyMedium),
             ),
-            // notes
             Expanded(
-              flex: _Grid._flex[2],
+              flex: 3,
               child: Text(plan.notes.isEmpty ? '—' : plan.notes,
                   style: theme.textTheme.bodySmall?.copyWith(
                       color: plan.notes.isEmpty
                           ? AppColors.textMuted
                           : AppColors.ink)),
-            ),
-            // tamam
-            Expanded(
-              flex: _Grid._flex[3],
-              child: canManage
-                  ? GestureDetector(
-                      onTap: empty ? null : onWho,
-                      child: empty
-                          ? const Text('—',
-                              style: TextStyle(color: AppColors.textMuted))
-                          : Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                    '${total == 0 ? 0 : (doneCount / total * 100).round()}%',
-                                    style: theme.textTheme.bodySmall),
-                                const SizedBox(height: 3),
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(99),
-                                  child: LinearProgressIndicator(
-                                    value:
-                                        total == 0 ? 0 : doneCount / total,
-                                    minHeight: 5,
-                                    backgroundColor: AppColors.border,
-                                    valueColor: const AlwaysStoppedAnimation(
-                                        AppColors.primary),
-                                  ),
-                                ),
-                              ],
-                            ),
-                    )
-                  : Icon(
-                      myDone
-                          ? Icons.check_circle
-                          : Icons.radio_button_unchecked,
-                      color:
-                          myDone ? AppColors.success : AppColors.textMuted,
-                    ),
             ),
           ],
         ),

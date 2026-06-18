@@ -69,7 +69,7 @@ class WardDrawer extends StatelessWidget {
             ('الحلقات', Icons.groups_2_outlined),
             ('الطالبات', Icons.people_outline),
             ('الجدول', Icons.calendar_month_outlined),
-            ('الاختبارات والتقارير', Icons.assignment_outlined),
+            ('الاختبارات', Icons.assignment_outlined),
             ('التقارير', Icons.bar_chart_outlined),
             ('الإشعارات', Icons.notifications_outlined),
             ('الإعدادات', Icons.settings_outlined),
@@ -193,7 +193,7 @@ class WardDrawer extends StatelessWidget {
       case 'الجدول':
         push(WeekSchedulePage(user: user));
         break;
-      case 'الاختبارات والتقارير':
+      case 'الاختبارات':
         push(SectionCirclePickerPage(
           title: 'الاختبارات',
           icon: Icons.assignment_outlined,
