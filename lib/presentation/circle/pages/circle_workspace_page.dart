@@ -782,25 +782,18 @@ class _SessionFormState extends State<_SessionForm> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final dateFmt = DateFormat('EEEE d MMMM', 'ar');
-    final w = MediaQuery.of(context).size.width;
-    return Dialog(
-      insetPadding: const EdgeInsets.all(24),
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
-      child: SizedBox(
-        width: w < 560 ? w - 48 : 480,
+    final timeLabel =
+        '${_time.hour.toString().padLeft(2, '0')}:${_time.minute.toString().padLeft(2, '0')}';
+    return AlertDialog(
+      title: Text(_isEdit ? 'تعديل الجلسة' : 'جلسة جديدة'),
+      content: SizedBox(
+        width: 340,
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(AppSpacing.lg),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(_isEdit ? 'تعديل الجلسة' : 'جلسة جديدة',
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.titleLarge),
-              const SizedBox(height: AppSpacing.md),
               TextField(
                 controller: _title,
                 decoration: const InputDecoration(labelText: 'عنوان الجلسة'),
@@ -808,104 +801,94 @@ class _SessionFormState extends State<_SessionForm> {
               const SizedBox(height: 12),
               SegmentedButton<SessionType>(
                 segments: const [
-                  ButtonSegment(
-                      value: SessionType.tasmi3, label: Text('تسميع')),
-                  ButtonSegment(
-                      value: SessionType.imla2, label: Text('إملاء')),
+                  ButtonSegment(value: SessionType.tasmi3, label: Text('تسميع')),
+                  ButtonSegment(value: SessionType.imla2, label: Text('إملاء')),
                 ],
                 selected: {_type},
                 onSelectionChanged: (s) => setState(() => _type = s.first),
               ),
               const SizedBox(height: 12),
-              Row(children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _pickDate,
-                    icon: const Icon(Icons.calendar_today_outlined, size: 16),
-                    label: Text(dateFmt.format(_date),
-                        overflow: TextOverflow.ellipsis),
+              OutlinedButton.icon(
+                onPressed: _pickDate,
+                icon: const Icon(Icons.calendar_today_outlined, size: 16),
+                label: Text(dateFmt.format(_date)),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: _pickTime,
+                icon: const Icon(Icons.access_time, size: 16),
+                label: Text('الوقت: $timeLabel'),
+              ),
+              const SizedBox(height: 12),
+              InputDecorator(
+                decoration: const InputDecoration(
+                    labelText: 'المدة', isDense: true),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<int>(
+                    value: _duration,
+                    isExpanded: true,
+                    items: const [
+                      DropdownMenuItem(value: 30, child: Text('30 دقيقة')),
+                      DropdownMenuItem(value: 45, child: Text('45 دقيقة')),
+                      DropdownMenuItem(value: 60, child: Text('60 دقيقة')),
+                      DropdownMenuItem(value: 90, child: Text('90 دقيقة')),
+                    ],
+                    onChanged: (v) => setState(() => _duration = v ?? 60),
                   ),
                 ),
-                const SizedBox(width: 8),
-                OutlinedButton.icon(
-                  onPressed: _pickTime,
-                  icon: const Icon(Icons.access_time, size: 16),
-                  label: Text(
-                      '${_time.hour.toString().padLeft(2, '0')}:${_time.minute.toString().padLeft(2, '0')}'),
-                ),
-              ]),
-              const SizedBox(height: 12),
-              Row(children: [
-                Text('المدة', style: theme.textTheme.titleSmall),
-                const SizedBox(width: 12),
-                DropdownButton<int>(
-                  value: _duration,
-                  items: const [
-                    DropdownMenuItem(value: 30, child: Text('30 دقيقة')),
-                    DropdownMenuItem(value: 45, child: Text('45 دقيقة')),
-                    DropdownMenuItem(value: 60, child: Text('60 دقيقة')),
-                    DropdownMenuItem(value: 90, child: Text('90 دقيقة')),
-                  ],
-                  onChanged: (v) => setState(() => _duration = v ?? 60),
-                ),
-              ]),
+              ),
               if (!_isEdit) ...[
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                      color: AppColors.sky,
-                      borderRadius: BorderRadius.circular(AppRadius.md)),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                const SizedBox(height: 12),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  title: const Text('تكرار أسبوعي'),
+                  value: _repeat,
+                  activeColor: AppColors.primary,
+                  onChanged: (v) => setState(() => _repeat = v),
+                ),
+                if (_repeat) ...[
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
                     children: [
-                      SwitchListTile(
-                        contentPadding: EdgeInsets.zero,
-                        dense: true,
-                        title: const Text('تكرار أسبوعي'),
-                        value: _repeat,
-                        activeColor: AppColors.primary,
-                        onChanged: (v) => setState(() => _repeat = v),
-                      ),
-                      if (_repeat) ...[
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 6,
-                          children: [
-                            for (final code in _scheduleDayOrder)
-                              FilterChip(
-                                label: Text(_scheduleDayLabels[code]!),
-                                selected: _weekdays
-                                    .contains(_codeToWeekday[code]),
-                                onSelected: (sel) => setState(() {
-                                  final wd = _codeToWeekday[code]!;
-                                  sel
-                                      ? _weekdays.add(wd)
-                                      : _weekdays.remove(wd);
-                                }),
-                              ),
-                          ],
+                      for (final code in _scheduleDayOrder)
+                        FilterChip(
+                          label: Text(_scheduleDayLabels[code]!),
+                          selected:
+                              _weekdays.contains(_codeToWeekday[code]),
+                          onSelected: (sel) => setState(() {
+                            final wd = _codeToWeekday[code]!;
+                            if (sel) {
+                              _weekdays.add(wd);
+                            } else {
+                              _weekdays.remove(wd);
+                            }
+                          }),
                         ),
-                        const SizedBox(height: 8),
-                        Row(children: [
-                          Text('حتى', style: theme.textTheme.bodySmall),
-                          const SizedBox(width: 8),
-                          TextButton(
-                              onPressed: _pickUntil,
-                              child: Text(dateFmt.format(_until))),
-                        ]),
-                      ],
                     ],
                   ),
-                ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      onPressed: _pickUntil,
+                      icon: const Icon(Icons.event_outlined, size: 16),
+                      label: Text('حتى ${dateFmt.format(_until)}'),
+                    ),
+                  ),
+                ],
               ],
-              const SizedBox(height: AppSpacing.md),
-              ElevatedButton(
-                  onPressed: _submit, child: const Text('حفظ الجلسة')),
             ],
           ),
         ),
       ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('إلغاء')),
+        ElevatedButton(onPressed: _submit, child: const Text('حفظ')),
+      ],
     );
   }
 }
