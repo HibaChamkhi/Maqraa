@@ -284,11 +284,10 @@ class _InviteCard extends StatelessWidget {
     }
 
     void share() {
-      SharePlus.instance.share(ShareParams(
+      Share.share(
+        'انضمي إلى حلقتنا في تطبيق «وِصَال» باستخدام رمز الدعوة: $code',
         subject: 'دعوة للانضمام إلى حلقة في وِصَال',
-        text:
-            'انضمي إلى حلقتنا في تطبيق «وِصَال» باستخدام رمز الدعوة: $code',
-      ));
+      );
     }
 
     return Container(
@@ -762,12 +761,10 @@ class _StudentsViewState extends State<_StudentsView> {
     // Prefix a BOM so Excel opens the Arabic text correctly.
     final bytes = Uint8List.fromList(utf8.encode('﻿$csv'));
     final safe = widget.circle.name.replaceAll(RegExp(r'\s+'), '_');
-    await SharePlus.instance.share(ShareParams(
+    await Share.shareXFiles(
+      [XFile.fromData(bytes, mimeType: 'text/csv', name: 'students_$safe.csv')],
       text: 'قائمة طالبات ${widget.circle.name}',
-      files: [
-        XFile.fromData(bytes, mimeType: 'text/csv', name: 'students_$safe.csv'),
-      ],
-    ));
+    );
   }
 }
 
