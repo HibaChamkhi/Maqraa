@@ -10,9 +10,12 @@ class SessionDto {
       title: (map['title'] ?? '') as String,
       scheduledAt:
           (map['scheduledAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      durationMinutes: (map['durationMinutes'] as num?)?.toInt() ?? 60,
+      type: SessionType.fromName(map['type'] as String?),
       status: SessionStatus.fromName(map['status'] as String?),
       link: (map['link'] ?? '') as String,
       createdBy: (map['createdBy'] ?? '') as String,
+      recurrenceId: map['recurrenceId'] as String?,
     );
   }
 
@@ -20,9 +23,12 @@ class SessionDto {
     return {
       'title': session.title,
       'scheduledAt': Timestamp.fromDate(session.scheduledAt),
+      'durationMinutes': session.durationMinutes,
+      'type': session.type.name,
       'status': session.status.name,
       'link': session.link,
       'createdBy': session.createdBy,
+      'recurrenceId': session.recurrenceId,
     };
   }
 }
