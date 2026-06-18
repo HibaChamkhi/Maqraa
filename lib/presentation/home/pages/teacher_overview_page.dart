@@ -360,6 +360,8 @@ class _ProgressCard extends StatelessWidget {
             child: (thisSpots.isEmpty && lastSpots.isEmpty)
                 ? Center(child: Text('سيظهر التقدّم بعد تسجيل الحفظ يوميًا', style: theme.textTheme.bodySmall))
                 : LineChart(LineChartData(
+                    minX: 0,
+                    maxX: 6,
                     minY: 0,
                     maxY: 100,
                     gridData: const FlGridData(show: true, drawVerticalLine: false, horizontalInterval: 25),
@@ -371,7 +373,10 @@ class _ProgressCard extends StatelessWidget {
                           sideTitles: SideTitles(showTitles: true, interval: 25, reservedSize: 34,
                               getTitlesWidget: (v, _) => Text('${v.toInt()}%', style: const TextStyle(fontSize: 10, color: AppColors.textMuted)))),
                       bottomTitles: AxisTitles(
-                          sideTitles: SideTitles(showTitles: true, reservedSize: 26, getTitlesWidget: (v, _) {
+                          sideTitles: SideTitles(showTitles: true, interval: 1, reservedSize: 26, getTitlesWidget: (v, _) {
+                        // Only label whole-number positions (0..6); fl_chart
+                        // otherwise emits fractional ticks that repeat a label.
+                        if (v != v.roundToDouble()) return const SizedBox.shrink();
                         final i = v.toInt();
                         if (i < 0 || i > 6) return const SizedBox.shrink();
                         return Padding(padding: const EdgeInsets.only(top: 6), child: Text(_days[i], style: const TextStyle(fontSize: 9, color: AppColors.ink)));
