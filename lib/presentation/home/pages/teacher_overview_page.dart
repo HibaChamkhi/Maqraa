@@ -10,6 +10,7 @@ import '../../../domain/auth/models/app_user.dart';
 import '../../../domain/calendar/repositories/calendar_repository.dart';
 import '../../../domain/circle/models/circle.dart';
 import '../../../domain/circle/repositories/circle_repository.dart';
+import '../../../domain/session/models/session.dart';
 
 /// الرئيسية — overview dashboard matching the «ورْد» reference.
 class TeacherOverviewPage extends StatefulWidget {
