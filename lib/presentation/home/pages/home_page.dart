@@ -52,6 +52,10 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   late Future<List<Circle>> _circlesFuture;
 
+  /// Whether the permanent side rail is shown (wide screens). The ≡ button
+  /// toggles it.
+  bool _railOpen = true;
+
   @override
   void initState() {
     super.initState();
@@ -72,10 +76,17 @@ class _HomePageState extends State<HomePage> {
           body: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              WardDrawer(user: user, permanent: true),
+              AnimatedSize(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeInOut,
+                child: _railOpen
+                    ? WardDrawer(user: user, permanent: true)
+                    : const SizedBox(height: double.infinity),
+              ),
               Expanded(
                 child: Column(children: [
-                  const _TopBar(menu: false),
+                  _TopBar(
+                      onMenu: () => setState(() => _railOpen = !_railOpen)),
                   Expanded(child: content),
                 ]),
               ),
@@ -146,7 +157,11 @@ class _HomePageState extends State<HomePage> {
 class _TopBar extends StatelessWidget {
   /// Whether to show the ≡ menu button (false on screens without a drawer).
   final bool menu;
-  const _TopBar({this.menu = true});
+
+  /// If provided, the ≡ button calls this (used to toggle the permanent rail)
+  /// instead of opening the pop-over drawer.
+  final VoidCallback? onMenu;
+  const _TopBar({this.menu = true, this.onMenu});
 
   @override
   Widget build(BuildContext context) {
@@ -163,7 +178,9 @@ class _TopBar extends StatelessWidget {
           ),
           child: Row(
             children: [
-              if (menu)
+              if (onMenu != null)
+                IconButton(icon: const Icon(Icons.menu), onPressed: onMenu)
+              else if (menu)
                 IconButton(
                   icon: const Icon(Icons.menu),
                   onPressed: () => Scaffold.of(context).openDrawer(),
