@@ -33,16 +33,6 @@ const _palette = <(Color, Color)>[
   (Color(0xFFFBEAF0), Color(0xFF993556)),
 ];
 
-const _weekdayCode = {
-  1: 'mon',
-  2: 'tue',
-  3: 'wed',
-  4: 'thu',
-  5: 'fri',
-  6: 'sat',
-  7: 'sun',
-};
-
 class _Ev {
   final DateTime start;
   final int durationMin;
@@ -50,6 +40,7 @@ class _Ev {
   final String title;
   final int colorIndex;
   final SessionStatus? status;
+  final SessionType? type;
   _Ev({
     required this.start,
     required this.durationMin,
@@ -57,6 +48,7 @@ class _Ev {
     required this.title,
     required this.colorIndex,
     this.status,
+    this.type,
   });
   DateTime get end => start.add(Duration(minutes: durationMin));
 }
@@ -111,11 +103,12 @@ class _WeekSchedulePageState extends State<WeekSchedulePage> {
       for (final s in sessions) {
         oneOff.add(_Ev(
           start: s.scheduledAt,
-          durationMin: c.durationMinutes,
+          durationMin: s.durationMinutes,
           circleName: c.name,
           title: s.title,
           colorIndex: color,
           status: s.status,
+          type: s.type,
         ));
       }
       try {
@@ -136,30 +129,6 @@ class _WeekSchedulePageState extends State<WeekSchedulePage> {
 
   void _shiftWeek(int weeks) =>
       setState(() => _weekStart = _weekStart.add(Duration(days: 7 * weeks)));
-
-  /// Recurring meeting blocks generated from each circle's dayTimes.
-  List<_Ev> _recurring(List<_CircleColor> circles, List<DateTime> days) {
-    final out = <_Ev>[];
-    for (final d in days) {
-      final code = _weekdayCode[d.weekday];
-      for (final cc in circles) {
-        final t = cc.circle.dayTimes[code];
-        if (t == null) continue;
-        final p = t.split(':');
-        if (p.length != 2) continue;
-        final start = DateTime(
-            d.year, d.month, d.day, int.tryParse(p[0]) ?? 0, int.tryParse(p[1]) ?? 0);
-        out.add(_Ev(
-          start: start,
-          durationMin: cc.circle.durationMinutes,
-          circleName: cc.circle.name,
-          title: cc.circle.name,
-          colorIndex: cc.color,
-        ));
-      }
-    }
-    return out;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -186,17 +155,16 @@ class _WeekSchedulePageState extends State<WeekSchedulePage> {
           final days = [
             for (var i = 0; i < 7; i++) _weekStart.add(Duration(days: i))
           ];
-          final weekEvents = [
-            ..._recurring(d.circles, days),
-            ...d.oneOff.where((e) =>
-                !e.start.isBefore(days.first) &&
-                e.start.isBefore(days.last.add(const Duration(days: 1)))),
-          ];
+          final weekEvents = d.oneOff
+              .where((e) =>
+                  !e.start.isBefore(days.first) &&
+                  e.start.isBefore(days.last.add(const Duration(days: 1))))
+              .toList();
           final today = DateTime.now();
-          final todayEvents = [
-            ..._recurring(d.circles, [DateTime(today.year, today.month, today.day)]),
-            ...d.oneOff.where((e) => _sameDay(e.start, today)),
-          ]..sort((a, b) => a.start.compareTo(b.start));
+          final todayEvents = d.oneOff
+              .where((e) => _sameDay(e.start, today))
+              .toList()
+            ..sort((a, b) => a.start.compareTo(b.start));
 
           return LayoutBuilder(builder: (context, c) {
             final wide = c.maxWidth >= 900;
@@ -664,8 +632,8 @@ class _AgendaList extends StatelessWidget {
               child: Icon(Icons.videocam_outlined, color: fg),
             ),
             title: Text(e.circleName, style: theme.textTheme.titleSmall),
-            subtitle:
-                Text('${fmt.format(e.start)} - ${fmt.format(e.end)} · ${e.title}'),
+            subtitle: Text(
+                '${fmt.format(e.start)} - ${fmt.format(e.end)} · ${e.type?.arabicLabel ?? e.title}'),
           ),
         ));
       }

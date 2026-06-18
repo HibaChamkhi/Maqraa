@@ -13,7 +13,8 @@ import '../../../core/ui/widgets/werd_widgets.dart';
 import '../../../domain/auth/models/app_user.dart';
 import '../../../domain/circle/models/circle.dart';
 import '../../../domain/circle/repositories/circle_repository.dart';
-import '../../calendar/pages/manage_calendar_page.dart';
+import '../../../domain/session/models/session.dart';
+import '../../calendar/bloc/calendar_bloc.dart';
 import '../../exam/pages/teacher_exams_page.dart';
 import '../../session/pages/live_session_page.dart';
 import '../bloc/circle_bloc.dart';
@@ -416,7 +417,22 @@ const _scheduleDayLabels = {
   'fri': 'الجمعة',
 };
 
-class _ScheduleTab extends StatefulWidget {
+const _codeToWeekday = {
+  'sat': DateTime.saturday,
+  'sun': DateTime.sunday,
+  'mon': DateTime.monday,
+  'tue': DateTime.tuesday,
+  'wed': DateTime.wednesday,
+  'thu': DateTime.thursday,
+  'fri': DateTime.friday,
+};
+
+Color _sessionTypeColor(SessionType t) =>
+    t == SessionType.imla2 ? AppColors.warning : AppColors.primary;
+
+/// الجدول tab — manage this circle's sessions (single or recurring),
+/// each independently editable/cancelable.
+class _ScheduleTab extends StatelessWidget {
   final Circle circle;
   final AppUser user;
   final bool canManage;
@@ -424,191 +440,476 @@ class _ScheduleTab extends StatefulWidget {
       {required this.circle, required this.user, required this.canManage});
 
   @override
-  State<_ScheduleTab> createState() => _ScheduleTabState();
-}
-
-class _ScheduleTabState extends State<_ScheduleTab> {
-  late final Map<String, String> _times = {...widget.circle.dayTimes};
-  late int _duration = widget.circle.durationMinutes;
-  bool _saving = false;
-
-  Future<void> _pickTime(String day) async {
-    final current = _times[day];
-    final init = current != null
-        ? TimeOfDay(
-            hour: int.parse(current.split(':')[0]),
-            minute: int.parse(current.split(':')[1]))
-        : const TimeOfDay(hour: 8, minute: 0);
-    final picked = await showTimePicker(context: context, initialTime: init);
-    if (picked != null) {
-      setState(() => _times[day] =
-          '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}');
-    }
-  }
-
-  void _toggle(String day) => setState(() {
-        if (_times.containsKey(day)) {
-          _times.remove(day);
-        } else {
-          _times[day] = '08:00';
-        }
-      });
-
-  Future<void> _save() async {
-    setState(() => _saving = true);
-    try {
-      await getIt<CircleRepository>().updateSchedule(
-        circleId: widget.circle.id,
-        dayTimes: _times,
-        durationMinutes: _duration,
-      );
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('تم حفظ الجدول الأسبوعي')));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('تعذّر الحفظ: $e')));
-      }
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    if (!widget.canManage) {
-      final entries = _scheduleDayOrder.where(_times.containsKey).toList();
-      return entries.isEmpty
-          ? Center(
-              child: Text('لم يُحدَّد جدول الحلقة بعد',
-                  style: theme.textTheme.bodyMedium))
-          : ListView(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              children: [
-                for (final d in entries)
-                  ListTile(
-                    leading:
-                        const Icon(Icons.event_outlined, color: AppColors.primary),
-                    title: Text(_scheduleDayLabels[d]!),
-                    trailing: Text('${_times[d]} · $_duration د',
-                        style: theme.textTheme.titleSmall),
-                  ),
-              ],
-            );
-    }
-
-    return ListView(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      children: [
-        Text('أيام ومواعيد الحلقة', style: theme.textTheme.titleMedium),
-        const SizedBox(height: 4),
-        Text('اختاري أيام اللقاء ووقت كل يوم — يظهر تلقائيًا في الجدول الأسبوعي.',
-            style:
-                theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted)),
-        const SizedBox(height: AppSpacing.md),
-        for (final d in _scheduleDayOrder)
-          _DayRow(
-            label: _scheduleDayLabels[d]!,
-            selected: _times.containsKey(d),
-            time: _times[d],
-            onToggle: () => _toggle(d),
-            onPickTime: () => _pickTime(d),
-          ),
-        const SizedBox(height: AppSpacing.md),
-        Row(
-          children: [
-            Text('مدة اللقاء', style: theme.textTheme.titleSmall),
-            const SizedBox(width: 12),
-            DropdownButton<int>(
-              value: _duration,
-              items: const [
-                DropdownMenuItem(value: 30, child: Text('30 دقيقة')),
-                DropdownMenuItem(value: 45, child: Text('45 دقيقة')),
-                DropdownMenuItem(value: 60, child: Text('60 دقيقة')),
-                DropdownMenuItem(value: 90, child: Text('90 دقيقة')),
-              ],
-              onChanged: (v) => setState(() => _duration = v ?? 60),
-            ),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.md),
-        ElevatedButton.icon(
-          onPressed: _saving ? null : _save,
-          icon: _saving
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2, color: Colors.white))
-              : const Icon(Icons.save_outlined),
-          label: const Text('حفظ الجدول'),
-        ),
-        const Divider(height: AppSpacing.xl),
-        TextButton.icon(
-          onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => ManageCalendarPage(
-                  circleId: widget.circle.id, user: widget.user))),
-          icon: const Icon(Icons.add),
-          label: const Text('إضافة جلسة فردية (مرة واحدة)'),
-        ),
-      ],
+    return BlocProvider(
+      create: (_) =>
+          getIt<CalendarBloc>()..add(CalendarSessionsRequested(circle.id)),
+      child: _ScheduleView(circle: circle, canManage: canManage),
     );
   }
 }
 
-class _DayRow extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final String? time;
-  final VoidCallback onToggle;
-  final VoidCallback onPickTime;
-  const _DayRow({
-    required this.label,
-    required this.selected,
-    required this.time,
-    required this.onToggle,
-    required this.onPickTime,
-  });
+class _ScheduleView extends StatelessWidget {
+  final Circle circle;
+  final bool canManage;
+  const _ScheduleView({required this.circle, required this.canManage});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: selected ? AppColors.sky : AppColors.surface,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(
-            color: selected ? AppColors.primary : AppColors.border),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: CheckboxListTile(
-              value: selected,
-              onChanged: (_) => onToggle(),
-              activeColor: AppColors.primary,
-              controlAffinity: ListTileControlAffinity.leading,
-              title: Text(label),
-            ),
-          ),
-          if (selected)
-            Padding(
-              padding: const EdgeInsets.only(left: 8),
-              child: OutlinedButton.icon(
-                onPressed: onPickTime,
-                icon: const Icon(Icons.access_time, size: 16),
-                label: Text(time ?? 'الوقت'),
+    final theme = Theme.of(context);
+    final headerFmt = DateFormat('EEEE d MMMM', 'ar');
+    return BlocConsumer<CalendarBloc, CalendarState>(
+      listenWhen: (p, c) => c.message.isNotEmpty && p.message != c.message,
+      listener: (context, state) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(state.message)));
+      },
+      builder: (context, state) {
+        if (state.status == UIStatus.loading && state.sessions.isEmpty) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final now = DateTime.now();
+        final start = DateTime(now.year, now.month, now.day);
+        final upcoming = state.sessions
+            .where((s) => !s.scheduledAt.isBefore(start))
+            .toList()
+          ..sort((a, b) => a.scheduledAt.compareTo(b.scheduledAt));
+
+        // group by day
+        final groups = <String, List<Session>>{};
+        for (final s in upcoming) {
+          final key = DateFormat('yyyy-MM-dd').format(s.scheduledAt);
+          (groups[key] ??= []).add(s);
+        }
+
+        return Column(
+          children: [
+            if (canManage)
+              Padding(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                child: Row(
+                  children: [
+                    Text('الجلسات القادمة', style: theme.textTheme.titleMedium),
+                    const Spacer(),
+                    ElevatedButton.icon(
+                      onPressed: () => _openForm(context, circle.id),
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('جلسة جديدة'),
+                      style: ElevatedButton.styleFrom(
+                          minimumSize: const Size(0, 44)),
+                    ),
+                  ],
+                ),
               ),
+            Expanded(
+              child: upcoming.isEmpty
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(AppSpacing.xl),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.event_available_outlined,
+                                size: 56, color: AppColors.textMuted),
+                            const SizedBox(height: 12),
+                            Text('لا توجد جلسات قادمة',
+                                style: theme.textTheme.titleMedium),
+                            if (canManage) ...[
+                              const SizedBox(height: 6),
+                              Text('أضيفي جلسة من زر «جلسة جديدة».',
+                                  style: theme.textTheme.bodySmall
+                                      ?.copyWith(color: AppColors.textMuted)),
+                            ],
+                          ],
+                        ),
+                      ),
+                    )
+                  : ListView(
+                      padding: const EdgeInsets.fromLTRB(
+                          AppSpacing.md, 0, AppSpacing.md, AppSpacing.lg),
+                      children: [
+                        for (final entry in groups.entries) ...[
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(4, 10, 4, 6),
+                            child: Text(
+                                headerFmt
+                                    .format(entry.value.first.scheduledAt),
+                                style: theme.textTheme.titleSmall),
+                          ),
+                          for (final s in entry.value)
+                            _SessionCard(
+                              session: s,
+                              canManage: canManage,
+                              onEdit: () =>
+                                  _openForm(context, circle.id, initial: s),
+                              onDelete: () =>
+                                  _confirmDelete(context, circle.id, s),
+                            ),
+                        ],
+                      ],
+                    ),
             ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _openForm(BuildContext context, String circleId, {Session? initial}) {
+    final bloc = context.read<CalendarBloc>();
+    showDialog<void>(
+      context: context,
+      builder: (_) =>
+          _SessionForm(bloc: bloc, circleId: circleId, initial: initial),
+    );
+  }
+
+  void _confirmDelete(BuildContext context, String circleId, Session s) {
+    final bloc = context.read<CalendarBloc>();
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('حذف الجلسة'),
+        content: Text(s.isRecurring
+            ? 'هذه الجلسة ضمن سلسلة متكرّرة. ماذا تريدين حذفه؟'
+            : 'هل تريدين حذف هذه الجلسة؟'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
+          if (s.isRecurring)
+            TextButton(
+              onPressed: () {
+                bloc.add(CalendarSeriesDeleted(
+                    circleId: circleId, recurrenceId: s.recurrenceId!));
+                Navigator.pop(ctx);
+              },
+              child: const Text('حذف السلسلة كاملة'),
+            ),
+          ElevatedButton(
+            onPressed: () {
+              bloc.add(
+                  CalendarSessionDeleted(circleId: circleId, sessionId: s.id));
+              Navigator.pop(ctx);
+            },
+            style:
+                ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            child: Text(s.isRecurring ? 'حذف هذه فقط' : 'حذف'),
+          ),
         ],
       ),
     );
   }
 }
+
+class _SessionCard extends StatelessWidget {
+  final Session session;
+  final bool canManage;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+  const _SessionCard({
+    required this.session,
+    required this.canManage,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final fmt = DateFormat('HH:mm');
+    final color = _sessionTypeColor(session.type);
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(AppRadius.sm)),
+              child: Icon(
+                  session.type == SessionType.imla2
+                      ? Icons.edit_note_outlined
+                      : Icons.record_voice_over_outlined,
+                  color: color),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(session.title, style: theme.textTheme.titleSmall),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${fmt.format(session.scheduledAt)} - ${fmt.format(session.endsAt)} · ${session.type.arabicLabel}${session.isRecurring ? ' · أسبوعية' : ''}',
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: AppColors.textMuted),
+                  ),
+                ],
+              ),
+            ),
+            if (canManage) ...[
+              IconButton(
+                  onPressed: onEdit,
+                  icon: const Icon(Icons.edit_outlined,
+                      size: 18, color: AppColors.primary)),
+              IconButton(
+                  onPressed: onDelete,
+                  icon: const Icon(Icons.close,
+                      size: 18, color: AppColors.error)),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Add/edit a session — supports an optional weekly-repeat that generates
+/// one session per occurrence.
+class _SessionForm extends StatefulWidget {
+  final CalendarBloc bloc;
+  final String circleId;
+  final Session? initial;
+  const _SessionForm(
+      {required this.bloc, required this.circleId, this.initial});
+
+  @override
+  State<_SessionForm> createState() => _SessionFormState();
+}
+
+class _SessionFormState extends State<_SessionForm> {
+  late final TextEditingController _title =
+      TextEditingController(text: widget.initial?.title ?? '');
+  late DateTime _date = widget.initial?.scheduledAt ?? DateTime.now();
+  late TimeOfDay _time = TimeOfDay.fromDateTime(
+      widget.initial?.scheduledAt ?? DateTime.now());
+  late int _duration = widget.initial?.durationMinutes ?? 60;
+  late SessionType _type = widget.initial?.type ?? SessionType.tasmi3;
+  bool _repeat = false;
+  final Set<int> _weekdays = {};
+  late DateTime _until = DateTime.now().add(const Duration(days: 28));
+
+  bool get _isEdit => widget.initial != null;
+
+  @override
+  void dispose() {
+    _title.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDate() async {
+    final p = await showDatePicker(
+      context: context,
+      initialDate: _date,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2035, 12, 31),
+    );
+    if (p != null) setState(() => _date = p);
+  }
+
+  Future<void> _pickUntil() async {
+    final p = await showDatePicker(
+      context: context,
+      initialDate: _until,
+      firstDate: _date,
+      lastDate: DateTime(2035, 12, 31),
+    );
+    if (p != null) setState(() => _until = p);
+  }
+
+  Future<void> _pickTime() async {
+    final p = await showTimePicker(context: context, initialTime: _time);
+    if (p != null) setState(() => _time = p);
+  }
+
+  List<DateTime> _occurrences() {
+    final out = <DateTime>[];
+    var d = DateTime(_date.year, _date.month, _date.day);
+    final end = DateTime(_until.year, _until.month, _until.day);
+    var guard = 0;
+    while (!d.isAfter(end) && guard < 200) {
+      if (_weekdays.contains(d.weekday)) {
+        out.add(DateTime(d.year, d.month, d.day, _time.hour, _time.minute));
+      }
+      d = d.add(const Duration(days: 1));
+      guard++;
+    }
+    return out;
+  }
+
+  void _submit() {
+    if (_title.text.trim().isEmpty) return;
+    final at = DateTime(
+        _date.year, _date.month, _date.day, _time.hour, _time.minute);
+    if (_isEdit) {
+      widget.bloc.add(CalendarSessionUpdated(
+        circleId: widget.circleId,
+        sessionId: widget.initial!.id,
+        title: _title.text,
+        scheduledAt: at,
+        durationMinutes: _duration,
+        type: _type,
+      ));
+    } else if (_repeat && _weekdays.isNotEmpty) {
+      widget.bloc.add(CalendarRecurringSessionsAdded(
+        circleId: widget.circleId,
+        title: _title.text,
+        type: _type,
+        durationMinutes: _duration,
+        occurrences: _occurrences(),
+      ));
+    } else {
+      widget.bloc.add(CalendarSessionAdded(
+        circleId: widget.circleId,
+        title: _title.text,
+        scheduledAt: at,
+        durationMinutes: _duration,
+        type: _type,
+      ));
+    }
+    Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final dateFmt = DateFormat('EEEE d MMMM', 'ar');
+    final w = MediaQuery.of(context).size.width;
+    return Dialog(
+      insetPadding: const EdgeInsets.all(24),
+      shape:
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
+      child: SizedBox(
+        width: w < 560 ? w - 48 : 480,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(_isEdit ? 'تعديل الجلسة' : 'جلسة جديدة',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.titleLarge),
+              const SizedBox(height: AppSpacing.md),
+              TextField(
+                controller: _title,
+                decoration: const InputDecoration(labelText: 'عنوان الجلسة'),
+              ),
+              const SizedBox(height: 12),
+              SegmentedButton<SessionType>(
+                segments: const [
+                  ButtonSegment(
+                      value: SessionType.tasmi3, label: Text('تسميع')),
+                  ButtonSegment(
+                      value: SessionType.imla2, label: Text('إملاء')),
+                ],
+                selected: {_type},
+                onSelectionChanged: (s) => setState(() => _type = s.first),
+              ),
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _pickDate,
+                    icon: const Icon(Icons.calendar_today_outlined, size: 16),
+                    label: Text(dateFmt.format(_date),
+                        overflow: TextOverflow.ellipsis),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  onPressed: _pickTime,
+                  icon: const Icon(Icons.access_time, size: 16),
+                  label: Text(
+                      '${_time.hour.toString().padLeft(2, '0')}:${_time.minute.toString().padLeft(2, '0')}'),
+                ),
+              ]),
+              const SizedBox(height: 12),
+              Row(children: [
+                Text('المدة', style: theme.textTheme.titleSmall),
+                const SizedBox(width: 12),
+                DropdownButton<int>(
+                  value: _duration,
+                  items: const [
+                    DropdownMenuItem(value: 30, child: Text('30 دقيقة')),
+                    DropdownMenuItem(value: 45, child: Text('45 دقيقة')),
+                    DropdownMenuItem(value: 60, child: Text('60 دقيقة')),
+                    DropdownMenuItem(value: 90, child: Text('90 دقيقة')),
+                  ],
+                  onChanged: (v) => setState(() => _duration = v ?? 60),
+                ),
+              ]),
+              if (!_isEdit) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                      color: AppColors.sky,
+                      borderRadius: BorderRadius.circular(AppRadius.md)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        title: const Text('تكرار أسبوعي'),
+                        value: _repeat,
+                        activeColor: AppColors.primary,
+                        onChanged: (v) => setState(() => _repeat = v),
+                      ),
+                      if (_repeat) ...[
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            for (final code in _scheduleDayOrder)
+                              FilterChip(
+                                label: Text(_scheduleDayLabels[code]!),
+                                selected: _weekdays
+                                    .contains(_codeToWeekday[code]),
+                                onSelected: (sel) => setState(() {
+                                  final wd = _codeToWeekday[code]!;
+                                  sel
+                                      ? _weekdays.add(wd)
+                                      : _weekdays.remove(wd);
+                                }),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(children: [
+                          Text('حتى', style: theme.textTheme.bodySmall),
+                          const SizedBox(width: 8),
+                          TextButton(
+                              onPressed: _pickUntil,
+                              child: Text(dateFmt.format(_until))),
+                        ]),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: AppSpacing.md),
+              ElevatedButton(
+                  onPressed: _submit, child: const Text('حفظ الجلسة')),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 
 // ---------------------------------------------------------------------------
 //  الطالبات tab
