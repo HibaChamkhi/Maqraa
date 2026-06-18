@@ -2321,13 +2321,22 @@ class _WeeklyAttendanceState extends State<_WeeklyAttendance> {
 
   Future<void> _cycle(
       String dateId, String uid, AttendanceState? current) async {
-    await getIt<CircleRepository>().markAttendance(
-      circleId: widget.circle.id,
-      dateId: dateId,
-      uid: uid,
-      state: _nextState(current),
-    );
-    if (mounted) setState(() => _future = _load());
+    try {
+      await getIt<CircleRepository>().markAttendance(
+        circleId: widget.circle.id,
+        dateId: dateId,
+        uid: uid,
+        state: _nextState(current),
+      );
+      if (mounted) setState(() => _future = _load());
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(
+              content: Text('تعذّر حفظ الحضور — تحقّقي من نشر قواعد Firestore')));
+      }
+    }
   }
 
   @override
