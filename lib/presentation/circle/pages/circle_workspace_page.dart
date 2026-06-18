@@ -99,7 +99,7 @@ class _CircleWorkspacePageState extends State<CircleWorkspacePage> {
         appBar: AppBar(toolbarHeight: 48, title: const SizedBox.shrink()),
         body: Column(
           children: [
-            _CircleHeader(circle: circle, canManage: _canManage),
+            _CircleHeader(circle: circle, user: user, canManage: _canManage),
             Material(
               color: AppColors.surface,
               child: TabBar(
@@ -152,8 +152,18 @@ class _CircleWorkspacePageState extends State<CircleWorkspacePage> {
 
 class _CircleHeader extends StatelessWidget {
   final Circle circle;
+  final AppUser user;
   final bool canManage;
-  const _CircleHeader({required this.circle, required this.canManage});
+  const _CircleHeader(
+      {required this.circle, required this.user, required this.canManage});
+
+  /// The owning teacher's name — falls back to the current owner's name when
+  /// the stored teacherName is empty (legacy circles).
+  String get _teacherName {
+    if (circle.teacherName.isNotEmpty) return circle.teacherName;
+    if (user.uid == circle.teacherId && user.name.isNotEmpty) return user.name;
+    return '—';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -178,7 +188,7 @@ class _CircleHeader extends StatelessWidget {
       _InfoCard(
           icon: Icons.person_outline,
           label: 'المعلم المسؤول',
-          value: circle.teacherName.isEmpty ? '—' : circle.teacherName),
+          value: _teacherName),
       _DaysInfoCard(circleId: circle.id),
       _LevelInfoCard(circle: circle, canManage: canManage),
       _RiwayahInfoCard(circle: circle, canManage: canManage),
