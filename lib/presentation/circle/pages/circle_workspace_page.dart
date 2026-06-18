@@ -9,6 +9,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../../core/data/quran_surahs.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/model /ui_state.dart';
+import '../../../core/util/last_location_store.dart';
 import '../../../core/ui/styles/theme.dart';
 import '../../../core/ui/widgets/werd_widgets.dart';
 import '../../../domain/auth/models/app_user.dart';
@@ -53,19 +54,47 @@ Color performanceColor(PerformanceTag? p) {
 }
 
 /// The workspace of ONE حلقة. Everything here is scoped to [circle].
-class CircleWorkspacePage extends StatelessWidget {
+class CircleWorkspacePage extends StatefulWidget {
   final Circle circle;
   final AppUser user;
+  final int initialTab;
 
-  const CircleWorkspacePage({super.key, required this.circle, required this.user});
+  const CircleWorkspacePage(
+      {super.key,
+      required this.circle,
+      required this.user,
+      this.initialTab = 0});
 
+  @override
+  State<CircleWorkspacePage> createState() => _CircleWorkspacePageState();
+}
+
+class _CircleWorkspacePageState extends State<CircleWorkspacePage> {
   bool get _canManage =>
-      user.role == UserRole.teacher || user.role == UserRole.supervisor;
+      widget.user.role == UserRole.teacher ||
+      widget.user.role == UserRole.supervisor;
+
+  @override
+  void initState() {
+    super.initState();
+    // Remember this circle + tab so a web refresh restores it.
+    LastLocationStore.saveCircle(widget.circle.id, widget.initialTab);
+  }
+
+  @override
+  void dispose() {
+    // Leaving the workspace (back) clears the saved location.
+    LastLocationStore.clear();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final circle = widget.circle;
+    final user = widget.user;
     return DefaultTabController(
       length: 4,
+      initialIndex: widget.initialTab,
       child: Scaffold(
         appBar: AppBar(toolbarHeight: 48, title: const SizedBox.shrink()),
         body: Column(
@@ -73,13 +102,14 @@ class CircleWorkspacePage extends StatelessWidget {
             _CircleHeader(circle: circle, canManage: _canManage),
             Material(
               color: AppColors.surface,
-              child: const TabBar(
+              child: TabBar(
                 isScrollable: true,
                 labelColor: AppColors.primary,
                 unselectedLabelColor: AppColors.textMuted,
                 indicatorColor: AppColors.primary,
                 tabAlignment: TabAlignment.start,
-                tabs: [
+                onTap: (i) => LastLocationStore.saveCircle(circle.id, i),
+                tabs: const [
                   Tab(text: 'الطالبات'),
                   Tab(text: 'الجدول'),
                   Tab(text: 'الجلسات'),

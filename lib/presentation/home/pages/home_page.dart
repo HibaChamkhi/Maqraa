@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/di/injection.dart';
+import '../../../core/util/last_location_store.dart';
 import '../../../domain/auth/models/app_user.dart';
 import '../../../domain/circle/models/circle.dart';
 import '../../../domain/circle/repositories/circle_repository.dart';
@@ -61,6 +62,35 @@ class _HomePageState extends State<HomePage> {
 
   /// Currently-selected sidebar section (drives the active highlight).
   String _section = 'الرئيسية';
+
+  /// Restores the last-open circle/tab once after a (web) refresh.
+  bool _restored = false;
+
+  void _maybeRestore(
+      BuildContext context, List<Circle> circles, AppUser user) {
+    if (_restored) return;
+    _restored = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final saved = await LastLocationStore.load();
+      if (saved.circleId == null || !mounted) return;
+      Circle? circle;
+      for (final c in circles) {
+        if (c.id == saved.circleId) {
+          circle = c;
+          break;
+        }
+      }
+      if (circle == null || !mounted) return;
+      final wide = MediaQuery.of(context).size.width >= 900;
+      final nav = wide
+          ? _contentNav.currentState
+          : Navigator.of(context, rootNavigator: true);
+      nav?.push(MaterialPageRoute(
+        builder: (_) => CircleWorkspacePage(
+            circle: circle!, user: user, initialTab: saved.tab),
+      ));
+    });
+  }
 
   @override
   void initState() {
@@ -162,6 +192,7 @@ class _HomePageState extends State<HomePage> {
         }
 
         // Teachers / supervisors get the overview dashboard (الرئيسية).
+        _maybeRestore(context, circles, user);
         return _shell(
           user: user,
           content: TeacherOverviewPage(user: user, circles: circles),
