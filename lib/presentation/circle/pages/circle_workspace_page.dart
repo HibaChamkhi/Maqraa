@@ -174,45 +174,33 @@ class _CircleHeader extends StatelessWidget {
       child: LayoutBuilder(builder: (context, c) {
         final wide = c.maxWidth >= 760;
         final invite = canManage ? _InviteCard(code: circle.inviteCode) : null;
-        if (wide) {
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (invite != null) ...[
-                SizedBox(width: 260, child: invite),
-                const SizedBox(width: AppSpacing.md),
-              ],
-              Expanded(
-                child: Row(
-                  children: [
-                    for (var i = 0; i < cards.length; i++) ...[
-                      if (i > 0) const SizedBox(width: AppSpacing.sm),
-                      Expanded(child: cards[i]),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(width: AppSpacing.lg),
-              titleBlock,
-            ],
-          );
-        }
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Align(alignment: Alignment.centerRight, child: titleBlock),
             const SizedBox(height: AppSpacing.md),
-            Row(
-              children: [
-                for (var i = 0; i < cards.length; i++) ...[
-                  if (i > 0) const SizedBox(width: AppSpacing.sm),
-                  Expanded(child: cards[i]),
-                ],
+            if (wide)
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (var i = 0; i < cards.length; i++) ...[
+                      if (i > 0) const SizedBox(width: AppSpacing.sm),
+                      Expanded(child: cards[i]),
+                    ],
+                    if (invite != null) ...[
+                      const SizedBox(width: AppSpacing.sm),
+                      SizedBox(width: 260, child: invite),
+                    ],
+                  ],
+                ),
+              )
+            else ...[
+              for (final card in cards) ...[
+                card,
+                const SizedBox(height: AppSpacing.sm),
               ],
-            ),
-            if (invite != null) ...[
-              const SizedBox(height: AppSpacing.md),
-              invite,
+              if (invite != null) invite,
             ],
           ],
         );
@@ -253,8 +241,7 @@ class _InfoCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Container(
-      height: 88,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.lg),
@@ -264,27 +251,38 @@ class _InfoCard extends StatelessWidget {
               color: Color(0x0A1F2937), blurRadius: 10, offset: Offset(0, 3)),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
+      child: Row(
         children: [
-          Row(children: [
-            Icon(icon, size: 16, color: AppColors.primary),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: AppColors.textMuted)),
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: AppColors.sky,
+              borderRadius: BorderRadius.circular(AppRadius.md),
             ),
-          ]),
-          const SizedBox(height: 8),
-          Text(value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w700)),
+            child: Icon(icon, size: 22, color: AppColors.primary),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: AppColors.textMuted)),
+                const SizedBox(height: 4),
+                Text(value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w700)),
+              ],
+            ),
+          ),
         ],
       ),
     );
