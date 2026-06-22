@@ -260,7 +260,7 @@ class _CircleHeader extends StatelessWidget {
           icon: Icons.person_outline,
           label: 'المعلم المسؤول',
           value: _teacherName),
-      _DaysInfoCard(circleId: circle.id, canManage: canManage),
+      _DaysInfoCard(circle: circle, canManage: canManage),
       _LevelInfoCard(circle: circle, canManage: canManage),
       _RiwayahInfoCard(circle: circle, canManage: canManage),
     ];
@@ -587,14 +587,39 @@ class _DescriptionLineState extends State<_DescriptionLine> {
 /// «أيام الحلقة» card — derives the meeting days from the circle's actual
 /// sessions (their distinct weekdays), since scheduling is session-based.
 class _DaysInfoCard extends StatelessWidget {
-  final String circleId;
+  final Circle circle;
   final bool canManage;
-  const _DaysInfoCard({required this.circleId, required this.canManage});
+  const _DaysInfoCard({required this.circle, required this.canManage});
+
+  // Tapping jumps to the الجلسات tab where the fixed schedule is edited.
+  Widget _wrap(BuildContext context, Widget card) {
+    if (!canManage) return card;
+    return InkWell(
+      borderRadius: BorderRadius.circular(AppRadius.lg),
+      onTap: () => DefaultTabController.maybeOf(context)?.animateTo(2),
+      child: card,
+    );
+  }
+
+  Widget _card(String value) => _InfoCard(
+        icon: Icons.event_outlined,
+        label: 'أيام الحلقة',
+        value: value,
+      );
 
   @override
   Widget build(BuildContext context) {
+    // Prefer the fixed rule (single source of truth); fall back to deriving
+    // days from sessions for circles that haven't set a rule yet.
+    if (circle.days.isNotEmpty) {
+      final days = [
+        for (final code in _scheduleDayOrder)
+          if (circle.days.contains(code)) _scheduleDayLabels[code]!
+      ];
+      return _wrap(context, _card(days.isEmpty ? 'لم تُحدَّد' : days.join(' · ')));
+    }
     return FutureBuilder<List<Session>>(
-      future: getIt<CalendarRepository>().getSessions(circleId),
+      future: getIt<CalendarRepository>().getSessions(circle.id),
       builder: (context, snap) {
         final sessions = snap.data ?? const <Session>[];
         final wds = sessions.map((s) => s.scheduledAt.weekday).toSet();
@@ -602,22 +627,8 @@ class _DaysInfoCard extends StatelessWidget {
           for (final code in _scheduleDayOrder)
             if (wds.contains(_codeToWeekday[code])) _scheduleDayLabels[code]!
         ];
-        final card = _InfoCard(
-          icon: Icons.event_outlined,
-          label: 'أيام الحلقة',
-          value: days.isEmpty ? 'لم تُحدَّد' : days.join(' · '),
-        );
-        if (!canManage) return card;
-        // Days are driven by the recurring sessions — tapping jumps to the
-        // الجلسات tab (session manager) where they're set.
-        return InkWell(
-          borderRadius: BorderRadius.circular(AppRadius.lg),
-          onTap: () {
-            final controller = DefaultTabController.maybeOf(context);
-            controller?.animateTo(2);
-          },
-          child: card,
-        );
+        return _wrap(
+            context, _card(days.isEmpty ? 'لم تُحدَّد' : days.join(' · ')));
       },
     );
   }
@@ -1156,6 +1167,8 @@ class _ScheduleView extends StatelessWidget {
                 ],
               ),
             ),
+            if (canManage || circle.days.isNotEmpty)
+              _FixedScheduleCard(circle: circle, canManage: canManage),
             Expanded(
               child: upcoming.isEmpty
                   ? Center(
@@ -1251,6 +1264,253 @@ class _ScheduleView extends StatelessWidget {
             child: Text(s.isRecurring ? 'حذف هذه فقط' : 'حذف'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// «الجدول الثابت» — the حلقة's fixed recurring rule (days + time + duration),
+/// the single source of truth for أيام الحلقة and the attendance columns.
+class _FixedScheduleCard extends StatefulWidget {
+  final Circle circle;
+  final bool canManage;
+  const _FixedScheduleCard({required this.circle, required this.canManage});
+
+  @override
+  State<_FixedScheduleCard> createState() => _FixedScheduleCardState();
+}
+
+class _FixedScheduleCardState extends State<_FixedScheduleCard> {
+  late Map<String, String> _dayTimes =
+      Map<String, String>.from(widget.circle.dayTimes);
+  late int _duration = widget.circle.durationMinutes;
+
+  List<String> get _days =>
+      [for (final c in _scheduleDayOrder) if (_dayTimes.containsKey(c)) c];
+
+  String get _commonTime =>
+      _dayTimes.isEmpty ? '06:00' : _dayTimes.values.first;
+
+  static TimeOfDay _parseTime(String hhmm) {
+    final parts = hhmm.split(':');
+    return TimeOfDay(
+      hour: int.tryParse(parts.first) ?? 6,
+      minute: int.tryParse(parts.length > 1 ? parts[1] : '0') ?? 0,
+    );
+  }
+
+  String _fmtTime(String hhmm) {
+    final t = _parseTime(hhmm);
+    final period = t.hour < 12 ? 'ص' : 'م';
+    final h12 = t.hour % 12 == 0 ? 12 : t.hour % 12;
+    return '$h12:${t.minute.toString().padLeft(2, '0')} $period';
+  }
+
+  Future<void> _edit() async {
+    final result =
+        await showDialog<({Set<String> days, TimeOfDay time, int duration})>(
+      context: context,
+      builder: (_) => _FixedScheduleEditor(
+        initialDays: _days.toSet(),
+        initialTime: _parseTime(_commonTime),
+        initialDuration: _duration,
+      ),
+    );
+    if (result == null) return;
+    final hh = result.time.hour.toString().padLeft(2, '0');
+    final mm = result.time.minute.toString().padLeft(2, '0');
+    final map = {for (final d in result.days) d: '$hh:$mm'};
+    setState(() {
+      _dayTimes = map;
+      _duration = result.duration;
+    });
+    try {
+      await getIt<CircleRepository>().updateSchedule(
+        circleId: widget.circle.id,
+        dayTimes: map,
+        durationMinutes: result.duration,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+              const SnackBar(content: Text('تم تحديث الجدول الثابت')));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(content: Text('تعذّر حفظ الجدول')));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final days = _days;
+    final hasRule = days.isNotEmpty;
+    final label = hasRule
+        ? days.map((d) => _scheduleDayLabels[d]).join(' · ')
+        : 'لم يُحدَّد الجدول الثابت';
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+          AppSpacing.md, AppSpacing.sm, AppSpacing.md, AppSpacing.sm),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.sky,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border: Border.all(
+              color: AppColors.primaryLight.withValues(alpha: 0.35)),
+        ),
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: AppColors.primary,
+                borderRadius: BorderRadius.circular(AppRadius.md),
+              ),
+              child: const Icon(Icons.event_repeat_outlined,
+                  color: Colors.white, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('الجدول الثابت',
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: AppColors.primaryDark)),
+                  const SizedBox(height: 2),
+                  Text(hasRule ? '$label · ${_fmtTime(_commonTime)}' : label,
+                      style: theme.textTheme.titleSmall
+                          ?.copyWith(fontWeight: FontWeight.w700)),
+                  if (hasRule)
+                    Text('مدة الجلسة $_duration دقيقة',
+                        style: theme.textTheme.bodySmall
+                            ?.copyWith(color: AppColors.textMuted)),
+                ],
+              ),
+            ),
+            if (widget.canManage)
+              TextButton.icon(
+                onPressed: _edit,
+                icon: const Icon(Icons.edit_outlined, size: 16),
+                label: Text(hasRule ? 'تعديل' : 'تحديد'),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FixedScheduleEditor extends StatefulWidget {
+  final Set<String> initialDays;
+  final TimeOfDay initialTime;
+  final int initialDuration;
+  const _FixedScheduleEditor({
+    required this.initialDays,
+    required this.initialTime,
+    required this.initialDuration,
+  });
+
+  @override
+  State<_FixedScheduleEditor> createState() => _FixedScheduleEditorState();
+}
+
+class _FixedScheduleEditorState extends State<_FixedScheduleEditor> {
+  late Set<String> _days = {...widget.initialDays};
+  late TimeOfDay _time = widget.initialTime;
+  late int _duration = widget.initialDuration;
+
+  Future<void> _pickTime() async {
+    final t = await showTimePicker(context: context, initialTime: _time);
+    if (t != null) setState(() => _time = t);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return AlertDialog(
+      titlePadding: const EdgeInsets.fromLTRB(
+          AppSpacing.md, AppSpacing.sm, AppSpacing.sm, 0),
+      title: Row(
+        children: [
+          const Expanded(child: Text('الجدول الثابت')),
+          IconButton(
+            icon: const Icon(Icons.close),
+            tooltip: 'إلغاء',
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ],
+      ),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('أيام الحلقة',
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: AppColors.textMuted)),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final c in _scheduleDayOrder)
+                    FilterChip(
+                      label: Text(_scheduleDayLabels[c]!),
+                      selected: _days.contains(c),
+                      onSelected: (v) => setState(
+                          () => v ? _days.add(c) : _days.remove(c)),
+                    ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.md),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.access_time_outlined),
+                title: const Text('وقت البدء'),
+                subtitle: Text(_time.format(context)),
+                trailing: TextButton(
+                    onPressed: _pickTime, child: const Text('تغيير')),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Text('مدة الجلسة',
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: AppColors.textMuted)),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                children: [
+                  for (final d in [30, 45, 60, 90])
+                    ChoiceChip(
+                      label: Text('$d د'),
+                      selected: _duration == d,
+                      onSelected: (_) => setState(() => _duration = d),
+                    ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              ElevatedButton(
+                onPressed: _days.isEmpty
+                    ? null
+                    : () => Navigator.of(context).pop((
+                          days: _days,
+                          time: _time,
+                          duration: _duration,
+                        )),
+                child: const Text('حفظ'),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -2646,20 +2906,28 @@ class _WeeklyAttendanceState extends State<_WeeklyAttendance> {
     _initCodes();
   }
 
-  /// Meeting days come from the circle's sessions (same source as the
-  /// «أيام الحلقة» card). Falls back to the full week if there are none.
+  /// Meeting days come from the حلقة's fixed rule (single source of truth,
+  /// same as the «أيام الحلقة» card). Falls back to deriving from sessions for
+  /// circles with no rule yet, then to the full week.
   Future<void> _initCodes() async {
     List<String> codes;
-    try {
-      final sessions =
-          await getIt<CalendarRepository>().getSessions(widget.circle.id);
-      final wds = sessions.map((s) => s.scheduledAt.weekday).toSet();
+    if (widget.circle.days.isNotEmpty) {
       codes = [
         for (final c in _scheduleDayOrder)
-          if (wds.contains(_codeToWeekday[c])) c,
+          if (widget.circle.days.contains(c)) c,
       ];
-    } catch (_) {
-      codes = const [];
+    } else {
+      try {
+        final sessions =
+            await getIt<CalendarRepository>().getSessions(widget.circle.id);
+        final wds = sessions.map((s) => s.scheduledAt.weekday).toSet();
+        codes = [
+          for (final c in _scheduleDayOrder)
+            if (wds.contains(_codeToWeekday[c])) c,
+        ];
+      } catch (_) {
+        codes = const [];
+      }
     }
     if (codes.isEmpty) codes = List.of(_scheduleDayOrder);
     if (!mounted) return;
