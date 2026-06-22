@@ -29,7 +29,6 @@ import '../../notification/pages/notifications_page.dart';
 import '../../partner/pages/my_partner_page.dart';
 import '../../partner/pages/pairing_page.dart';
 import '../../profile/pages/profile_page.dart';
-import '../../profile/pages/web_shell.dart';
 import '../../progress/pages/my_progress_page.dart';
 import '../../progress/pages/teacher_tracking_page.dart';
 import '../../reminder/pages/reminder_settings_page.dart';
@@ -132,12 +131,10 @@ class _HomePageState extends State<HomePage> {
                         : const SizedBox(height: double.infinity),
                   ),
                   Expanded(
-                    child: ShellScope(
-                      child: Navigator(
-                        key: _contentNav,
-                        onGenerateRoute: (_) =>
-                            MaterialPageRoute(builder: (_) => content),
-                      ),
+                    child: Navigator(
+                      key: _contentNav,
+                      onGenerateRoute: (_) =>
+                          MaterialPageRoute(builder: (_) => content),
                     ),
                   ),
                 ],

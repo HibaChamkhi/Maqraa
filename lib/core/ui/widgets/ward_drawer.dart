@@ -10,10 +10,10 @@ import '../../../presentation/circle/pages/circles_list_page.dart';
 import '../../../presentation/circle/pages/section_circle_picker_page.dart';
 import '../../../presentation/notification/pages/notifications_page.dart';
 import '../../../presentation/exam/pages/teacher_exams_page.dart';
-import '../../../presentation/help/pages/help_page.dart';
+import '../../../presentation/help/help_page.dart';
 import '../../../presentation/profile/pages/profile_page.dart';
+import '../../../presentation/profile/pages/settings_page.dart';
 import '../../../presentation/progress/pages/teacher_tracking_page.dart';
-import '../../../presentation/settings/pages/settings_page.dart';
 import '../styles/theme.dart';
 
 /// The green «ورْد» side navigation drawer (the sidebar in the reference).
@@ -143,7 +143,8 @@ class WardDrawer extends StatelessWidget {
               icon: Icons.person_outline,
               onTap: () {
                 _closeIfDrawer(context);
-                _nav(context).push(
+                // Full-screen (own shell) so we don't draw a rail inside a rail.
+                Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const ProfilePage()));
               },
             ),
@@ -209,13 +210,19 @@ class WardDrawer extends StatelessWidget {
         ));
         break;
       case 'الإشعارات':
-        push(const NotificationsPage());
+        // Full-screen (its own shell) to avoid a rail inside the content rail.
+        Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const NotificationsPage()));
         break;
       case 'الإعدادات':
-        push(const SettingsPage());
+        // Full-screen (own shell): user's settings — personal data, photo,
+        // password, notifications, sessions.
+        Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => SettingsPage(user: user)));
         break;
       case 'المساعدة':
-        push(const HelpPage());
+        Navigator.of(context)
+            .push(MaterialPageRoute(builder: (_) => const HelpPage()));
         break;
       default:
         break; // واجب اليوم / تقدّمي — student tabs handle these
