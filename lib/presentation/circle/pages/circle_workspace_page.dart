@@ -98,51 +98,88 @@ class _CircleWorkspacePageState extends State<CircleWorkspacePage> {
       initialIndex: widget.initialTab,
       child: Scaffold(
         appBar: AppBar(toolbarHeight: 48, title: const SizedBox.shrink()),
-        body: Column(
-          children: [
-            _CircleHeader(circle: circle, user: user, canManage: _canManage),
-            Material(
-              color: AppColors.surface,
-              child: TabBar(
-                isScrollable: true,
-                labelColor: AppColors.primary,
-                unselectedLabelColor: AppColors.textMuted,
-                indicatorColor: AppColors.primary,
-                tabAlignment: TabAlignment.start,
-                onTap: (i) => LastLocationStore.saveCircle(circle.id, i),
-                tabs: const [
-                  Tab(text: 'الطالبات'),
-                  Tab(text: 'الجدول'),
-                  Tab(text: 'الجلسات'),
-                  Tab(text: 'الاختبارات'),
-                ],
-              ),
+        // NestedScrollView: the info header scrolls away while the tab bar
+        // stays pinned, so the tab body always has full height (no overflow).
+        body: NestedScrollView(
+          headerSliverBuilder: (context, _) => [
+            SliverToBoxAdapter(
+              child: _CircleHeader(
+                  circle: circle, user: user, canManage: _canManage),
             ),
-            const Divider(height: 1),
-            Expanded(
-              child: TabBarView(
-                children: [
-                  _StudentsTab(circle: circle, canManage: _canManage),
-                  // الجدول = weekly homework (الواجب الأسبوعي)
-                  WeeklyHomeworkTab(
-                      circle: circle, user: user, canManage: _canManage),
-                  // الجلسات = the session-times manager (moved here)
-                  _ScheduleTab(
-                      circle: circle, user: user, canManage: _canManage),
-                  // الاختبارات = exams list inline (managers grade, students view)
-                  _canManage
-                      ? TeacherExamsPage(
-                          circleId: circle.id, user: user, embedded: true)
-                      : StudentExamsPage(
-                          circleId: circle.id, user: user, embedded: true),
-                ],
+            SliverPersistentHeader(
+              pinned: true,
+              delegate: _TabBarHeader(
+                TabBar(
+                  isScrollable: true,
+                  labelColor: AppColors.primary,
+                  unselectedLabelColor: AppColors.textMuted,
+                  indicatorColor: AppColors.primary,
+                  tabAlignment: TabAlignment.start,
+                  onTap: (i) => LastLocationStore.saveCircle(circle.id, i),
+                  tabs: const [
+                    Tab(text: 'الطالبات'),
+                    Tab(text: 'الجدول'),
+                    Tab(text: 'الجلسات'),
+                    Tab(text: 'الاختبارات'),
+                  ],
+                ),
               ),
             ),
           ],
+          body: TabBarView(
+            children: [
+              _StudentsTab(circle: circle, canManage: _canManage),
+              // الجدول = weekly homework (الواجب الأسبوعي)
+              WeeklyHomeworkTab(
+                  circle: circle, user: user, canManage: _canManage),
+              // الجلسات = the session-times manager (moved here)
+              _ScheduleTab(circle: circle, user: user, canManage: _canManage),
+              // الاختبارات = exams list inline (managers grade, students view)
+              _canManage
+                  ? TeacherExamsPage(
+                      circleId: circle.id, user: user, embedded: true)
+                  : StudentExamsPage(
+                      circleId: circle.id, user: user, embedded: true),
+            ],
+          ),
         ),
       ),
     );
   }
+}
+
+/// Pinned tab bar for the NestedScrollView header (keeps the tabs visible
+/// while the info header scrolls away).
+class _TabBarHeader extends SliverPersistentHeaderDelegate {
+  final TabBar tabBar;
+  _TabBarHeader(this.tabBar);
+
+  static const double _height = 49;
+
+  @override
+  double get minExtent => _height;
+
+  @override
+  double get maxExtent => _height;
+
+  @override
+  Widget build(
+      BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return Material(
+      color: AppColors.surface,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          tabBar,
+          const Divider(height: 1),
+        ],
+      ),
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant _TabBarHeader oldDelegate) =>
+      oldDelegate.tabBar != tabBar;
 }
 
 // ---------------------------------------------------------------------------
