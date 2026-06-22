@@ -177,6 +177,8 @@ class CircleMemberUpdated extends CircleEvent {
   final PerformanceTag? performance;
   final int? memorizedPages;
   final int? juz;
+  final String? contact;
+  final String? notes;
   final bool touchRecitation;
 
   const CircleMemberUpdated({
@@ -186,12 +188,23 @@ class CircleMemberUpdated extends CircleEvent {
     this.performance,
     this.memorizedPages,
     this.juz,
+    this.contact,
+    this.notes,
     this.touchRecitation = false,
   });
 
   @override
-  List<Object?> get props =>
-      [circleId, uid, attendance, performance, memorizedPages, juz, touchRecitation];
+  List<Object?> get props => [
+        circleId,
+        uid,
+        attendance,
+        performance,
+        memorizedPages,
+        juz,
+        contact,
+        notes,
+        touchRecitation
+      ];
 }
 
 /// Remove a student from a حلقة.

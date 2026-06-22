@@ -470,6 +470,8 @@ class CircleRemoteDataSource {
     PerformanceTag? performance,
     int? memorizedPages,
     int? juz,
+    String? contact,
+    String? notes,
     bool touchRecitation = false,
   }) async {
     final data = <String, dynamic>{};
@@ -477,6 +479,8 @@ class CircleRemoteDataSource {
     if (performance != null) data['performance'] = performance.name;
     if (memorizedPages != null) data['memorizedPages'] = memorizedPages;
     if (juz != null) data['juz'] = juz;
+    if (contact != null) data['contact'] = contact;
+    if (notes != null) data['notes'] = notes;
     if (touchRecitation) data['lastRecitationAt'] = FieldValue.serverTimestamp();
     if (data.isNotEmpty) await _members(circleId).doc(uid).update(data);
   }

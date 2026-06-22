@@ -119,6 +119,8 @@ abstract class CircleRepository {
     PerformanceTag? performance,
     int? memorizedPages,
     int? juz,
+    String? contact,
+    String? notes,
     bool touchRecitation,
   });
 

@@ -249,6 +249,8 @@ class CircleMember {
   final PerformanceTag? performance; // تقييم المعلّمة
   final String? partnerId; // الرفيقة في هذه الحلقة
   final int? juz; // الجزء الحالي للطالبة
+  final String? contact; // جهة اتصال / ولي الأمر
+  final String? notes; // ملاحظات المعلّمة
 
   const CircleMember({
     required this.uid,
@@ -263,6 +265,8 @@ class CircleMember {
     this.performance,
     this.partnerId,
     this.juz,
+    this.contact,
+    this.notes,
   });
 
   double get memorizedRatio =>
@@ -281,6 +285,8 @@ class CircleMember {
     PerformanceTag? performance,
     String? partnerId,
     int? juz,
+    String? contact,
+    String? notes,
   }) {
     return CircleMember(
       uid: uid,
@@ -295,6 +301,8 @@ class CircleMember {
       performance: performance ?? this.performance,
       partnerId: partnerId ?? this.partnerId,
       juz: juz ?? this.juz,
+      contact: contact ?? this.contact,
+      notes: notes ?? this.notes,
     );
   }
 }

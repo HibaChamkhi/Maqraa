@@ -1476,7 +1476,9 @@ class _StudentsViewState extends State<_StudentsView> {
                                 : null;
                             if (c.maxWidth >= 720) {
                               return _StudentsTable(
-                                  students: students, onEdit: onEdit);
+                                  circle: widget.circle,
+                                  students: students,
+                                  onEdit: onEdit);
                             }
                             final names = {
                               for (final s in students) s.uid: s.name
@@ -1807,6 +1809,17 @@ class _StudentEditorState extends State<_StudentEditor> {
   late AttendanceState? _attendance = widget.member.attendance;
   late PerformanceTag? _performance = widget.member.performance;
   late int _pages = widget.member.memorizedPages;
+  late final TextEditingController _contact =
+      TextEditingController(text: widget.member.contact ?? '');
+  late final TextEditingController _notes =
+      TextEditingController(text: widget.member.notes ?? '');
+
+  @override
+  void dispose() {
+    _contact.dispose();
+    _notes.dispose();
+    super.dispose();
+  }
 
   void _save({bool recite = false}) {
     widget.bloc.add(CircleMemberUpdated(
@@ -1815,6 +1828,8 @@ class _StudentEditorState extends State<_StudentEditor> {
       attendance: _attendance,
       performance: _performance,
       memorizedPages: _pages,
+      contact: _contact.text.trim(),
+      notes: _notes.text.trim(),
       touchRecitation: recite,
     ));
     Navigator.of(context).pop();
@@ -1891,6 +1906,26 @@ class _StudentEditorState extends State<_StudentEditor> {
                   icon: const Icon(Icons.remove_circle_outline),
                 ),
               ],
+            ),
+            const SizedBox(height: AppSpacing.lg),
+
+            TextField(
+              controller: _contact,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(
+                labelText: 'جهة الاتصال / ولي الأمر',
+                prefixIcon: Icon(Icons.contact_phone_outlined),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            TextField(
+              controller: _notes,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                labelText: 'ملاحظات المعلّمة',
+                prefixIcon: Icon(Icons.sticky_note_2_outlined),
+                alignLabelWithHint: true,
+              ),
             ),
             const SizedBox(height: AppSpacing.lg),
 
@@ -2000,9 +2035,11 @@ class _StudentsToolbar extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _StudentsTable extends StatelessWidget {
+  final Circle circle;
   final List<CircleMember> students;
   final void Function(CircleMember)? onEdit;
-  const _StudentsTable({required this.students, required this.onEdit});
+  const _StudentsTable(
+      {required this.circle, required this.students, required this.onEdit});
 
   @override
   Widget build(BuildContext context) {
@@ -2049,6 +2086,7 @@ class _StudentsTable extends StatelessWidget {
                 itemBuilder: (context, i) {
                   final m = students[i];
                   return _StudentRow(
+                    circle: circle,
                     member: m,
                     onEdit: onEdit,
                     partnerName:
@@ -2065,10 +2103,12 @@ class _StudentsTable extends StatelessWidget {
 }
 
 class _StudentRow extends StatefulWidget {
+  final Circle circle;
   final CircleMember member;
   final void Function(CircleMember)? onEdit;
   final String? partnerName;
   const _StudentRow({
+    required this.circle,
     required this.member,
     required this.onEdit,
     this.partnerName,
@@ -2247,7 +2287,8 @@ class _StudentRowState extends State<_StudentRow> {
           ),
         ),
         if (_expanded)
-          _StudentDetail(member: member, partnerName: partner),
+          _StudentDetail(
+              circle: widget.circle, member: member, partnerName: partner),
       ],
     );
   }
@@ -2256,17 +2297,79 @@ class _StudentRowState extends State<_StudentRow> {
 /// Expandable per-student detail panel under a table row.
 /// Shows the fields available today; weekly attendance, streak, exam history
 /// and contact will plug in once that data is modelled.
-class _StudentDetail extends StatelessWidget {
+class _StudentDetail extends StatefulWidget {
+  final Circle circle;
   final CircleMember member;
   final String? partnerName;
-  const _StudentDetail({required this.member, required this.partnerName});
+  const _StudentDetail(
+      {required this.circle, required this.member, required this.partnerName});
+
+  @override
+  State<_StudentDetail> createState() => _StudentDetailState();
+}
+
+class _StudentDetailState extends State<_StudentDetail> {
+  int? _pct;
+  bool _loadingPct = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAttendancePercent();
+  }
+
+  /// Attendance % over the last 4 weeks of the circle's meeting days.
+  Future<void> _loadAttendancePercent() async {
+    try {
+      final circle = widget.circle;
+      final days = circle.days.isNotEmpty ? circle.days : _scheduleDayOrder;
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final daysSinceSat = (today.weekday - DateTime.saturday) % 7;
+      final thisWeekStart = today.subtract(Duration(days: daysSinceSat));
+      final dateIds = <String>[];
+      for (var w = 0; w < 4; w++) {
+        final ws = thisWeekStart.subtract(Duration(days: 7 * w));
+        for (final d in days) {
+          final idx = _scheduleDayOrder.indexOf(d);
+          if (idx < 0) continue;
+          final date = ws.add(Duration(days: idx));
+          if (!date.isAfter(today)) {
+            dateIds.add(DateFormat('yyyy-MM-dd').format(date));
+          }
+        }
+      }
+      final data = await getIt<CircleRepository>()
+          .getWeekAttendance(circleId: circle.id, dateIds: dateIds);
+      var recorded = 0, present = 0;
+      for (final id in dateIds) {
+        final st = data[id]?[widget.member.uid];
+        if (st != null) {
+          recorded++;
+          if (st == AttendanceState.present || st == AttendanceState.late_) {
+            present++;
+          }
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _pct = recorded == 0 ? null : (present / recorded * 100).round();
+        _loadingPct = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loadingPct = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final member = widget.member;
     final last = member.lastRecitationAt;
-    final partner =
-        (partnerName == null || partnerName!.isEmpty) ? '—' : partnerName!;
+    final partner = (widget.partnerName == null || widget.partnerName!.isEmpty)
+        ? '—'
+        : widget.partnerName!;
+    final pctLabel = _loadingPct ? '…' : (_pct == null ? '—' : '$_pct%');
     final items = <(IconData, String, String)>[
       (Icons.menu_book_outlined, 'الجزء', member.juz?.toString() ?? '—'),
       (
@@ -2274,6 +2377,7 @@ class _StudentDetail extends StatelessWidget {
         'حالة الحضور',
         member.attendance?.arabicLabel ?? '—'
       ),
+      (Icons.percent_outlined, 'نسبة الحضور (٤ أسابيع)', pctLabel),
       (
         Icons.mic_none_outlined,
         'آخر تسميع',
@@ -2285,6 +2389,18 @@ class _StudentDetail extends StatelessWidget {
         '${member.memorizedPages}/${member.totalPages}'
       ),
       (Icons.people_alt_outlined, 'الشريكة (تلاوة متبادلة)', partner),
+      (
+        Icons.contact_phone_outlined,
+        'جهة الاتصال',
+        (member.contact == null || member.contact!.isEmpty)
+            ? '—'
+            : member.contact!
+      ),
+      (
+        Icons.sticky_note_2_outlined,
+        'ملاحظات',
+        (member.notes == null || member.notes!.isEmpty) ? '—' : member.notes!
+      ),
     ];
     return Container(
       width: double.infinity,

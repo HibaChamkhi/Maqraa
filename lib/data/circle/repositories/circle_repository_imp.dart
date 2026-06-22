@@ -159,6 +159,8 @@ class CircleRepositoryImpl implements CircleRepository {
     PerformanceTag? performance,
     int? memorizedPages,
     int? juz,
+    String? contact,
+    String? notes,
     bool touchRecitation = false,
   }) =>
       remoteDataSource.updateMember(
@@ -168,6 +170,8 @@ class CircleRepositoryImpl implements CircleRepository {
         performance: performance,
         memorizedPages: memorizedPages,
         juz: juz,
+        contact: contact,
+        notes: notes,
         touchRecitation: touchRecitation,
       );
 

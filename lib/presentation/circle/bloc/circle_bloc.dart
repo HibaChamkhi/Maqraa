@@ -77,6 +77,8 @@ class CircleBloc extends Bloc<CircleEvent, CircleState> {
         performance: event.performance,
         memorizedPages: event.memorizedPages,
         juz: event.juz,
+        contact: event.contact,
+        notes: event.notes,
         touchRecitation: event.touchRecitation,
       );
       final members = await circleRepository.getMembers(event.circleId);

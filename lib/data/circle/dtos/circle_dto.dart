@@ -74,6 +74,8 @@ class CircleMemberDto {
       performance: PerformanceTag.fromName(map['performance'] as String?),
       partnerId: map['partnerId'] as String?,
       juz: (map['juz'] as num?)?.toInt(),
+      contact: map['contact'] as String?,
+      notes: map['notes'] as String?,
     );
   }
 
@@ -95,6 +97,8 @@ class CircleMemberDto {
       'performance': member.performance?.name,
       'partnerId': member.partnerId,
       'juz': member.juz,
+      'contact': member.contact,
+      'notes': member.notes,
     };
   }
 }
