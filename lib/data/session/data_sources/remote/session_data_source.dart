@@ -123,6 +123,22 @@ class SessionRemoteDataSource {
             ),
           ),
         );
+    // Auto-fill the circle's weekly attendance store (read by the الطالبات →
+    // الأسبوع grid) so joining a live session marks the student present today.
+    try {
+      final now = DateTime.now();
+      final dateId = '${now.year.toString().padLeft(4, '0')}-'
+          '${now.month.toString().padLeft(2, '0')}-'
+          '${now.day.toString().padLeft(2, '0')}';
+      await firestore
+          .collection('circles')
+          .doc(circleId)
+          .collection('attendance')
+          .doc(dateId)
+          .set({
+        'records': {uid: 'present'},
+      }, SetOptions(merge: true));
+    } catch (_) {/* best-effort — never block joining */}
     return session;
   }
 
