@@ -2767,12 +2767,17 @@ class _WeeklyAttendanceState extends State<_WeeklyAttendance> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    const nameW = 150.0, dayW = 58.0, pctW = 64.0;
-    final totalW = nameW + dayW * _codes.length + pctW;
     return Column(
       children: [
         _weekNavBar(theme),
-        const Divider(height: 1),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+          child: Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: _legend(theme),
+          ),
+        ),
+        const SizedBox(height: AppSpacing.sm),
         Expanded(
           child: _future == null
               ? const Center(child: CircularProgressIndicator())
@@ -2785,111 +2790,104 @@ class _WeeklyAttendanceState extends State<_WeeklyAttendance> {
                     final data = snap.data!;
                     final codes = _codes;
                     final dateIds = _dateIds;
-                    return SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-          child: SizedBox(
-            width: totalW,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Container(
-                  color: AppColors.gray,
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  child: Row(
-                    children: [
-                      SizedBox(
-                        width: nameW,
-                        child: const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 12),
-                          child: Text('الطالبة',
-                              style: TextStyle(
-                                  color: AppColors.textMuted, fontSize: 12)),
+                    Widget head(String t, int flex, {bool center = false}) =>
+                        Expanded(
+                          flex: flex,
+                          child: Text(t,
+                              textAlign:
+                                  center ? TextAlign.center : TextAlign.start,
+                              style: theme.textTheme.bodySmall
+                                  ?.copyWith(color: AppColors.textMuted)),
+                        );
+                    return Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                          AppSpacing.md, 0, AppSpacing.md, AppSpacing.md),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: AppColors.surface,
+                          borderRadius: BorderRadius.circular(AppRadius.lg),
+                          border: Border.all(color: AppColors.border),
                         ),
-                      ),
-                      for (final c in codes)
-                        SizedBox(
-                          width: dayW,
-                          child: Center(
-                            child: Text(_scheduleDayLabels[c] ?? c,
-                                style: const TextStyle(
-                                    color: AppColors.textMuted, fontSize: 12)),
-                          ),
-                        ),
-                      const SizedBox(
-                        width: pctW,
-                        child: Center(
-                          child: Text('النسبة',
-                              style: TextStyle(
-                                  color: AppColors.textMuted, fontSize: 12)),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1),
-                Expanded(
-                  child: ListView.separated(
-                    itemCount: widget.students.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (context, i) {
-                      final m = widget.students[i];
-                      var recorded = 0, attended = 0;
-                      final cells = <Widget>[];
-                      for (var j = 0; j < codes.length; j++) {
-                        final dateId = dateIds[j];
-                        final st = data[dateId]?[m.uid];
-                        if (st != null) {
-                          recorded++;
-                          if (st == AttendanceState.present ||
-                              st == AttendanceState.late_) attended++;
-                        }
-                        cells.add(SizedBox(
-                          width: dayW,
-                          child: Center(
-                            child: _AttCell(
-                              state: st,
-                              onTap: widget.canManage
-                                  ? () => _cycle(dateId, m.uid, st)
-                                  : null,
-                            ),
-                          ),
-                        ));
-                      }
-                      final pct = recorded == 0
-                          ? 0
-                          : (attended / recorded * 100).round();
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Row(
+                        clipBehavior: Clip.antiAlias,
+                        child: Column(
                           children: [
-                            SizedBox(
-                              width: nameW,
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 12),
-                                child: _nameCell(theme, m),
+                            Container(
+                              color: AppColors.gray,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 14, vertical: 10),
+                              child: Row(
+                                children: [
+                                  head('الطالبة', 3),
+                                  for (final c in codes)
+                                    head(_scheduleDayLabels[c] ?? c, 2,
+                                        center: true),
+                                  head('النسبة', 2, center: true),
+                                ],
                               ),
                             ),
-                            ...cells,
-                            SizedBox(
-                                width: pctW,
-                                child: Center(child: _pctChip(pct))),
+                            const Divider(height: 1),
+                            Expanded(
+                              child: ListView.separated(
+                                itemCount: widget.students.length,
+                                separatorBuilder: (_, __) =>
+                                    const Divider(height: 1),
+                                itemBuilder: (context, i) {
+                                  final m = widget.students[i];
+                                  var recorded = 0, attended = 0;
+                                  final cells = <Widget>[];
+                                  for (var j = 0; j < codes.length; j++) {
+                                    final dateId = dateIds[j];
+                                    final st = data[dateId]?[m.uid];
+                                    if (st != null) {
+                                      recorded++;
+                                      if (st == AttendanceState.present ||
+                                          st == AttendanceState.late_) {
+                                        attended++;
+                                      }
+                                    }
+                                    cells.add(Expanded(
+                                      flex: 2,
+                                      child: Center(
+                                        child: _AttCell(
+                                          state: st,
+                                          onTap: widget.canManage
+                                              ? () => _cycle(dateId, m.uid, st)
+                                              : null,
+                                        ),
+                                      ),
+                                    ));
+                                  }
+                                  final pct = recorded == 0
+                                      ? 0
+                                      : (attended / recorded * 100).round();
+                                  return Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 14, vertical: 10),
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                            flex: 3,
+                                            child: _nameCell(theme, m)),
+                                        ...cells,
+                                        Expanded(
+                                            flex: 2,
+                                            child:
+                                                Center(child: _pctChip(pct))),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
                           ],
                         ),
-                      );
-                    },
-                  ),
+                      ),
+                    );
+                  },
                 ),
-                _legend(theme),
-              ],
-            ),
-          ),
-        );
-      },
-            ),
-          ),
-        ],
-      );
+        ),
+      ],
+    );
   }
 
   Widget _nameCell(ThemeData theme, CircleMember m) {
