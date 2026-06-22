@@ -5,6 +5,19 @@ import '../../../domain/auth/models/app_user.dart';
 import '../../notification/pages/notifications_page.dart';
 import 'profile_theme.dart';
 
+/// Marker placed above the home shell's content navigator. When present,
+/// [WebShell] knows it is being rendered inside the host shell and should not
+/// draw its own rail/top bar (avoids the duplicated sidebar).
+class ShellScope extends InheritedWidget {
+  const ShellScope({super.key, required super.child});
+
+  static bool isInside(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<ShellScope>() != null;
+
+  @override
+  bool updateShouldNotify(ShellScope oldWidget) => false;
+}
+
 /// Shared chrome for the web teacher pages: green side rail (permanent on wide
 /// screens, pop-over drawer on narrow), a cream canvas, and a top bar with the
 /// breadcrumb on the left and the notification bell + user chip on the right.
@@ -24,6 +37,11 @@ class WebShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // When already inside the home shell's content area, render bare content
+    // so we don't draw a second rail / top bar over the host shell.
+    if (ShellScope.isInside(context)) {
+      return Scaffold(backgroundColor: ProfileTheme.bg, body: child);
+    }
     return LayoutBuilder(builder: (context, c) {
       final wide = c.maxWidth >= 900;
       final body = Container(
