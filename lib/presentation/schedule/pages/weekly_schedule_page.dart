@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/model /ui_state.dart';
 import '../../../core/ui/styles/theme.dart';
+import '../../../core/ui/widgets/centered_content.dart';
 import '../../../domain/schedule/models/weekly_schedule.dart';
 import '../bloc/schedule_bloc.dart';
 
@@ -59,7 +60,8 @@ class _WeeklyView extends StatelessWidget {
               ),
             );
           }
-          return ListView(
+          return CenteredContent(
+            child: ListView(
             padding: const EdgeInsets.all(AppSpacing.md),
             children: [
               Card(
@@ -80,6 +82,7 @@ class _WeeklyView extends StatelessWidget {
                   isToday: code == todayCode,
                 ),
             ],
+            ),
           );
         },
       ),

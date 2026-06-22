@@ -24,6 +24,8 @@ class CircleBloc extends Bloc<CircleEvent, CircleState> {
     on<CircleRequestAccepted>(_onAccept);
     on<CircleRequestRejected>(_onReject);
     on<CircleMemberPromoted>(_onPromote);
+    on<CircleMemberDemoted>(_onDemote);
+    on<CircleOwnershipTransferred>(_onTransferOwnership);
     on<CirclePrivacyChanged>(_onPrivacy);
     on<CircleLoadRequested>(_onLoad);
     on<CircleMyCirclesRequested>(_onMyCircles);
@@ -75,6 +77,8 @@ class CircleBloc extends Bloc<CircleEvent, CircleState> {
         performance: event.performance,
         memorizedPages: event.memorizedPages,
         juz: event.juz,
+        contact: event.contact,
+        notes: event.notes,
         touchRecitation: event.touchRecitation,
       );
       final members = await circleRepository.getMembers(event.circleId);
@@ -228,6 +232,44 @@ class CircleBloc extends Bloc<CircleEvent, CircleState> {
       ));
     } on Exception catch (e) {
       emit(state.copyWith(status: UIStatus.error, message: mapExceptionToMessage(e)));
+    }
+  }
+
+  Future<void> _onDemote(
+      CircleMemberDemoted event, Emitter<CircleState> emit) async {
+    emit(state.copyWith(status: UIStatus.loading, message: ''));
+    try {
+      await circleRepository.demoteToStudent(
+          circleId: event.circleId, uid: event.uid);
+      final members = await circleRepository.getMembers(event.circleId);
+      emit(state.copyWith(
+        status: UIStatus.success,
+        members: members,
+        message: 'تم إرجاعها إلى طالبة',
+      ));
+    } on Exception catch (e) {
+      emit(state.copyWith(
+          status: UIStatus.error, message: mapExceptionToMessage(e)));
+    }
+  }
+
+  Future<void> _onTransferOwnership(
+      CircleOwnershipTransferred event, Emitter<CircleState> emit) async {
+    emit(state.copyWith(status: UIStatus.loading, message: ''));
+    try {
+      await circleRepository.transferOwnership(
+          circleId: event.circleId, newTeacherId: event.newTeacherId);
+      final members = await circleRepository.getMembers(event.circleId);
+      final circle = await circleRepository.getCircle(event.circleId);
+      emit(state.copyWith(
+        status: UIStatus.success,
+        members: members,
+        circle: circle,
+        message: 'تم نقل ملكية الحلقة',
+      ));
+    } on Exception catch (e) {
+      emit(state.copyWith(
+          status: UIStatus.error, message: mapExceptionToMessage(e)));
     }
   }
 

@@ -63,6 +63,21 @@ class CircleRepositoryImpl implements CircleRepository {
       remoteDataSource.promoteToSupervisor(circleId: circleId, uid: uid);
 
   @override
+  Future<void> demoteToStudent({
+    required String circleId,
+    required String uid,
+  }) =>
+      remoteDataSource.demoteToStudent(circleId: circleId, uid: uid);
+
+  @override
+  Future<void> transferOwnership({
+    required String circleId,
+    required String newTeacherId,
+  }) =>
+      remoteDataSource.transferOwnership(
+          circleId: circleId, newTeacherId: newTeacherId);
+
+  @override
   Future<void> updatePrivacy({
     required String circleId,
     required Privacy privacy,
@@ -144,6 +159,8 @@ class CircleRepositoryImpl implements CircleRepository {
     PerformanceTag? performance,
     int? memorizedPages,
     int? juz,
+    String? contact,
+    String? notes,
     bool touchRecitation = false,
   }) =>
       remoteDataSource.updateMember(
@@ -153,6 +170,8 @@ class CircleRepositoryImpl implements CircleRepository {
         performance: performance,
         memorizedPages: memorizedPages,
         juz: juz,
+        contact: contact,
+        notes: notes,
         touchRecitation: touchRecitation,
       );
 

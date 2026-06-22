@@ -11,12 +11,12 @@ import '../bloc/circle_bloc.dart';
 /// US-05: list circle members with their status.
 /// US-40: a teacher may promote an active student member to supervisor.
 class CircleMembersPage extends StatelessWidget {
-  final String circleId;
+  final Circle circle;
   final AppUser user;
 
   const CircleMembersPage({
     super.key,
-    required this.circleId,
+    required this.circle,
     required this.user,
   });
 
@@ -24,22 +24,23 @@ class CircleMembersPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocProvider(
       create: (_) =>
-          getIt<CircleBloc>()..add(CircleMembersRequested(circleId)),
-      child: _CircleMembersView(circleId: circleId, user: user),
+          getIt<CircleBloc>()..add(CircleMembersRequested(circle.id)),
+      child: _CircleMembersView(circle: circle, user: user),
     );
   }
 }
 
 class _CircleMembersView extends StatelessWidget {
-  final String circleId;
+  final Circle circle;
   final AppUser user;
 
-  const _CircleMembersView({required this.circleId, required this.user});
+  const _CircleMembersView({required this.circle, required this.user});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final canManage = user.role == UserRole.teacher;
+    // Promotion is allowed only for an owner/supervisor of THIS circle.
+    final canManage = circle.canManage(user);
     return Scaffold(
       appBar: AppBar(title: const Text('أعضاء الحلقة')),
       body: BlocConsumer<CircleBloc, CircleState>(
@@ -68,14 +69,30 @@ class _CircleMembersView extends StatelessWidget {
             separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
             itemBuilder: (context, index) {
               final m = state.members[index];
+              final isOwnerUser = circle.isOwner(user);
+              final active = m.status == MemberStatus.active;
+              final isCircleOwner = m.uid == circle.teacherId;
               return _MemberTile(
                 member: m,
-                canPromote: canManage &&
-                    m.role == UserRole.student &&
-                    m.status == MemberStatus.active,
-                onPromote: () => context.read<CircleBloc>().add(
-                      CircleMemberPromoted(circleId: circleId, uid: m.uid),
-                    ),
+                onPromote:
+                    (canManage && m.role == UserRole.student && active)
+                        ? () => context.read<CircleBloc>().add(
+                            CircleMemberPromoted(
+                                circleId: circle.id, uid: m.uid))
+                        : null,
+                onDemote: (isOwnerUser && m.role == UserRole.supervisor)
+                    ? () => context.read<CircleBloc>().add(
+                        CircleMemberDemoted(circleId: circle.id, uid: m.uid))
+                    : null,
+                onRemove: (canManage &&
+                        active &&
+                        !isCircleOwner &&
+                        m.uid != user.uid)
+                    ? () => _confirmRemove(context, m)
+                    : null,
+                onTransfer: (isOwnerUser && active && !isCircleOwner)
+                    ? () => _confirmTransfer(context, m)
+                    : null,
               );
             },
           );
@@ -83,23 +100,87 @@ class _CircleMembersView extends StatelessWidget {
       ),
     );
   }
+
+  Future<void> _confirmRemove(BuildContext context, CircleMember m) async {
+    final bloc = context.read<CircleBloc>();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('إزالة من الحلقة'),
+        content: Text('هل تريدين إزالة «${m.name}» من الحلقة؟'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('إلغاء')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('إزالة')),
+        ],
+      ),
+    );
+    if (ok == true) {
+      bloc.add(CircleMemberRemoved(circleId: circle.id, uid: m.uid));
+    }
+  }
+
+  Future<void> _confirmTransfer(BuildContext context, CircleMember m) async {
+    final bloc = context.read<CircleBloc>();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('نقل ملكية الحلقة'),
+        content: Text(
+            'ستصبح «${m.name}» معلّمة الحلقة، وستصبحين أنتِ مشرفة. هل أنتِ متأكدة؟'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('إلغاء')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('نقل الملكية')),
+        ],
+      ),
+    );
+    if (ok == true) {
+      bloc.add(CircleOwnershipTransferred(
+          circleId: circle.id, newTeacherId: m.uid));
+    }
+  }
 }
 
 class _MemberTile extends StatelessWidget {
   final CircleMember member;
-  final bool canPromote;
-  final VoidCallback onPromote;
+  final VoidCallback? onPromote;
+  final VoidCallback? onDemote;
+  final VoidCallback? onRemove;
+  final VoidCallback? onTransfer;
 
   const _MemberTile({
     required this.member,
-    required this.canPromote,
-    required this.onPromote,
+    this.onPromote,
+    this.onDemote,
+    this.onRemove,
+    this.onTransfer,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isPending = member.status == MemberStatus.pending;
+    final actions = <PopupMenuEntry<String>>[
+      if (onPromote != null)
+        const PopupMenuItem(value: 'promote', child: Text('ترقية إلى مشرفة')),
+      if (onDemote != null)
+        const PopupMenuItem(value: 'demote', child: Text('إرجاع إلى طالبة')),
+      if (onTransfer != null)
+        const PopupMenuItem(value: 'transfer', child: Text('نقل ملكية الحلقة')),
+      if (onRemove != null)
+        const PopupMenuItem(
+          value: 'remove',
+          child: Text('إزالة من الحلقة',
+              style: TextStyle(color: AppColors.error)),
+        ),
+    ];
     return Card(
       child: ListTile(
         leading: CircleAvatar(
@@ -130,11 +211,26 @@ class _MemberTile extends StatelessWidget {
                 ),
               ),
             ),
-            if (canPromote)
-              IconButton(
-                tooltip: 'ترقية إلى مشرفة',
-                icon: const Icon(Icons.arrow_upward),
-                onPressed: onPromote,
+            if (actions.isNotEmpty)
+              PopupMenuButton<String>(
+                tooltip: 'إجراءات',
+                itemBuilder: (_) => actions,
+                onSelected: (v) {
+                  switch (v) {
+                    case 'promote':
+                      onPromote?.call();
+                      break;
+                    case 'demote':
+                      onDemote?.call();
+                      break;
+                    case 'transfer':
+                      onTransfer?.call();
+                      break;
+                    case 'remove':
+                      onRemove?.call();
+                      break;
+                  }
+                },
               ),
           ],
         ),

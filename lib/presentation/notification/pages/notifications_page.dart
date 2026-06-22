@@ -201,23 +201,32 @@ class _NotificationsViewState extends State<_NotificationsView> {
     return BlocBuilder<NotificationBloc, NotificationState>(
       builder: (context, state) {
         if (state.status == UIStatus.loading && state.notifications.isEmpty) {
-          return const Center(child: CircularProgressIndicator());
+          return const SizedBox(
+            height: 280,
+            child: Center(child: CircularProgressIndicator()),
+          );
         }
         if (state.status == UIStatus.error && state.notifications.isEmpty) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text(state.message, textAlign: TextAlign.center),
+          return SizedBox(
+            height: 280,
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(state.message, textAlign: TextAlign.center),
+              ),
             ),
           );
         }
         final items = _filter(state.notifications);
         if (items.isEmpty) {
-          return const Center(
-            child: Padding(
-              padding: EdgeInsets.all(40),
-              child: Text('لا توجد إشعارات',
-                  style: TextStyle(color: ProfileTheme.muted)),
+          return const SizedBox(
+            height: 280,
+            child: Center(
+              child: Padding(
+                padding: EdgeInsets.all(40),
+                child: Text('لا توجد إشعارات',
+                    style: TextStyle(color: ProfileTheme.muted)),
+              ),
             ),
           );
         }

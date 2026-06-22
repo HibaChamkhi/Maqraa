@@ -205,6 +205,30 @@ class Circle {
   }
 }
 
+/// The single source of truth for "what can this user do in THIS circle?".
+/// Always use these instead of the global [AppUser.role], which only says what
+/// kind of account someone has — not their authority in a specific حلقة.
+extension CircleAuthority on Circle {
+  /// This user's role *within this circle* (owner teacher, supervisor, or
+  /// plain student/member).
+  UserRole roleOf(AppUser? user) {
+    if (user == null) return UserRole.student;
+    if (teacherId == user.uid) return UserRole.teacher;
+    if (supervisorIds.contains(user.uid)) return UserRole.supervisor;
+    return UserRole.student;
+  }
+
+  /// True only for the owning teacher of this circle.
+  bool isOwner(AppUser? user) => user != null && teacherId == user.uid;
+
+  /// Teacher (owner) or supervisor of this circle — may manage students,
+  /// grading, tracking, schedule, etc.
+  bool canManage(AppUser? user) {
+    final r = roleOf(user);
+    return r == UserRole.teacher || r == UserRole.supervisor;
+  }
+}
+
 /// An enrollment: `circles/{circleId}/members/{uid}`.
 ///
 /// This is the join between a user and ONE specific حلقة. All per-circle student
@@ -225,6 +249,8 @@ class CircleMember {
   final PerformanceTag? performance; // تقييم المعلّمة
   final String? partnerId; // الرفيقة في هذه الحلقة
   final int? juz; // الجزء الحالي للطالبة
+  final String? contact; // جهة اتصال / ولي الأمر
+  final String? notes; // ملاحظات المعلّمة
 
   const CircleMember({
     required this.uid,
@@ -239,6 +265,8 @@ class CircleMember {
     this.performance,
     this.partnerId,
     this.juz,
+    this.contact,
+    this.notes,
   });
 
   double get memorizedRatio =>
@@ -257,6 +285,8 @@ class CircleMember {
     PerformanceTag? performance,
     String? partnerId,
     int? juz,
+    String? contact,
+    String? notes,
   }) {
     return CircleMember(
       uid: uid,
@@ -271,6 +301,8 @@ class CircleMember {
       performance: performance ?? this.performance,
       partnerId: partnerId ?? this.partnerId,
       juz: juz ?? this.juz,
+      contact: contact ?? this.contact,
+      notes: notes ?? this.notes,
     );
   }
 }

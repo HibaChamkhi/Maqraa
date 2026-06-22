@@ -42,11 +42,7 @@ class _CircleInfoView extends StatelessWidget {
 
   const _CircleInfoView({required this.circleId, this.user});
 
-  bool _canManage(Circle circle) {
-    final u = user;
-    if (u == null) return false;
-    return circle.teacherId == u.uid || circle.supervisorIds.contains(u.uid);
-  }
+  bool _canManage(Circle circle) => circle.canManage(user);
 
   @override
   Widget build(BuildContext context) {
@@ -101,7 +97,7 @@ class _CircleInfoView extends StatelessWidget {
                           onTap: () => Navigator.of(context).push(
                             MaterialPageRoute(
                               builder: (_) => CircleMembersPage(
-                                circleId: circleId,
+                                circle: circle,
                                 user: user ??
                                     AppUser(
                                       uid: '',

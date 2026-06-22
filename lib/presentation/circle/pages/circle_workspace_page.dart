@@ -71,9 +71,8 @@ class CircleWorkspacePage extends StatefulWidget {
 }
 
 class _CircleWorkspacePageState extends State<CircleWorkspacePage> {
-  bool get _canManage =>
-      widget.user.role == UserRole.teacher ||
-      widget.user.role == UserRole.supervisor;
+  // Authority is scoped to THIS circle, not the global account role.
+  bool get _canManage => widget.circle.canManage(widget.user);
 
   late Circle _circle = widget.circle;
 
@@ -100,56 +99,92 @@ class _CircleWorkspacePageState extends State<CircleWorkspacePage> {
       initialIndex: widget.initialTab,
       child: Scaffold(
         appBar: AppBar(toolbarHeight: 48, title: const SizedBox.shrink()),
-        body: Column(
-          children: [
-            _CircleHeader(
-              circle: circle,
-              user: user,
-              canManage: _canManage,
-              onEdited: (c) => setState(() => _circle = c),
-            ),
-            Material(
-              color: AppColors.surface,
-              child: TabBar(
-                isScrollable: true,
-                labelColor: AppColors.primary,
-                unselectedLabelColor: AppColors.textMuted,
-                indicatorColor: AppColors.primary,
-                tabAlignment: TabAlignment.start,
-                onTap: (i) => LastLocationStore.saveCircle(circle.id, i),
-                tabs: const [
-                  Tab(text: 'الطالبات'),
-                  Tab(text: 'الجدول'),
-                  Tab(text: 'الجلسات'),
-                  Tab(text: 'الاختبارات'),
-                ],
+        // NestedScrollView: the info header scrolls away while the tab bar
+        // stays pinned, so the tab body always has full height (no overflow).
+        body: NestedScrollView(
+          headerSliverBuilder: (context, _) => [
+            SliverToBoxAdapter(
+              child: _CircleHeader(
+                circle: circle,
+                user: user,
+                canManage: _canManage,
+                onEdited: (c) => setState(() => _circle = c),
               ),
             ),
-            const Divider(height: 1),
-            Expanded(
-              child: TabBarView(
-                children: [
-                  _StudentsTab(circle: circle, canManage: _canManage),
-                  // الجدول = weekly homework (الواجب الأسبوعي)
-                  WeeklyHomeworkTab(
-                      circle: circle, user: user, canManage: _canManage),
-                  // الجلسات = the session-times manager (moved here)
-                  _ScheduleTab(
-                      circle: circle, user: user, canManage: _canManage),
-                  // الاختبارات = exams list inline (managers grade, students view)
-                  _canManage
-                      ? TeacherExamsPage(
-                          circleId: circle.id, user: user, embedded: true)
-                      : StudentExamsPage(
-                          circleId: circle.id, user: user, embedded: true),
-                ],
+            SliverPersistentHeader(
+              pinned: true,
+              delegate: _TabBarHeader(
+                TabBar(
+                  isScrollable: true,
+                  labelColor: AppColors.primary,
+                  unselectedLabelColor: AppColors.textMuted,
+                  indicatorColor: AppColors.primary,
+                  tabAlignment: TabAlignment.start,
+                  onTap: (i) => LastLocationStore.saveCircle(circle.id, i),
+                  tabs: const [
+                    Tab(text: 'الطالبات'),
+                    Tab(text: 'الجدول'),
+                    Tab(text: 'الجلسات'),
+                    Tab(text: 'الاختبارات'),
+                  ],
+                ),
               ),
             ),
           ],
+          body: TabBarView(
+            children: [
+              _StudentsTab(circle: circle, canManage: _canManage),
+              // الجدول = weekly homework (الواجب الأسبوعي)
+              WeeklyHomeworkTab(
+                  circle: circle, user: user, canManage: _canManage),
+              // الجلسات = the session-times manager (moved here)
+              _ScheduleTab(circle: circle, user: user, canManage: _canManage),
+              // الاختبارات = exams list inline (managers grade, students view)
+              _canManage
+                  ? TeacherExamsPage(
+                      circleId: circle.id, user: user, embedded: true)
+                  : StudentExamsPage(
+                      circleId: circle.id, user: user, embedded: true),
+            ],
+          ),
         ),
       ),
     );
   }
+}
+
+/// Pinned tab bar for the NestedScrollView header (keeps the tabs visible
+/// while the info header scrolls away).
+class _TabBarHeader extends SliverPersistentHeaderDelegate {
+  final TabBar tabBar;
+  _TabBarHeader(this.tabBar);
+
+  static const double _height = 49;
+
+  @override
+  double get minExtent => _height;
+
+  @override
+  double get maxExtent => _height;
+
+  @override
+  Widget build(
+      BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return Material(
+      color: AppColors.surface,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          tabBar,
+          const Divider(height: 1),
+        ],
+      ),
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant _TabBarHeader oldDelegate) =>
+      oldDelegate.tabBar != tabBar;
 }
 
 // ---------------------------------------------------------------------------
@@ -1610,19 +1645,30 @@ class _StudentsViewState extends State<_StudentsView> {
                                 : null;
                             if (c.maxWidth >= 720) {
                               return _StudentsTable(
-                                  students: students, onEdit: onEdit);
+                                  circle: widget.circle,
+                                  students: students,
+                                  onEdit: onEdit);
                             }
+                            final names = {
+                              for (final s in students) s.uid: s.name
+                            };
                             return ListView.builder(
                               padding: const EdgeInsets.fromLTRB(
                                   AppSpacing.md, 4, AppSpacing.md, 24),
                               itemCount: students.length,
-                              itemBuilder: (context, i) => _StudentCard(
-                                member: students[i],
-                                canManage: widget.canManage,
-                                onTap: onEdit == null
-                                    ? null
-                                    : () => onEdit(students[i]),
-                              ),
+                              itemBuilder: (context, i) {
+                                final m = students[i];
+                                return _StudentCard(
+                                  member: m,
+                                  canManage: widget.canManage,
+                                  partnerName: m.partnerId == null
+                                      ? null
+                                      : names[m.partnerId],
+                                  onTap: onEdit == null
+                                      ? null
+                                      : () => onEdit(m),
+                                );
+                              },
                             );
                           }),
               ),
@@ -1800,10 +1846,14 @@ class _StudentsViewState extends State<_StudentsView> {
 class _StudentCard extends StatelessWidget {
   final CircleMember member;
   final bool canManage;
+  final String? partnerName;
   final VoidCallback? onTap;
 
   const _StudentCard(
-      {required this.member, required this.canManage, this.onTap});
+      {required this.member,
+      required this.canManage,
+      this.partnerName,
+      this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -1882,6 +1932,27 @@ class _StudentCard extends StatelessWidget {
                   ),
                 ],
               ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Icon(Icons.people_alt_outlined,
+                      size: 16, color: AppColors.textMuted),
+                  const SizedBox(width: 6),
+                  Text('الشريكة: ',
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: AppColors.textMuted)),
+                  Expanded(
+                    child: Text(
+                      (partnerName == null || partnerName!.isEmpty)
+                          ? 'لا توجد'
+                          : partnerName!,
+                      style: theme.textTheme.bodySmall,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
@@ -1907,6 +1978,17 @@ class _StudentEditorState extends State<_StudentEditor> {
   late AttendanceState? _attendance = widget.member.attendance;
   late PerformanceTag? _performance = widget.member.performance;
   late int _pages = widget.member.memorizedPages;
+  late final TextEditingController _contact =
+      TextEditingController(text: widget.member.contact ?? '');
+  late final TextEditingController _notes =
+      TextEditingController(text: widget.member.notes ?? '');
+
+  @override
+  void dispose() {
+    _contact.dispose();
+    _notes.dispose();
+    super.dispose();
+  }
 
   void _save({bool recite = false}) {
     widget.bloc.add(CircleMemberUpdated(
@@ -1915,6 +1997,8 @@ class _StudentEditorState extends State<_StudentEditor> {
       attendance: _attendance,
       performance: _performance,
       memorizedPages: _pages,
+      contact: _contact.text.trim(),
+      notes: _notes.text.trim(),
       touchRecitation: recite,
     ));
     Navigator.of(context).pop();
@@ -1991,6 +2075,26 @@ class _StudentEditorState extends State<_StudentEditor> {
                   icon: const Icon(Icons.remove_circle_outline),
                 ),
               ],
+            ),
+            const SizedBox(height: AppSpacing.lg),
+
+            TextField(
+              controller: _contact,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(
+                labelText: 'جهة الاتصال / ولي الأمر',
+                prefixIcon: Icon(Icons.contact_phone_outlined),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            TextField(
+              controller: _notes,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                labelText: 'ملاحظات المعلّمة',
+                prefixIcon: Icon(Icons.sticky_note_2_outlined),
+                alignLabelWithHint: true,
+              ),
             ),
             const SizedBox(height: AppSpacing.lg),
 
@@ -2100,9 +2204,11 @@ class _StudentsToolbar extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _StudentsTable extends StatelessWidget {
+  final Circle circle;
   final List<CircleMember> students;
   final void Function(CircleMember)? onEdit;
-  const _StudentsTable({required this.students, required this.onEdit});
+  const _StudentsTable(
+      {required this.circle, required this.students, required this.onEdit});
 
   @override
   Widget build(BuildContext context) {
@@ -2149,6 +2255,7 @@ class _StudentsTable extends StatelessWidget {
                 itemBuilder: (context, i) {
                   final m = students[i];
                   return _StudentRow(
+                    circle: circle,
                     member: m,
                     onEdit: onEdit,
                     partnerName:
@@ -2165,10 +2272,12 @@ class _StudentsTable extends StatelessWidget {
 }
 
 class _StudentRow extends StatefulWidget {
+  final Circle circle;
   final CircleMember member;
   final void Function(CircleMember)? onEdit;
   final String? partnerName;
   const _StudentRow({
+    required this.circle,
     required this.member,
     required this.onEdit,
     this.partnerName,
@@ -2347,7 +2456,8 @@ class _StudentRowState extends State<_StudentRow> {
           ),
         ),
         if (_expanded)
-          _StudentDetail(member: member, partnerName: partner),
+          _StudentDetail(
+              circle: widget.circle, member: member, partnerName: partner),
       ],
     );
   }
@@ -2356,17 +2466,79 @@ class _StudentRowState extends State<_StudentRow> {
 /// Expandable per-student detail panel under a table row.
 /// Shows the fields available today; weekly attendance, streak, exam history
 /// and contact will plug in once that data is modelled.
-class _StudentDetail extends StatelessWidget {
+class _StudentDetail extends StatefulWidget {
+  final Circle circle;
   final CircleMember member;
   final String? partnerName;
-  const _StudentDetail({required this.member, required this.partnerName});
+  const _StudentDetail(
+      {required this.circle, required this.member, required this.partnerName});
+
+  @override
+  State<_StudentDetail> createState() => _StudentDetailState();
+}
+
+class _StudentDetailState extends State<_StudentDetail> {
+  int? _pct;
+  bool _loadingPct = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAttendancePercent();
+  }
+
+  /// Attendance % over the last 4 weeks of the circle's meeting days.
+  Future<void> _loadAttendancePercent() async {
+    try {
+      final circle = widget.circle;
+      final days = circle.days.isNotEmpty ? circle.days : _scheduleDayOrder;
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final daysSinceSat = (today.weekday - DateTime.saturday) % 7;
+      final thisWeekStart = today.subtract(Duration(days: daysSinceSat));
+      final dateIds = <String>[];
+      for (var w = 0; w < 4; w++) {
+        final ws = thisWeekStart.subtract(Duration(days: 7 * w));
+        for (final d in days) {
+          final idx = _scheduleDayOrder.indexOf(d);
+          if (idx < 0) continue;
+          final date = ws.add(Duration(days: idx));
+          if (!date.isAfter(today)) {
+            dateIds.add(DateFormat('yyyy-MM-dd').format(date));
+          }
+        }
+      }
+      final data = await getIt<CircleRepository>()
+          .getWeekAttendance(circleId: circle.id, dateIds: dateIds);
+      var recorded = 0, present = 0;
+      for (final id in dateIds) {
+        final st = data[id]?[widget.member.uid];
+        if (st != null) {
+          recorded++;
+          if (st == AttendanceState.present || st == AttendanceState.late_) {
+            present++;
+          }
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _pct = recorded == 0 ? null : (present / recorded * 100).round();
+        _loadingPct = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loadingPct = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final member = widget.member;
     final last = member.lastRecitationAt;
-    final partner =
-        (partnerName == null || partnerName!.isEmpty) ? '—' : partnerName!;
+    final partner = (widget.partnerName == null || widget.partnerName!.isEmpty)
+        ? '—'
+        : widget.partnerName!;
+    final pctLabel = _loadingPct ? '…' : (_pct == null ? '—' : '$_pct%');
     final items = <(IconData, String, String)>[
       (Icons.menu_book_outlined, 'الجزء', member.juz?.toString() ?? '—'),
       (
@@ -2374,6 +2546,7 @@ class _StudentDetail extends StatelessWidget {
         'حالة الحضور',
         member.attendance?.arabicLabel ?? '—'
       ),
+      (Icons.percent_outlined, 'نسبة الحضور (٤ أسابيع)', pctLabel),
       (
         Icons.mic_none_outlined,
         'آخر تسميع',
@@ -2385,6 +2558,18 @@ class _StudentDetail extends StatelessWidget {
         '${member.memorizedPages}/${member.totalPages}'
       ),
       (Icons.people_alt_outlined, 'الشريكة (تلاوة متبادلة)', partner),
+      (
+        Icons.contact_phone_outlined,
+        'جهة الاتصال',
+        (member.contact == null || member.contact!.isEmpty)
+            ? '—'
+            : member.contact!
+      ),
+      (
+        Icons.sticky_note_2_outlined,
+        'ملاحظات',
+        (member.notes == null || member.notes!.isEmpty) ? '—' : member.notes!
+      ),
     ];
     return Container(
       width: double.infinity,
@@ -2429,12 +2614,6 @@ class _StudentDetail extends StatelessWidget {
 //  Weekly attendance grid (students × meeting days)
 // ---------------------------------------------------------------------------
 
-typedef _WeekAtt = ({
-  List<String> codes,
-  List<String> dateIds,
-  Map<String, Map<String, AttendanceState>> data,
-});
-
 class _WeeklyAttendance extends StatefulWidget {
   final Circle circle;
   final List<CircleMember> students;
@@ -2450,8 +2629,11 @@ class _WeeklyAttendance extends StatefulWidget {
 }
 
 class _WeeklyAttendanceState extends State<_WeeklyAttendance> {
-  late DateTime _weekStart;
-  late Future<_WeekAtt> _future;
+  late DateTime _thisWeekStart; // Saturday of the current week
+  late DateTime _weekStart; // Saturday of the displayed week
+  List<String> _codes = const [];
+  List<String> _dateIds = const [];
+  Future<Map<String, Map<String, AttendanceState>>>? _future;
 
   @override
   void initState() {
@@ -2459,31 +2641,59 @@ class _WeeklyAttendanceState extends State<_WeeklyAttendance> {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final daysSinceSat = (today.weekday - DateTime.saturday) % 7;
-    _weekStart = today.subtract(Duration(days: daysSinceSat));
-    _future = _load();
+    _thisWeekStart = today.subtract(Duration(days: daysSinceSat));
+    _weekStart = _thisWeekStart;
+    _initCodes();
   }
 
   /// Meeting days come from the circle's sessions (same source as the
-  /// «أيام الحلقة» card), so the grid columns match. Falls back to the full
-  /// week only when no sessions exist yet.
-  Future<_WeekAtt> _load() async {
-    final sessions =
-        await getIt<CalendarRepository>().getSessions(widget.circle.id);
-    final wds = sessions.map((s) => s.scheduledAt.weekday).toSet();
-    var codes = [
-      for (final c in _scheduleDayOrder)
-        if (wds.contains(_codeToWeekday[c])) c,
-    ];
+  /// «أيام الحلقة» card). Falls back to the full week if there are none.
+  Future<void> _initCodes() async {
+    List<String> codes;
+    try {
+      final sessions =
+          await getIt<CalendarRepository>().getSessions(widget.circle.id);
+      final wds = sessions.map((s) => s.scheduledAt.weekday).toSet();
+      codes = [
+        for (final c in _scheduleDayOrder)
+          if (wds.contains(_codeToWeekday[c])) c,
+      ];
+    } catch (_) {
+      codes = const [];
+    }
     if (codes.isEmpty) codes = List.of(_scheduleDayOrder);
-    final dateIds = [
-      for (final c in codes)
+    if (!mounted) return;
+    setState(() {
+      _codes = codes;
+      _recompute();
+    });
+  }
+
+  /// Rebuild the visible date ids from [_weekStart] and reload the week.
+  void _recompute() {
+    _dateIds = [
+      for (final c in _codes)
         DateFormat('yyyy-MM-dd').format(
             _weekStart.add(Duration(days: _scheduleDayOrder.indexOf(c)))),
     ];
-    final data = await getIt<CircleRepository>()
-        .getWeekAttendance(circleId: widget.circle.id, dateIds: dateIds);
-    return (codes: codes, dateIds: dateIds, data: data);
+    _future = _load();
   }
+
+  bool get _isCurrentWeek => !_weekStart.isBefore(_thisWeekStart);
+
+  /// Move by [delta] weeks (−1 = previous). Never navigate into the future.
+  void _changeWeek(int delta) {
+    final next = _weekStart.add(Duration(days: delta * 7));
+    if (next.isAfter(_thisWeekStart)) return;
+    setState(() {
+      _weekStart = next;
+      _recompute();
+    });
+  }
+
+  Future<Map<String, Map<String, AttendanceState>>> _load() =>
+      getIt<CircleRepository>()
+          .getWeekAttendance(circleId: widget.circle.id, dateIds: _dateIds);
 
   AttendanceState? _nextState(AttendanceState? s) {
     switch (s) {
@@ -2518,22 +2728,64 @@ class _WeeklyAttendanceState extends State<_WeeklyAttendance> {
     }
   }
 
+  Widget _weekNavBar(ThemeData theme) {
+    final end = _weekStart.add(const Duration(days: 6));
+    final label =
+        '${DateFormat('d MMM', 'ar').format(_weekStart)} – ${DateFormat('d MMM', 'ar').format(end)}';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+      child: Row(
+        children: [
+          IconButton(
+            tooltip: 'الأسبوع السابق',
+            icon: const Icon(Icons.chevron_right),
+            onPressed: () => _changeWeek(-1),
+          ),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(label, style: theme.textTheme.titleSmall),
+                if (_isCurrentWeek)
+                  Text('هذا الأسبوع',
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: AppColors.primary)),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'الأسبوع التالي',
+            icon: const Icon(Icons.chevron_left),
+            onPressed: _isCurrentWeek ? null : () => _changeWeek(1),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     const nameW = 150.0, dayW = 58.0, pctW = 64.0;
-    return FutureBuilder<_WeekAtt>(
-      future: _future,
-      builder: (context, snap) {
-        if (!snap.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        final codes = snap.data!.codes;
-        final dateIds = snap.data!.dateIds;
-        final data = snap.data!.data;
-        final totalW = nameW + dayW * codes.length + pctW;
-        return SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
+    final totalW = nameW + dayW * _codes.length + pctW;
+    return Column(
+      children: [
+        _weekNavBar(theme),
+        const Divider(height: 1),
+        Expanded(
+          child: _future == null
+              ? const Center(child: CircularProgressIndicator())
+              : FutureBuilder<Map<String, Map<String, AttendanceState>>>(
+                  future: _future,
+                  builder: (context, snap) {
+                    if (!snap.hasData) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    final data = snap.data!;
+                    final codes = _codes;
+                    final dateIds = _dateIds;
+                    return SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
           child: SizedBox(
             width: totalW,
             child: Column(
@@ -2633,7 +2885,10 @@ class _WeeklyAttendanceState extends State<_WeeklyAttendance> {
           ),
         );
       },
-    );
+            ),
+          ),
+        ],
+      );
   }
 
   Widget _nameCell(ThemeData theme, CircleMember m) {
