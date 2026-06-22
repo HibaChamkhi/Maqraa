@@ -1478,17 +1478,26 @@ class _StudentsViewState extends State<_StudentsView> {
                               return _StudentsTable(
                                   students: students, onEdit: onEdit);
                             }
+                            final names = {
+                              for (final s in students) s.uid: s.name
+                            };
                             return ListView.builder(
                               padding: const EdgeInsets.fromLTRB(
                                   AppSpacing.md, 4, AppSpacing.md, 24),
                               itemCount: students.length,
-                              itemBuilder: (context, i) => _StudentCard(
-                                member: students[i],
-                                canManage: widget.canManage,
-                                onTap: onEdit == null
-                                    ? null
-                                    : () => onEdit(students[i]),
-                              ),
+                              itemBuilder: (context, i) {
+                                final m = students[i];
+                                return _StudentCard(
+                                  member: m,
+                                  canManage: widget.canManage,
+                                  partnerName: m.partnerId == null
+                                      ? null
+                                      : names[m.partnerId],
+                                  onTap: onEdit == null
+                                      ? null
+                                      : () => onEdit(m),
+                                );
+                              },
                             );
                           }),
               ),
@@ -1666,10 +1675,14 @@ class _StudentsViewState extends State<_StudentsView> {
 class _StudentCard extends StatelessWidget {
   final CircleMember member;
   final bool canManage;
+  final String? partnerName;
   final VoidCallback? onTap;
 
   const _StudentCard(
-      {required this.member, required this.canManage, this.onTap});
+      {required this.member,
+      required this.canManage,
+      this.partnerName,
+      this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -1745,6 +1758,27 @@ class _StudentCard extends StatelessWidget {
                   StatusChip(
                     label: member.performance?.arabicLabel ?? 'بلا تقييم',
                     color: performanceColor(member.performance),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Icon(Icons.people_alt_outlined,
+                      size: 16, color: AppColors.textMuted),
+                  const SizedBox(width: 6),
+                  Text('الشريكة: ',
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: AppColors.textMuted)),
+                  Expanded(
+                    child: Text(
+                      (partnerName == null || partnerName!.isEmpty)
+                          ? 'لا توجد'
+                          : partnerName!,
+                      style: theme.textTheme.bodySmall,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ],
               ),

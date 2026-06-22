@@ -96,6 +96,29 @@ class CircleMemberPromoted extends CircleEvent {
   List<Object?> get props => [circleId, uid];
 }
 
+/// Demote a supervisor back to a student member.
+class CircleMemberDemoted extends CircleEvent {
+  final String circleId;
+  final String uid;
+
+  const CircleMemberDemoted({required this.circleId, required this.uid});
+
+  @override
+  List<Object?> get props => [circleId, uid];
+}
+
+/// Transfer circle ownership to another member.
+class CircleOwnershipTransferred extends CircleEvent {
+  final String circleId;
+  final String newTeacherId;
+
+  const CircleOwnershipTransferred(
+      {required this.circleId, required this.newTeacherId});
+
+  @override
+  List<Object?> get props => [circleId, newTeacherId];
+}
+
 /// US-38
 class CirclePrivacyChanged extends CircleEvent {
   final String circleId;

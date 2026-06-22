@@ -228,6 +228,58 @@ class CircleRemoteDataSource {
     });
   }
 
+  /// Demote a supervisor back to a regular student member.
+  Future<void> demoteToStudent({
+    required String circleId,
+    required String uid,
+  }) async {
+    await _circles.doc(circleId).update({
+      'supervisorIds': FieldValue.arrayRemove([uid]),
+    });
+    await _members(circleId).doc(uid).update({
+      'role': UserRole.student.name,
+    });
+  }
+
+  /// Hand the circle to [newTeacherId]: they become the owning teacher, the
+  /// previous owner is kept on as a supervisor.
+  Future<void> transferOwnership({
+    required String circleId,
+    required String newTeacherId,
+  }) async {
+    final snap = await _circles.doc(circleId).get();
+    final data = snap.data();
+    if (data == null) {
+      throw BadRequestException(message: 'الحلقة غير موجودة');
+    }
+    final oldTeacherId = data['teacherId'] as String?;
+    final newProfile = await _users.doc(newTeacherId).get();
+    final newName = (newProfile.data()?['name'] ?? '') as String;
+
+    final supervisors =
+        List<String>.from((data['supervisorIds'] ?? const []) as List);
+    supervisors.remove(newTeacherId);
+    if (oldTeacherId != null &&
+        oldTeacherId != newTeacherId &&
+        !supervisors.contains(oldTeacherId)) {
+      supervisors.add(oldTeacherId);
+    }
+    await _circles.doc(circleId).update({
+      'teacherId': newTeacherId,
+      'teacherName': newName,
+      'supervisorIds': supervisors,
+    });
+    // New owner becomes a teacher member; old owner becomes a supervisor.
+    await _members(circleId)
+        .doc(newTeacherId)
+        .set({'role': UserRole.teacher.name}, SetOptions(merge: true));
+    if (oldTeacherId != null && oldTeacherId != newTeacherId) {
+      await _members(circleId)
+          .doc(oldTeacherId)
+          .set({'role': UserRole.supervisor.name}, SetOptions(merge: true));
+    }
+  }
+
   // --- US-38 ---
 
   Future<void> updatePrivacy({

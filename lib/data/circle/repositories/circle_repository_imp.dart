@@ -63,6 +63,21 @@ class CircleRepositoryImpl implements CircleRepository {
       remoteDataSource.promoteToSupervisor(circleId: circleId, uid: uid);
 
   @override
+  Future<void> demoteToStudent({
+    required String circleId,
+    required String uid,
+  }) =>
+      remoteDataSource.demoteToStudent(circleId: circleId, uid: uid);
+
+  @override
+  Future<void> transferOwnership({
+    required String circleId,
+    required String newTeacherId,
+  }) =>
+      remoteDataSource.transferOwnership(
+          circleId: circleId, newTeacherId: newTeacherId);
+
+  @override
   Future<void> updatePrivacy({
     required String circleId,
     required Privacy privacy,

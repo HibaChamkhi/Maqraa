@@ -44,6 +44,19 @@ abstract class CircleRepository {
     required String uid,
   });
 
+  /// Demote a supervisor back to a regular student member.
+  Future<void> demoteToStudent({
+    required String circleId,
+    required String uid,
+  });
+
+  /// Transfer circle ownership to another member (becomes the teacher);
+  /// the previous owner is kept on as a supervisor.
+  Future<void> transferOwnership({
+    required String circleId,
+    required String newTeacherId,
+  });
+
   /// US-38: update the circle privacy setting.
   Future<void> updatePrivacy({
     required String circleId,

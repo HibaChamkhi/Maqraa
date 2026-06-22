@@ -104,15 +104,21 @@ class _TeacherExamsView extends StatelessWidget {
               return _ExamCard(
                 exam: exam,
                 dateText: dateFormat.format(exam.date),
-                onOpen: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => ExamResultsPage(
-                      circleId: circleId,
-                      exam: exam,
-                      user: user,
+                onOpen: () async {
+                  final bloc = context.read<ExamBloc>();
+                  await Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => ExamResultsPage(
+                        circleId: circleId,
+                        exam: exam,
+                        user: user,
+                      ),
                     ),
-                  ),
-                ),
+                  );
+                  // Refresh so the منشورة/مخفية badge reflects any toggle made
+                  // on the results screen.
+                  bloc.add(ExamsRequested(circleId));
+                },
                 onEdit: () => _openEditor(context, exam),
                 onDelete: () => _confirmDelete(context, exam),
               );
