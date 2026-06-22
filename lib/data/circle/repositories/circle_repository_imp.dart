@@ -161,6 +161,10 @@ class CircleRepositoryImpl implements CircleRepository {
       remoteDataSource.removeMember(circleId: circleId, uid: uid);
 
   @override
+  Future<void> updateName({required String circleId, required String name}) =>
+      remoteDataSource.updateName(circleId: circleId, name: name);
+
+  @override
   Future<void> markAttendance({
     required String circleId,
     required String dateId,

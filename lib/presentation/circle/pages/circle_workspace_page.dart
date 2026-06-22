@@ -75,6 +75,8 @@ class _CircleWorkspacePageState extends State<CircleWorkspacePage> {
       widget.user.role == UserRole.teacher ||
       widget.user.role == UserRole.supervisor;
 
+  late Circle _circle = widget.circle;
+
   @override
   void initState() {
     super.initState();
@@ -91,7 +93,7 @@ class _CircleWorkspacePageState extends State<CircleWorkspacePage> {
 
   @override
   Widget build(BuildContext context) {
-    final circle = widget.circle;
+    final circle = _circle;
     final user = widget.user;
     return DefaultTabController(
       length: 4,
@@ -100,7 +102,12 @@ class _CircleWorkspacePageState extends State<CircleWorkspacePage> {
         appBar: AppBar(toolbarHeight: 48, title: const SizedBox.shrink()),
         body: Column(
           children: [
-            _CircleHeader(circle: circle, user: user, canManage: _canManage),
+            _CircleHeader(
+              circle: circle,
+              user: user,
+              canManage: _canManage,
+              onEdited: (c) => setState(() => _circle = c),
+            ),
             Material(
               color: AppColors.surface,
               child: TabBar(
@@ -153,8 +160,12 @@ class _CircleHeader extends StatelessWidget {
   final Circle circle;
   final AppUser user;
   final bool canManage;
+  final ValueChanged<Circle>? onEdited;
   const _CircleHeader(
-      {required this.circle, required this.user, required this.canManage});
+      {required this.circle,
+      required this.user,
+      required this.canManage,
+      this.onEdited});
 
   /// The owning teacher's name — falls back to the current owner's name when
   /// the stored teacherName is empty (legacy circles).
@@ -175,9 +186,33 @@ class _CircleHeader extends StatelessWidget {
             style:
                 theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted)),
         const SizedBox(height: 4),
-        Text(circle.name,
-            style: theme.textTheme.headlineMedium
-                ?.copyWith(fontWeight: FontWeight.w700)),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Flexible(
+              child: Text(circle.name,
+                  style: theme.textTheme.headlineMedium
+                      ?.copyWith(fontWeight: FontWeight.w700)),
+            ),
+            if (canManage) ...[
+              const SizedBox(width: 6),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                tooltip: 'تعديل الحلقة',
+                icon: const Icon(Icons.edit_outlined,
+                    size: 20, color: AppColors.primary),
+                onPressed: () async {
+                  final updated = await showDialog<Circle>(
+                    context: context,
+                    builder: (_) => _EditCircleDialog(circle: circle),
+                  );
+                  if (updated != null) onEdited?.call(updated);
+                },
+              ),
+            ],
+          ],
+        ),
         const SizedBox(height: 4),
         _DescriptionLine(circle: circle, canManage: canManage),
         const SizedBox(height: 2),
@@ -234,6 +269,129 @@ class _CircleHeader extends StatelessWidget {
           ],
         );
       }),
+    );
+  }
+}
+
+/// Owner-only "تعديل الحلقة" popup — fix the title and toggle privacy.
+/// (نبذة / المستوى / الرواية stay editable on their own header cards.)
+class _EditCircleDialog extends StatefulWidget {
+  final Circle circle;
+  const _EditCircleDialog({required this.circle});
+
+  @override
+  State<_EditCircleDialog> createState() => _EditCircleDialogState();
+}
+
+class _EditCircleDialogState extends State<_EditCircleDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _name =
+      TextEditingController(text: widget.circle.name);
+  late Privacy _privacy = widget.circle.privacy;
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_formKey.currentState?.validate() != true) return;
+    setState(() => _saving = true);
+    final repo = getIt<CircleRepository>();
+    final newName = _name.text.trim();
+    try {
+      if (newName != widget.circle.name) {
+        await repo.updateName(circleId: widget.circle.id, name: newName);
+      }
+      if (_privacy != widget.circle.privacy) {
+        await repo.updatePrivacy(circleId: widget.circle.id, privacy: _privacy);
+      }
+      if (mounted) {
+        Navigator.of(context)
+            .pop(widget.circle.copyWith(name: newName, privacy: _privacy));
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(
+              content: Text('تعذّر حفظ التعديلات — تحقّقي من الاتصال/الصلاحيات')));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return AlertDialog(
+      titlePadding: const EdgeInsets.fromLTRB(
+          AppSpacing.md, AppSpacing.sm, AppSpacing.sm, 0),
+      title: Row(
+        children: [
+          const Expanded(child: Text('تعديل الحلقة')),
+          IconButton(
+            icon: const Icon(Icons.close),
+            tooltip: 'إلغاء',
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ],
+      ),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextFormField(
+                controller: _name,
+                decoration: const InputDecoration(
+                  labelText: 'اسم الحلقة',
+                  prefixIcon: Icon(Icons.groups_outlined),
+                ),
+                validator: (v) => (v == null || v.trim().isEmpty)
+                    ? 'يرجى إدخال اسم الحلقة'
+                    : null,
+              ),
+              const SizedBox(height: AppSpacing.md),
+              Text('الخصوصية',
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: AppColors.textMuted)),
+              const SizedBox(height: 6),
+              SegmentedButton<Privacy>(
+                segments: const [
+                  ButtonSegment(
+                      value: Privacy.private,
+                      label: Text('خاصة'),
+                      icon: Icon(Icons.lock_outline)),
+                  ButtonSegment(
+                      value: Privacy.public,
+                      label: Text('عامة'),
+                      icon: Icon(Icons.public)),
+                ],
+                selected: {_privacy},
+                onSelectionChanged: (s) => setState(() => _privacy = s.first),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              ElevatedButton(
+                onPressed: _saving ? null : _save,
+                child: _saving
+                    ? const SizedBox(
+                        height: 22,
+                        width: 22,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Text('حفظ التعديلات'),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

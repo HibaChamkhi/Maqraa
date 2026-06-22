@@ -437,6 +437,18 @@ class CircleRemoteDataSource {
     await _members(circleId).doc(uid).delete();
   }
 
+  /// Rename a حلقة (fix the title).
+  Future<void> updateName({
+    required String circleId,
+    required String name,
+  }) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) {
+      throw BadRequestException(message: 'اسم الحلقة مطلوب');
+    }
+    await _circles.doc(circleId).update({'name': trimmed});
+  }
+
   // --- attendance history ---
 
   CollectionReference<Map<String, dynamic>> _attendance(String circleId) =>
