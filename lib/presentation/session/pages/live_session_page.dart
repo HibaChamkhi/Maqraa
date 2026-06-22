@@ -62,8 +62,13 @@ class _LiveSessionView extends StatelessWidget {
             return const Center(child: CircularProgressIndicator());
           }
           final active = state.activeSession;
+          final now = DateTime.now();
+          bool isToday(DateTime d) =>
+              d.year == now.year && d.month == now.month && d.day == now.day;
+          // Today only — never a backlog of old never-started sessions.
           final scheduled = state.sessions
-              .where((s) => s.status == SessionStatus.scheduled)
+              .where((s) =>
+                  s.status == SessionStatus.scheduled && isToday(s.scheduledAt))
               .toList()
             ..sort((a, b) => a.scheduledAt.compareTo(b.scheduledAt));
 
@@ -260,9 +265,9 @@ class _NoActiveCard extends StatelessWidget {
                   size: 36, color: AppColors.primary),
             ),
             const SizedBox(height: AppSpacing.md),
-            Text('لا توجد جلسات مجدولة', style: theme.textTheme.titleMedium),
+            Text('لا جلسة اليوم', style: theme.textTheme.titleMedium),
             const SizedBox(height: AppSpacing.xs),
-            Text('أضيفي جلسة من تبويب «الجدول» لبدئها هنا',
+            Text('تظهر جلسة اليوم هنا لبدئها — الجلسات القديمة لا تتراكم',
                 style: theme.textTheme.bodySmall?.copyWith(
                     color: AppColors.textMuted),
                 textAlign: TextAlign.center),
@@ -273,7 +278,7 @@ class _NoActiveCard extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('جلسات مجدولة', style: theme.textTheme.titleMedium),
+        Text('جلسة اليوم', style: theme.textTheme.titleMedium),
         const SizedBox(height: AppSpacing.sm),
         ...scheduled.map((s) => Container(
               margin: const EdgeInsets.only(bottom: AppSpacing.sm),
