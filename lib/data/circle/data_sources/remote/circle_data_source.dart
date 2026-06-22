@@ -545,6 +545,45 @@ class CircleRemoteDataSource {
     return result;
   }
 
+  // --- schedule exceptions (cancel/move a single rule occurrence) ---
+
+  CollectionReference<Map<String, dynamic>> _scheduleExceptions(
+          String circleId) =>
+      _circles.doc(circleId).collection('scheduleExceptions');
+
+  Future<Map<String, ({String type, String? time})>> getScheduleExceptions(
+      String circleId) async {
+    final query = await _scheduleExceptions(circleId).get();
+    final res = <String, ({String type, String? time})>{};
+    for (final d in query.docs) {
+      final m = d.data();
+      res[d.id] = (
+        type: (m['type'] ?? 'cancelled') as String,
+        time: m['time'] as String?,
+      );
+    }
+    return res;
+  }
+
+  Future<void> setScheduleException({
+    required String circleId,
+    required String dateId,
+    required String type,
+    String? time,
+  }) async {
+    await _scheduleExceptions(circleId).doc(dateId).set(<String, dynamic>{
+      'type': type,
+      if (time != null) 'time': time,
+    });
+  }
+
+  Future<void> clearScheduleException({
+    required String circleId,
+    required String dateId,
+  }) async {
+    await _scheduleExceptions(circleId).doc(dateId).delete();
+  }
+
   // --- helpers ---
 
   Future<String> _currentUserName() async {

@@ -144,4 +144,23 @@ abstract class CircleRepository {
     required String circleId,
     required List<String> dateIds,
   });
+
+  /// Per-date exceptions to the fixed schedule. Returns dateId →
+  /// (type: 'cancelled' | 'moved', time: 'HH:mm' when moved).
+  Future<Map<String, ({String type, String? time})>> getScheduleExceptions(
+      String circleId);
+
+  /// Cancel or move a single rule occurrence on [dateId].
+  Future<void> setScheduleException({
+    required String circleId,
+    required String dateId,
+    required String type,
+    String? time,
+  });
+
+  /// Remove an exception (restore the rule occurrence on [dateId]).
+  Future<void> clearScheduleException({
+    required String circleId,
+    required String dateId,
+  });
 }

@@ -1468,22 +1468,40 @@ class _GeneratedSchedule extends StatefulWidget {
 }
 
 class _GeneratedScheduleState extends State<_GeneratedSchedule> {
-  late final List<DateTime> _upcoming;
-  late final List<DateTime> _past;
-  late final Future<Map<String, Map<String, AttendanceState>>> _att;
+  List<DateTime> _upcoming = const [];
+  List<DateTime> _past = const [];
+  Map<String, Map<String, AttendanceState>> _att = const {};
+  bool _loading = true;
 
   @override
   void initState() {
     super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final from = today.subtract(const Duration(days: 28));
     final to = today.add(const Duration(days: 28));
+
+    Map<String, ({String type, String? time})> exc = const {};
+    try {
+      exc = await getIt<CircleRepository>()
+          .getScheduleExceptions(widget.circle.id);
+    } catch (_) {}
+
     final occ = <DateTime>[];
     for (var d = from; !d.isAfter(to); d = d.add(const Duration(days: 1))) {
       for (final entry in widget.circle.dayTimes.entries) {
         if (_codeToWeekday[entry.key] == d.weekday) {
-          final p = entry.value.split(':');
+          final dateId = DateFormat('yyyy-MM-dd').format(d);
+          final e = exc[dateId];
+          if (e != null && e.type == 'cancelled') continue; // skip cancelled
+          final timeStr = (e != null && e.type == 'moved' && e.time != null)
+              ? e.time!
+              : entry.value;
+          final p = timeStr.split(':');
           occ.add(DateTime(d.year, d.month, d.day,
               int.tryParse(p.first) ?? 6,
               int.tryParse(p.length > 1 ? p[1] : '0') ?? 0));
@@ -1491,12 +1509,62 @@ class _GeneratedScheduleState extends State<_GeneratedSchedule> {
       }
     }
     occ.sort();
-    _past = occ.where((o) => o.isBefore(today)).toList();
-    _upcoming = occ.where((o) => !o.isBefore(today)).toList();
+    final past = occ.where((o) => o.isBefore(today)).toList();
+    final upcoming = occ.where((o) => !o.isBefore(today)).toList();
     final pastIds =
-        _past.map((o) => DateFormat('yyyy-MM-dd').format(o)).toList();
-    _att = getIt<CircleRepository>()
-        .getWeekAttendance(circleId: widget.circle.id, dateIds: pastIds);
+        past.map((o) => DateFormat('yyyy-MM-dd').format(o)).toList();
+    Map<String, Map<String, AttendanceState>> att = const {};
+    try {
+      att = await getIt<CircleRepository>()
+          .getWeekAttendance(circleId: widget.circle.id, dateIds: pastIds);
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() {
+      _past = past;
+      _upcoming = upcoming;
+      _att = att;
+      _loading = false;
+    });
+  }
+
+  Future<void> _cancelOccurrence(DateTime o) async {
+    try {
+      await getIt<CircleRepository>().setScheduleException(
+        circleId: widget.circle.id,
+        dateId: DateFormat('yyyy-MM-dd').format(o),
+        type: 'cancelled',
+      );
+      await _load();
+    } catch (_) {
+      _err();
+    }
+  }
+
+  Future<void> _moveOccurrence(DateTime o) async {
+    final picked = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay(hour: o.hour, minute: o.minute));
+    if (picked == null) return;
+    final t =
+        '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+    try {
+      await getIt<CircleRepository>().setScheduleException(
+        circleId: widget.circle.id,
+        dateId: DateFormat('yyyy-MM-dd').format(o),
+        type: 'moved',
+        time: t,
+      );
+      await _load();
+    } catch (_) {
+      _err();
+    }
+  }
+
+  void _err() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(content: Text('تعذّر تحديث الجلسة')));
   }
 
   bool _isToday(DateTime o) {
@@ -1535,14 +1603,14 @@ class _GeneratedScheduleState extends State<_GeneratedSchedule> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final fmt = DateFormat('EEEE d MMMM • h:mm a', 'ar');
-    return FutureBuilder<Map<String, Map<String, AttendanceState>>>(
-      future: _att,
-      builder: (context, snap) {
-        final att = snap.data ?? const {};
-        return ListView(
-          padding: const EdgeInsets.fromLTRB(
-              AppSpacing.md, 0, AppSpacing.md, AppSpacing.lg),
-          children: [
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    final att = _att;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+          AppSpacing.md, 0, AppSpacing.md, AppSpacing.lg),
+      children: [
             if (widget.onAddExtra != null)
               Align(
                 alignment: AlignmentDirectional.centerStart,
@@ -1583,8 +1651,6 @@ class _GeneratedScheduleState extends State<_GeneratedSchedule> {
             ],
           ],
         );
-      },
-    );
   }
 
   Widget _row(ThemeData theme, DateFormat fmt, DateTime o,
@@ -1643,6 +1709,22 @@ class _GeneratedScheduleState extends State<_GeneratedSchedule> {
                       color: color,
                       fontSize: 11,
                       fontWeight: FontWeight.w600)),
+            ),
+          if (widget.canManage && !past)
+            PopupMenuButton<String>(
+              tooltip: 'خيارات',
+              onSelected: (v) {
+                if (v == 'move') _moveOccurrence(o);
+                if (v == 'cancel') _cancelOccurrence(o);
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'move', child: Text('تعديل الوقت')),
+                PopupMenuItem(
+                  value: 'cancel',
+                  child: Text('إلغاء هذه الجلسة',
+                      style: TextStyle(color: AppColors.error)),
+                ),
+              ],
             ),
         ],
       ),
