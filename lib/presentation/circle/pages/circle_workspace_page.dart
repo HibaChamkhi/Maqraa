@@ -17,6 +17,7 @@ import '../../../domain/circle/models/circle.dart';
 import '../../../domain/circle/repositories/circle_repository.dart';
 import '../../../domain/calendar/repositories/calendar_repository.dart';
 import '../../../domain/session/models/session.dart';
+import '../../../domain/session/repositories/session_repository.dart';
 import '../../calendar/bloc/calendar_bloc.dart';
 import '../../exam/pages/teacher_exams_page.dart';
 import '../../exam/pages/student_exams_page.dart';
@@ -1190,7 +1191,14 @@ class _ScheduleView extends StatelessWidget {
                   onChanged: onCircleChanged),
             Expanded(
               child: circle.days.isNotEmpty
-                  ? _GeneratedSchedule(circle: circle)
+                  ? _GeneratedSchedule(
+                      circle: circle,
+                      user: user,
+                      canManage: canManage,
+                      onAddExtra: canManage
+                          ? () => _openForm(context, circle.id)
+                          : null,
+                    )
                   : upcoming.isEmpty
                   ? Center(
                       child: Padding(
@@ -1445,7 +1453,15 @@ class _FixedScheduleCardState extends State<_FixedScheduleCard> {
 /// that day, else فائتة).
 class _GeneratedSchedule extends StatefulWidget {
   final Circle circle;
-  const _GeneratedSchedule({required this.circle});
+  final AppUser user;
+  final bool canManage;
+  final VoidCallback? onAddExtra;
+  const _GeneratedSchedule({
+    required this.circle,
+    required this.user,
+    required this.canManage,
+    this.onAddExtra,
+  });
 
   @override
   State<_GeneratedSchedule> createState() => _GeneratedScheduleState();
@@ -1488,6 +1504,33 @@ class _GeneratedScheduleState extends State<_GeneratedSchedule> {
     return o.year == n.year && o.month == n.month && o.day == n.day;
   }
 
+  /// Materialize-on-start: turn today's generated occurrence into a real
+  /// session, start it live, and open the live screen.
+  Future<void> _startToday(DateTime o) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final nav = Navigator.of(context);
+    try {
+      final session = await getIt<CalendarRepository>().addSession(
+        circleId: widget.circle.id,
+        title: 'جلسة ${widget.circle.name}',
+        scheduledAt: o,
+        durationMinutes: widget.circle.durationMinutes,
+        type: SessionType.tasmi3,
+      );
+      await getIt<SessionRepository>()
+          .startSession(circleId: widget.circle.id, sessionId: session.id);
+      if (!mounted) return;
+      nav.push(MaterialPageRoute(
+        builder: (_) =>
+            LiveSessionPage(circleId: widget.circle.id, user: widget.user),
+      ));
+    } catch (_) {
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text('تعذّر بدء الجلسة')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -1500,6 +1543,18 @@ class _GeneratedScheduleState extends State<_GeneratedSchedule> {
           padding: const EdgeInsets.fromLTRB(
               AppSpacing.md, 0, AppSpacing.md, AppSpacing.lg),
           children: [
+            if (widget.onAddExtra != null)
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: OutlinedButton.icon(
+                    onPressed: widget.onAddExtra,
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('جلسة استثنائية'),
+                  ),
+                ),
+              ),
             Padding(
               padding: const EdgeInsets.fromLTRB(4, 6, 4, 8),
               child: Text('القادمة', style: theme.textTheme.titleSmall),
@@ -1568,16 +1623,27 @@ class _GeneratedScheduleState extends State<_GeneratedSchedule> {
           Expanded(
             child: Text(fmt.format(o), style: theme.textTheme.bodyMedium),
           ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(AppRadius.pill),
+          if (today && widget.canManage)
+            FilledButton.icon(
+              onPressed: () => _startToday(o),
+              icon: const Icon(Icons.play_arrow_rounded, size: 18),
+              label: const Text('بدء'),
+              style:
+                  FilledButton.styleFrom(visualDensity: VisualDensity.compact),
+            )
+          else
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(AppRadius.pill),
+              ),
+              child: Text(label,
+                  style: TextStyle(
+                      color: color,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600)),
             ),
-            child: Text(label,
-                style: TextStyle(
-                    color: color, fontSize: 11, fontWeight: FontWeight.w600)),
-          ),
         ],
       ),
     );
