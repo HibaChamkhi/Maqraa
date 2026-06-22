@@ -11,12 +11,12 @@ import '../bloc/circle_bloc.dart';
 /// US-05: list circle members with their status.
 /// US-40: a teacher may promote an active student member to supervisor.
 class CircleMembersPage extends StatelessWidget {
-  final String circleId;
+  final Circle circle;
   final AppUser user;
 
   const CircleMembersPage({
     super.key,
-    required this.circleId,
+    required this.circle,
     required this.user,
   });
 
@@ -24,22 +24,23 @@ class CircleMembersPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocProvider(
       create: (_) =>
-          getIt<CircleBloc>()..add(CircleMembersRequested(circleId)),
-      child: _CircleMembersView(circleId: circleId, user: user),
+          getIt<CircleBloc>()..add(CircleMembersRequested(circle.id)),
+      child: _CircleMembersView(circle: circle, user: user),
     );
   }
 }
 
 class _CircleMembersView extends StatelessWidget {
-  final String circleId;
+  final Circle circle;
   final AppUser user;
 
-  const _CircleMembersView({required this.circleId, required this.user});
+  const _CircleMembersView({required this.circle, required this.user});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final canManage = user.role == UserRole.teacher;
+    // Promotion is allowed only for an owner/supervisor of THIS circle.
+    final canManage = circle.canManage(user);
     return Scaffold(
       appBar: AppBar(title: const Text('أعضاء الحلقة')),
       body: BlocConsumer<CircleBloc, CircleState>(
@@ -74,7 +75,7 @@ class _CircleMembersView extends StatelessWidget {
                     m.role == UserRole.student &&
                     m.status == MemberStatus.active,
                 onPromote: () => context.read<CircleBloc>().add(
-                      CircleMemberPromoted(circleId: circleId, uid: m.uid),
+                      CircleMemberPromoted(circleId: circle.id, uid: m.uid),
                     ),
               );
             },

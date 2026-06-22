@@ -71,9 +71,8 @@ class CircleWorkspacePage extends StatefulWidget {
 }
 
 class _CircleWorkspacePageState extends State<CircleWorkspacePage> {
-  bool get _canManage =>
-      widget.user.role == UserRole.teacher ||
-      widget.user.role == UserRole.supervisor;
+  // Authority is scoped to THIS circle, not the global account role.
+  bool get _canManage => widget.circle.canManage(widget.user);
 
   @override
   void initState() {
@@ -2311,7 +2310,8 @@ class _WeeklyAttendance extends StatefulWidget {
 }
 
 class _WeeklyAttendanceState extends State<_WeeklyAttendance> {
-  late DateTime _weekStart;
+  late DateTime _thisWeekStart; // Saturday of the current week
+  late DateTime _weekStart; // Saturday of the displayed week
   late List<String> _codes;
   late List<String> _dateIds;
   late Future<Map<String, Map<String, AttendanceState>>> _future;
@@ -2322,7 +2322,8 @@ class _WeeklyAttendanceState extends State<_WeeklyAttendance> {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final daysSinceSat = (today.weekday - DateTime.saturday) % 7;
-    _weekStart = today.subtract(Duration(days: daysSinceSat));
+    _thisWeekStart = today.subtract(Duration(days: daysSinceSat));
+    _weekStart = _thisWeekStart;
     final src = widget.circle.days.isNotEmpty
         ? widget.circle.days
         : _scheduleDayOrder;
@@ -2331,12 +2332,29 @@ class _WeeklyAttendanceState extends State<_WeeklyAttendance> {
           .indexOf(a)
           .compareTo(_scheduleDayOrder.indexOf(b)));
     if (_codes.isEmpty) _codes = List.of(_scheduleDayOrder);
+    _recompute();
+  }
+
+  /// Rebuild the visible date ids from [_weekStart] and reload the week.
+  void _recompute() {
     _dateIds = [
       for (final c in _codes)
         DateFormat('yyyy-MM-dd').format(
             _weekStart.add(Duration(days: _scheduleDayOrder.indexOf(c)))),
     ];
     _future = _load();
+  }
+
+  bool get _isCurrentWeek => !_weekStart.isBefore(_thisWeekStart);
+
+  /// Move by [delta] weeks (−1 = previous). Never navigate into the future.
+  void _changeWeek(int delta) {
+    final next = _weekStart.add(Duration(days: delta * 7));
+    if (next.isAfter(_thisWeekStart)) return;
+    setState(() {
+      _weekStart = next;
+      _recompute();
+    });
   }
 
   Future<Map<String, Map<String, AttendanceState>>> _load() =>
@@ -2376,20 +2394,60 @@ class _WeeklyAttendanceState extends State<_WeeklyAttendance> {
     }
   }
 
+  Widget _weekNavBar(ThemeData theme) {
+    final end = _weekStart.add(const Duration(days: 6));
+    final label =
+        '${DateFormat('d MMM', 'ar').format(_weekStart)} – ${DateFormat('d MMM', 'ar').format(end)}';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+      child: Row(
+        children: [
+          IconButton(
+            tooltip: 'الأسبوع السابق',
+            icon: const Icon(Icons.chevron_right),
+            onPressed: () => _changeWeek(-1),
+          ),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(label, style: theme.textTheme.titleSmall),
+                if (_isCurrentWeek)
+                  Text('هذا الأسبوع',
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: AppColors.primary)),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'الأسبوع التالي',
+            icon: const Icon(Icons.chevron_left),
+            onPressed: _isCurrentWeek ? null : () => _changeWeek(1),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     const nameW = 150.0, dayW = 58.0, pctW = 64.0;
     final totalW = nameW + dayW * _codes.length + pctW;
-    return FutureBuilder<Map<String, Map<String, AttendanceState>>>(
-      future: _future,
-      builder: (context, snap) {
-        if (!snap.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        final data = snap.data!;
-        return SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
+    return Column(
+      children: [
+        _weekNavBar(theme),
+        const Divider(height: 1),
+        Expanded(
+          child: FutureBuilder<Map<String, Map<String, AttendanceState>>>(
+            future: _future,
+            builder: (context, snap) {
+              if (!snap.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final data = snap.data!;
+              return SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
           child: SizedBox(
             width: totalW,
             child: Column(
@@ -2489,7 +2547,10 @@ class _WeeklyAttendanceState extends State<_WeeklyAttendance> {
           ),
         );
       },
-    );
+            ),
+          ),
+        ],
+      );
   }
 
   Widget _nameCell(ThemeData theme, CircleMember m) {
