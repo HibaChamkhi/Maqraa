@@ -74,8 +74,9 @@ class _CircleMembersView extends StatelessWidget {
               final isCircleOwner = m.uid == circle.teacherId;
               return _MemberTile(
                 member: m,
+                // Managing supervisors (promote/demote) is owner-only.
                 onPromote:
-                    (canManage && m.role == UserRole.student && active)
+                    (isOwnerUser && m.role == UserRole.student && active)
                         ? () => context.read<CircleBloc>().add(
                             CircleMemberPromoted(
                                 circleId: circle.id, uid: m.uid))
@@ -84,10 +85,13 @@ class _CircleMembersView extends StatelessWidget {
                     ? () => context.read<CircleBloc>().add(
                         CircleMemberDemoted(circleId: circle.id, uid: m.uid))
                     : null,
+                // Owner can remove anyone (not herself); a supervisor may only
+                // remove students, never another supervisor.
                 onRemove: (canManage &&
                         active &&
                         !isCircleOwner &&
-                        m.uid != user.uid)
+                        m.uid != user.uid &&
+                        (isOwnerUser || m.role == UserRole.student))
                     ? () => _confirmRemove(context, m)
                     : null,
                 onTransfer: (isOwnerUser && active && !isCircleOwner)

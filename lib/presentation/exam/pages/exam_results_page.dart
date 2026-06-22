@@ -1,6 +1,11 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../core/di/injection.dart';
 import '../../../core/ui/styles/theme.dart';
@@ -72,12 +77,66 @@ class _ExamResultsViewState extends State<_ExamResultsView> {
         ));
   }
 
+  String _csvCell(String v) =>
+      (v.contains(',') || v.contains('"') || v.contains('\n'))
+          ? '"${v.replaceAll('"', '""')}"'
+          : v;
+
+  Future<void> _exportCsv() async {
+    final exam = widget.exam;
+    final examBloc = context.read<ExamBloc>();
+    final students = await _membersFuture;
+    final results = {for (final r in examBloc.state.results) r.uid: r};
+    String outcome(ExamResult? r) {
+      if (r == null) return '';
+      if (r.attendance != ExamAttendance.present) return r.attendance.arabicLabel;
+      return r.score >= exam.passMark ? 'ناجحة' : 'راسبة';
+    }
+
+    final rows = <List<String>>[
+      ['الطالبة', 'الدرجة', 'من', 'الحضور', 'النتيجة', 'ملاحظات'],
+      for (final s in students)
+        [
+          s.name,
+          results[s.uid]?.score.toString() ?? '',
+          exam.totalMarks.toString(),
+          results[s.uid]?.attendance.arabicLabel ?? '',
+          outcome(results[s.uid]),
+          results[s.uid]?.feedback ?? '',
+        ],
+    ];
+    final csv = rows.map((r) => r.map(_csvCell).join(',')).join('\r\n');
+    final bytes = Uint8List.fromList(utf8.encode('﻿$csv'));
+    final safe = exam.title.replaceAll(RegExp(r'\s+'), '_');
+    try {
+      await Share.shareXFiles(
+        [XFile.fromData(bytes, mimeType: 'text/csv', name: 'results_$safe.csv')],
+        text: 'نتائج ${exam.title}',
+      );
+    } catch (_) {
+      await Clipboard.setData(ClipboardData(text: csv));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('تعذّرت المشاركة — تم نسخ النتائج إلى الحافظة')));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final exam = widget.exam;
     return Scaffold(
-      appBar: AppBar(title: Text('درجات ${exam.title}')),
+      appBar: AppBar(
+        title: Text('درجات ${exam.title}'),
+        actions: [
+          IconButton(
+            tooltip: 'تصدير النتائج CSV',
+            icon: const Icon(Icons.download_outlined),
+            onPressed: _exportCsv,
+          ),
+        ],
+      ),
       body: BlocConsumer<ExamBloc, ExamState>(
         listenWhen: (prev, curr) => curr.message.isNotEmpty && curr.actionDone,
         listener: (context, state) {
