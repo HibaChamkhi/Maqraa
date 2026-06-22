@@ -2429,6 +2429,12 @@ class _StudentDetail extends StatelessWidget {
 //  Weekly attendance grid (students × meeting days)
 // ---------------------------------------------------------------------------
 
+typedef _WeekAtt = ({
+  List<String> codes,
+  List<String> dateIds,
+  Map<String, Map<String, AttendanceState>> data,
+});
+
 class _WeeklyAttendance extends StatefulWidget {
   final Circle circle;
   final List<CircleMember> students;
@@ -2445,9 +2451,7 @@ class _WeeklyAttendance extends StatefulWidget {
 
 class _WeeklyAttendanceState extends State<_WeeklyAttendance> {
   late DateTime _weekStart;
-  late List<String> _codes;
-  late List<String> _dateIds;
-  late Future<Map<String, Map<String, AttendanceState>>> _future;
+  late Future<_WeekAtt> _future;
 
   @override
   void initState() {
@@ -2456,25 +2460,30 @@ class _WeeklyAttendanceState extends State<_WeeklyAttendance> {
     final today = DateTime(now.year, now.month, now.day);
     final daysSinceSat = (today.weekday - DateTime.saturday) % 7;
     _weekStart = today.subtract(Duration(days: daysSinceSat));
-    final src = widget.circle.days.isNotEmpty
-        ? widget.circle.days
-        : _scheduleDayOrder;
-    _codes = src.where((c) => _scheduleDayOrder.contains(c)).toList()
-      ..sort((a, b) => _scheduleDayOrder
-          .indexOf(a)
-          .compareTo(_scheduleDayOrder.indexOf(b)));
-    if (_codes.isEmpty) _codes = List.of(_scheduleDayOrder);
-    _dateIds = [
-      for (final c in _codes)
-        DateFormat('yyyy-MM-dd').format(
-            _weekStart.add(Duration(days: _scheduleDayOrder.indexOf(c)))),
-    ];
     _future = _load();
   }
 
-  Future<Map<String, Map<String, AttendanceState>>> _load() =>
-      getIt<CircleRepository>()
-          .getWeekAttendance(circleId: widget.circle.id, dateIds: _dateIds);
+  /// Meeting days come from the circle's sessions (same source as the
+  /// «أيام الحلقة» card), so the grid columns match. Falls back to the full
+  /// week only when no sessions exist yet.
+  Future<_WeekAtt> _load() async {
+    final sessions =
+        await getIt<CalendarRepository>().getSessions(widget.circle.id);
+    final wds = sessions.map((s) => s.scheduledAt.weekday).toSet();
+    var codes = [
+      for (final c in _scheduleDayOrder)
+        if (wds.contains(_codeToWeekday[c])) c,
+    ];
+    if (codes.isEmpty) codes = List.of(_scheduleDayOrder);
+    final dateIds = [
+      for (final c in codes)
+        DateFormat('yyyy-MM-dd').format(
+            _weekStart.add(Duration(days: _scheduleDayOrder.indexOf(c)))),
+    ];
+    final data = await getIt<CircleRepository>()
+        .getWeekAttendance(circleId: widget.circle.id, dateIds: dateIds);
+    return (codes: codes, dateIds: dateIds, data: data);
+  }
 
   AttendanceState? _nextState(AttendanceState? s) {
     switch (s) {
@@ -2513,14 +2522,16 @@ class _WeeklyAttendanceState extends State<_WeeklyAttendance> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     const nameW = 150.0, dayW = 58.0, pctW = 64.0;
-    final totalW = nameW + dayW * _codes.length + pctW;
-    return FutureBuilder<Map<String, Map<String, AttendanceState>>>(
+    return FutureBuilder<_WeekAtt>(
       future: _future,
       builder: (context, snap) {
         if (!snap.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
-        final data = snap.data!;
+        final codes = snap.data!.codes;
+        final dateIds = snap.data!.dateIds;
+        final data = snap.data!.data;
+        final totalW = nameW + dayW * codes.length + pctW;
         return SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: SizedBox(
@@ -2542,7 +2553,7 @@ class _WeeklyAttendanceState extends State<_WeeklyAttendance> {
                                   color: AppColors.textMuted, fontSize: 12)),
                         ),
                       ),
-                      for (final c in _codes)
+                      for (final c in codes)
                         SizedBox(
                           width: dayW,
                           child: Center(
@@ -2571,8 +2582,8 @@ class _WeeklyAttendanceState extends State<_WeeklyAttendance> {
                       final m = widget.students[i];
                       var recorded = 0, attended = 0;
                       final cells = <Widget>[];
-                      for (var j = 0; j < _codes.length; j++) {
-                        final dateId = _dateIds[j];
+                      for (var j = 0; j < codes.length; j++) {
+                        final dateId = dateIds[j];
                         final st = data[dateId]?[m.uid];
                         if (st != null) {
                           recorded++;
