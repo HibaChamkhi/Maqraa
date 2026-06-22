@@ -2732,27 +2732,28 @@ class _WeeklyAttendanceState extends State<_WeeklyAttendance> {
     final end = _weekStart.add(const Duration(days: 6));
     final label =
         '${DateFormat('d MMM', 'ar').format(_weekStart)} – ${DateFormat('d MMM', 'ar').format(end)}';
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           IconButton(
             tooltip: 'الأسبوع السابق',
             icon: const Icon(Icons.chevron_right),
             onPressed: () => _changeWeek(-1),
           ),
-          Expanded(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(label, style: theme.textTheme.titleSmall),
-                if (_isCurrentWeek)
-                  Text('هذا الأسبوع',
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: AppColors.primary)),
-              ],
-            ),
+          const SizedBox(width: 4),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(label, style: theme.textTheme.titleSmall),
+              if (_isCurrentWeek)
+                Text('هذا الأسبوع',
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: AppColors.primary)),
+            ],
           ),
+          const SizedBox(width: 4),
           IconButton(
             tooltip: 'الأسبوع التالي',
             icon: const Icon(Icons.chevron_left),
