@@ -225,7 +225,7 @@ class _CircleHeader extends StatelessWidget {
           icon: Icons.person_outline,
           label: 'المعلم المسؤول',
           value: _teacherName),
-      _DaysInfoCard(circleId: circle.id),
+      _DaysInfoCard(circleId: circle.id, canManage: canManage),
       _LevelInfoCard(circle: circle, canManage: canManage),
       _RiwayahInfoCard(circle: circle, canManage: canManage),
     ];
@@ -553,7 +553,8 @@ class _DescriptionLineState extends State<_DescriptionLine> {
 /// sessions (their distinct weekdays), since scheduling is session-based.
 class _DaysInfoCard extends StatelessWidget {
   final String circleId;
-  const _DaysInfoCard({required this.circleId});
+  final bool canManage;
+  const _DaysInfoCard({required this.circleId, required this.canManage});
 
   @override
   Widget build(BuildContext context) {
@@ -566,10 +567,21 @@ class _DaysInfoCard extends StatelessWidget {
           for (final code in _scheduleDayOrder)
             if (wds.contains(_codeToWeekday[code])) _scheduleDayLabels[code]!
         ];
-        return _InfoCard(
+        final card = _InfoCard(
           icon: Icons.event_outlined,
           label: 'أيام الحلقة',
           value: days.isEmpty ? 'لم تُحدَّد' : days.join(' · '),
+        );
+        if (!canManage) return card;
+        // Days are driven by the recurring sessions — tapping jumps to the
+        // الجلسات tab (session manager) where they're set.
+        return InkWell(
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          onTap: () {
+            final controller = DefaultTabController.maybeOf(context);
+            controller?.animateTo(2);
+          },
+          child: card,
         );
       },
     );
