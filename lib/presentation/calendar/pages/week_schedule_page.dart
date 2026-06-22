@@ -210,10 +210,10 @@ class _WeekSchedulePageState extends State<WeekSchedulePage> {
                 label: const Text('بدء الجلسة'),
               )
             else if (e.status == SessionStatus.scheduled)
-              const ElevatedButton.icon(
+              ElevatedButton.icon(
                 onPressed: null,
-                icon: Icon(Icons.schedule),
-                label: Text('تبدأ في وقتها'),
+                icon: const Icon(Icons.schedule),
+                label: const Text('تبدأ في وقتها'),
               )
             else
               Text('انتهت الجلسة',
