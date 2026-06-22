@@ -138,7 +138,11 @@ class _CircleWorkspacePageState extends State<CircleWorkspacePage> {
               WeeklyHomeworkTab(
                   circle: circle, user: user, canManage: _canManage),
               // الجلسات = the session-times manager (moved here)
-              _ScheduleTab(circle: circle, user: user, canManage: _canManage),
+              _ScheduleTab(
+                  circle: circle,
+                  user: user,
+                  canManage: _canManage,
+                  onCircleChanged: (c) => setState(() => _circle = c)),
               // الاختبارات = exams list inline (managers grade, students view)
               _canManage
                   ? TeacherExamsPage(
@@ -1090,15 +1094,23 @@ class _ScheduleTab extends StatelessWidget {
   final Circle circle;
   final AppUser user;
   final bool canManage;
+  final ValueChanged<Circle>? onCircleChanged;
   const _ScheduleTab(
-      {required this.circle, required this.user, required this.canManage});
+      {required this.circle,
+      required this.user,
+      required this.canManage,
+      this.onCircleChanged});
 
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
       create: (_) =>
           getIt<CalendarBloc>()..add(CalendarSessionsRequested(circle.id)),
-      child: _ScheduleView(circle: circle, user: user, canManage: canManage),
+      child: _ScheduleView(
+          circle: circle,
+          user: user,
+          canManage: canManage,
+          onCircleChanged: onCircleChanged),
     );
   }
 }
@@ -1107,8 +1119,12 @@ class _ScheduleView extends StatelessWidget {
   final Circle circle;
   final AppUser user;
   final bool canManage;
+  final ValueChanged<Circle>? onCircleChanged;
   const _ScheduleView(
-      {required this.circle, required this.user, required this.canManage});
+      {required this.circle,
+      required this.user,
+      required this.canManage,
+      this.onCircleChanged});
 
   @override
   Widget build(BuildContext context) {
@@ -1168,7 +1184,10 @@ class _ScheduleView extends StatelessWidget {
               ),
             ),
             if (canManage || circle.days.isNotEmpty)
-              _FixedScheduleCard(circle: circle, canManage: canManage),
+              _FixedScheduleCard(
+                  circle: circle,
+                  canManage: canManage,
+                  onChanged: onCircleChanged),
             Expanded(
               child: upcoming.isEmpty
                   ? Center(
@@ -1274,7 +1293,9 @@ class _ScheduleView extends StatelessWidget {
 class _FixedScheduleCard extends StatefulWidget {
   final Circle circle;
   final bool canManage;
-  const _FixedScheduleCard({required this.circle, required this.canManage});
+  final ValueChanged<Circle>? onChanged;
+  const _FixedScheduleCard(
+      {required this.circle, required this.canManage, this.onChanged});
 
   @override
   State<_FixedScheduleCard> createState() => _FixedScheduleCardState();
@@ -1330,6 +1351,15 @@ class _FixedScheduleCardState extends State<_FixedScheduleCard> {
         dayTimes: map,
         durationMinutes: result.duration,
       );
+      final newDays = [
+        for (final c in _scheduleDayOrder)
+          if (map.containsKey(c)) c
+      ];
+      widget.onChanged?.call(widget.circle.copyWith(
+        days: newDays,
+        dayTimes: map,
+        durationMinutes: result.duration,
+      ));
       if (mounted) {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
