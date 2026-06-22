@@ -1189,7 +1189,9 @@ class _ScheduleView extends StatelessWidget {
                   canManage: canManage,
                   onChanged: onCircleChanged),
             Expanded(
-              child: upcoming.isEmpty
+              child: circle.days.isNotEmpty
+                  ? _GeneratedSchedule(circle: circle)
+                  : upcoming.isEmpty
                   ? Center(
                       child: Padding(
                         padding: const EdgeInsets.all(AppSpacing.xl),
@@ -1433,6 +1435,150 @@ class _FixedScheduleCardState extends State<_FixedScheduleCard> {
               ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Sessions generated from the fixed rule (no doc per occurrence):
+/// القادمة (today + upcoming) and السجل (past, منتهية if attendance was taken
+/// that day, else فائتة).
+class _GeneratedSchedule extends StatefulWidget {
+  final Circle circle;
+  const _GeneratedSchedule({required this.circle});
+
+  @override
+  State<_GeneratedSchedule> createState() => _GeneratedScheduleState();
+}
+
+class _GeneratedScheduleState extends State<_GeneratedSchedule> {
+  late final List<DateTime> _upcoming;
+  late final List<DateTime> _past;
+  late final Future<Map<String, Map<String, AttendanceState>>> _att;
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final from = today.subtract(const Duration(days: 28));
+    final to = today.add(const Duration(days: 28));
+    final occ = <DateTime>[];
+    for (var d = from; !d.isAfter(to); d = d.add(const Duration(days: 1))) {
+      for (final entry in widget.circle.dayTimes.entries) {
+        if (_codeToWeekday[entry.key] == d.weekday) {
+          final p = entry.value.split(':');
+          occ.add(DateTime(d.year, d.month, d.day,
+              int.tryParse(p.first) ?? 6,
+              int.tryParse(p.length > 1 ? p[1] : '0') ?? 0));
+        }
+      }
+    }
+    occ.sort();
+    _past = occ.where((o) => o.isBefore(today)).toList();
+    _upcoming = occ.where((o) => !o.isBefore(today)).toList();
+    final pastIds =
+        _past.map((o) => DateFormat('yyyy-MM-dd').format(o)).toList();
+    _att = getIt<CircleRepository>()
+        .getWeekAttendance(circleId: widget.circle.id, dateIds: pastIds);
+  }
+
+  bool _isToday(DateTime o) {
+    final n = DateTime.now();
+    return o.year == n.year && o.month == n.month && o.day == n.day;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final fmt = DateFormat('EEEE d MMMM • h:mm a', 'ar');
+    return FutureBuilder<Map<String, Map<String, AttendanceState>>>(
+      future: _att,
+      builder: (context, snap) {
+        final att = snap.data ?? const {};
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(
+              AppSpacing.md, 0, AppSpacing.md, AppSpacing.lg),
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 6, 4, 8),
+              child: Text('القادمة', style: theme.textTheme.titleSmall),
+            ),
+            if (_upcoming.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                child: Text('لا جلسات قادمة',
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: AppColors.textMuted)),
+              )
+            else
+              for (final o in _upcoming.take(8))
+                _row(theme, fmt, o, today: _isToday(o)),
+            if (_past.isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+                child: Text('السجل', style: theme.textTheme.titleSmall),
+              ),
+              for (final o in _past.reversed.take(8))
+                _row(theme, fmt, o,
+                    past: true,
+                    done: (att[DateFormat('yyyy-MM-dd').format(o)]
+                            ?.isNotEmpty ??
+                        false)),
+            ],
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _row(ThemeData theme, DateFormat fmt, DateTime o,
+      {bool today = false, bool past = false, bool done = false}) {
+    late Color color;
+    late String label;
+    late IconData icon;
+    if (past) {
+      color = done ? AppColors.success : AppColors.error;
+      label = done ? 'منتهية' : 'فائتة';
+      icon = done ? Icons.check_circle : Icons.cancel;
+    } else if (today) {
+      color = AppColors.primary;
+      label = 'اليوم';
+      icon = Icons.calendar_today;
+    } else {
+      color = AppColors.textMuted;
+      label = 'قادمة';
+      icon = Icons.event_outlined;
+    }
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(
+          color: today ? AppColors.primary : AppColors.border,
+          width: today ? 1.6 : 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: past ? color : AppColors.primary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(fmt.format(o), style: theme.textTheme.bodyMedium),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(AppRadius.pill),
+            ),
+            child: Text(label,
+                style: TextStyle(
+                    color: color, fontSize: 11, fontWeight: FontWeight.w600)),
+          ),
+        ],
       ),
     );
   }
