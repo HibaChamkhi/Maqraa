@@ -9,6 +9,16 @@
 # packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
+analyzer:
+  # Never analyze generated output or third-party SwiftPM/Pods checkouts. The
+  # flutterfire SDK ships example/integration tests under build/ that reference
+  # packages this app doesn't depend on — they are not our code.
+  exclude:
+    - build/**
+    - "**/*.g.dart"
+    - "**/*.freezed.dart"
+    - lib/core/di/injection.config.dart
+
 linter:
   # The lint rules applied to this project can be customized in the
   # section below to disable rules from the `package:flutter_lints/flutter.yaml`

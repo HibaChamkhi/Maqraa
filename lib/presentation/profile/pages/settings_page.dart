@@ -612,7 +612,7 @@ class _NotificationsCardState extends State<_NotificationsCard> {
                 children: [
                   Switch(
                     value: entry.value,
-                    activeColor: ProfileTheme.green,
+                    activeThumbColor: ProfileTheme.green,
                     onChanged: (v) => setState(() => _values[entry.key] = v),
                   ),
                   const Spacer(),

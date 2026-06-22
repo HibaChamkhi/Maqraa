@@ -195,7 +195,7 @@ class _ToggleRow extends StatelessWidget {
         children: [
           Switch(
             value: value,
-            activeColor: ProfileTheme.green,
+            activeThumbColor: ProfileTheme.green,
             onChanged: onChanged,
           ),
           const Spacer(),
