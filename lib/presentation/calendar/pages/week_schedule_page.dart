@@ -3,6 +3,7 @@ import 'package:intl/intl.dart' hide TextDirection;
 
 import '../../../core/di/injection.dart';
 import '../../../core/ui/styles/theme.dart';
+import '../../../core/util/notify.dart';
 import '../../../domain/auth/models/app_user.dart';
 import '../../../domain/circle/models/circle.dart';
 import '../../../domain/circle/repositories/circle_repository.dart';
@@ -150,16 +151,15 @@ class _WeekSchedulePageState extends State<WeekSchedulePage> {
         _sameDay(e.start, DateTime.now());
     final fmt = DateFormat('EEEE d MMMM • HH:mm', 'ar');
     final fmtEnd = DateFormat('HH:mm');
-    await showModalBottomSheet<void>(
+    await showDialog<void>(
       context: context,
-      showDragHandle: true,
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(
-            AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.lg),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
+      builder: (ctx) => AlertDialog(
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
             Row(
               children: [
                 Expanded(
@@ -231,7 +231,8 @@ class _WeekSchedulePageState extends State<WeekSchedulePage> {
                     style: TextStyle(color: AppColors.error)),
               ),
             ],
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -261,6 +262,12 @@ class _WeekSchedulePageState extends State<WeekSchedulePage> {
     try {
       await getIt<CalendarRepository>()
           .deleteSession(circleId: e.circleId, sessionId: e.sessionId);
+      final d = DateFormat('EEEE d MMMM • HH:mm', 'ar').format(e.start);
+      await notifyCircleStudents(
+        circleId: e.circleId,
+        title: 'أُلغيت جلسة',
+        body: '${e.circleName}: أُلغيت جلسة $d',
+      );
       if (mounted) _reload();
     } catch (_) {
       if (mounted) {

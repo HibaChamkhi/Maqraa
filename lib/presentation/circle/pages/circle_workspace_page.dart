@@ -10,6 +10,7 @@ import '../../../core/data/quran_surahs.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/model /ui_state.dart';
 import '../../../core/util/last_location_store.dart';
+import '../../../core/util/notify.dart';
 import '../../../core/ui/styles/theme.dart';
 import '../../../core/ui/widgets/werd_widgets.dart';
 import '../../../domain/auth/models/app_user.dart';
@@ -1534,6 +1535,12 @@ class _GeneratedScheduleState extends State<_GeneratedSchedule> {
         dateId: DateFormat('yyyy-MM-dd').format(o),
         type: 'cancelled',
       );
+      await notifyCircleStudents(
+        circleId: widget.circle.id,
+        title: 'أُلغيت جلسة',
+        body:
+            '${widget.circle.name}: أُلغيت جلسة ${DateFormat('EEEE d MMMM', 'ar').format(o)}',
+      );
       await _load();
     } catch (_) {
       _err();
@@ -1553,6 +1560,12 @@ class _GeneratedScheduleState extends State<_GeneratedSchedule> {
         dateId: DateFormat('yyyy-MM-dd').format(o),
         type: 'moved',
         time: t,
+      );
+      await notifyCircleStudents(
+        circleId: widget.circle.id,
+        title: 'تغيّر موعد جلسة',
+        body:
+            '${widget.circle.name}: أصبحت جلسة ${DateFormat('EEEE d MMMM', 'ar').format(o)} في $t',
       );
       await _load();
     } catch (_) {
