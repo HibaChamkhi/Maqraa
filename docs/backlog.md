@@ -1,27 +1,25 @@
 # وِصَال — Backlog (teacher/supervisor features)
 
-> Status of the teacher-side work + what's left. Tags: **[FIX]** = built but needs work · **[NEW]** = not started. Priority: **P1** (do first) · **P2** · **P3** (nice-to-have).
-> Last updated: 2026-06-18 · Branch: `feature/integration`
+> Status of the teacher-side work. Tags: **[DONE]** · **[FIX]** = built but needs work · **[NEW]** = not started. Priority: **P1** · **P2** · **P3**.
+> Last updated: 2026-06-22 · Branch: `feature/integration`
 
 ---
 
 ## 0. Blockers / infra
 
-- **[FIX][P1] Publish Firestore rules.** The `firestore.rules` file allows signed-in access but must be published to the live project (Console → Firestore → Rules → Publish). Without it, attendance/exam writes are denied. *(User reports done — verify writes succeed.)*
-- **[FIX][P1] Run `flutter analyze` + fix any issues.** The recent work (exams, students table, attendance) was written without a local analyzer run. Do a full analyze + smoke test before merging onward.
-- **[NEW][P2] Tighten Firestore rules.** Currently any signed-in user can read/write any circle. Scope to circle membership + role (see Authorities below).
-- **[NEW][P3] Tests.** No automated tests for the new exam/attendance features.
+- **[DONE] Publish Firestore rules.** Published to the live project; attendance/exam/session writes work.
+- **[FIX][P1] Run `flutter analyze` + smoke test.** Most work was written without a local analyzer run (no SDK in the build sandbox); compile errors are fixed reactively. Do a full analyze pass before release.
+- **[NEW][P2] Tighten Firestore rules.** Still permissive (any signed-in user can read/write any circle). Scope to circle membership + role.
+- **[NEW][P3] Tests.** No automated tests yet.
 
 ---
 
-## 1. Authorities (teacher vs supervisor) — highest-value area
+## 1. Authorities (teacher vs supervisor)
 
-- **[FIX][P1] Unify permission checks (circle-scoped).** Today checks are inconsistent: `circle_workspace_page` and `circle_members_page` use the *global* account role, while `circle_info_page` uses the circle's `teacherId`/`supervisorIds`. Result: a teacher of one circle can manage screens of a circle she doesn't own. Create ONE helper — "what is this user's role in THIS circle?" — and use it everywhere.
-- **[NEW][P2] Demote a supervisor** back to student.
-- **[NEW][P2] Remove a member** from a circle (owner/supervisor per matrix).
-- **[NEW][P2] Transfer circle ownership** (teacher hands the circle to another).
-- **[NEW][P2] Teacher-vs-supervisor power limits.** Supervisor can grade/track/manage students, but NOT delete the circle, change privacy, manage supervisors, or transfer ownership.
-- **[NEW][P2] Enforce the above in Firestore rules** (server-side, not just hidden UI).
+- **[DONE] Circle-scoped permission helper** — unified "role in THIS circle" check (merged from tasks branch).
+- **[DONE] Demote supervisor / remove member / transfer ownership** (merged — verify each path).
+- **[NEW][P2] Teacher-vs-supervisor power limits.** Confirm supervisor can't delete circle / change privacy / manage supervisors / transfer ownership.
+- **[NEW][P2] Enforce authorities in Firestore rules** (server-side).
 
 ---
 
@@ -29,24 +27,22 @@
 
 Done: create (popup, type, range, marks, date+time), edit, delete, grade per student (score, attendance, feedback, auto grade + pass/fail), publish gate, inline tab, student view.
 
-- **[FIX][P2] Stale publish badge.** After toggling نشر النتائج on the results screen, the exams list badge (منشورة/مخفية) only refreshes on reload — refresh it on return.
-- **[NEW][P2] Multi-criteria rubric** — separate marks for الحفظ / التجويد / الطلاقة weighted into the total (currently a single score).
-- **[NEW][P2] Results CSV export** (reuse the students CSV approach).
-- **[NEW][P2] Exam reminder.** Wire the existing `scheduleExamReminder` to the exam's date/time.
-- **[NEW][P3] Retakes** — second attempt that keeps history.
-- **[NEW][P3] Certificates** for ختمة / إجازة exams.
+- **[DONE] Stale publish badge** refresh (merged).
+- **[NEW][P2] Multi-criteria rubric** — حفظ / تجويد / طلاقة weighted (currently single score).
+- **[NEW][P2] Results CSV export.**
+- **[NEW][P2] Exam reminder** — wire `scheduleExamReminder` to the exam date/time.
+- **[NEW][P3] Retakes.**
+- **[NEW][P3] Certificates** for ختمة / إجازة.
 
 ---
 
 ## 3. الطالبات (Students table)
 
-Done: new columns (تسميع اليوم, تقدّم الحفظ, التقييم, الشريكة, إجراءات), expandable detail with available fields.
+Done: new columns (تسميع اليوم, تقدّم الحفظ, التقييم, الشريكة, إجراءات), expandable detail.
 
-- **[FIX][P2] Narrow-screen student card** still uses the old layout — update it to match (الشريكة, تسميع اليوم) for phones.
-- **[NEW][P2] Detail extras need data:** streak, attendance %, latest exam result, contact, teacher notes. Requires:
-  - **[NEW][P2] Add `contact` / parent info** field to the member model.
-  - **[NEW][P3] Add `notes`** field to the member model.
-  - latest exam + attendance % come from items below.
+- **[DONE] Narrow-screen student card** updated with الشريكة / تسميع اليوم (merged).
+- **[DONE] Member `contact` + `notes` fields** + attendance % in the detail panel (merged).
+- **[NEW][P3] Latest exam result** in the detail panel (link exams → student).
 
 ---
 
@@ -54,28 +50,42 @@ Done: new columns (تسميع اليوم, تقدّم الحفظ, التقييم,
 
 Done: اليوم/الأسبوع switch, weekly grid (students × days), tap to mark حاضرة/غائبة/معذورة, weekly النسبة, per-day store, error feedback.
 
-- **[FIX][P3] 7-day fallback.** When a circle has no meeting days set, the grid shows all 7 columns. Encourage setting meeting days, or trim to days that have records.
-- **[NEW][P1] Previous / next week navigation** (◀ ▶) — currently only the current week.
-- **[NEW][P2] Feed attendance % into** the student detail panel and into التقارير.
-- **[NEW][P2] Auto-fill attendance from live sessions** (a join marks present).
+- **[DONE] Week navigation** (◀ ▶, no future weeks).
+- **[DONE] Days now derive from the schedule rule** (no more 7-day fallback when a rule is set).
+- **[DONE] Attendance % in the student detail** (merged).
+- **[NEW][P2] Feed attendance % into التقارير** (trends over time).
+- **[NEW][P2] Auto-fill attendance from a live session** (joining marks present).
 - **[NEW][P3] Month / term view.**
 
 ---
 
-## 5. Circles & layout
+## 5. Sessions (fixed-rule model) — see `sessions_logic_spec.md`
 
-Done: الحلقات redesign (KPI strip + card grid + add tile), centered content on إنشاء حلقة + معلومات الحلقة, drawer label fix.
-
-- **[NEW][P2] Roll out the `CenteredContent` wrapper** to the remaining content/form pages (profile, settings, join circle, weekly schedule, exams, reports, all-students) for consistent centered layout on wide screens.
-- **[NEW][P3] Add a "next session" chip** to circle cards (needs schedule read).
+- **[DONE] الجدول الثابت rule editor** (days + time + duration) in the الجلسات tab; live-refreshes أيام الحلقة + attendance columns.
+- **[DONE] Generated occurrences** — القادمة + السجل (منتهية via attendance, else فائتة), no doc per occurrence.
+- **[DONE] Materialize-on-start** — بدء today's occurrence creates + starts the session and opens live.
+- **[DONE] Exceptions** — cancel / move a specific date + add one-off (استثنائية).
+- **[DONE] Live screen today-only** (no backlog of old scheduled sessions).
+- **[DONE] Calendar tap-to-act popup** — start / join / cancel a session from the weekly calendar.
+- **[DONE] Notify circle students** on cancel / move.
+- **[NEW][P3] Notify on edit-form modify** (the «جلسة جديدة»/edit form doesn't notify yet — only calendar + الجلسات tab do).
+- **[FIX][P3] Dedupe materialize** — tapping بدء twice can create duplicate session docs.
 
 ---
 
-## Suggested order for your friend
+## 6. Circles & layout
 
-1. Publish + verify Firestore rules, run `flutter analyze` (Section 0).
-2. Unify permission checks (1 — the real bug).
-3. Attendance week navigation (4) + feed % to detail/reports.
-4. Authorities actions: demote / remove / transfer + power limits (1).
-5. Exams polish: rubric, CSV, reminder (2).
-6. Layout sweep + narrow student card (5, 3).
+Done: الحلقات redesign (KPI strip + card grid + add tile), centered content on إنشاء حلقة + معلومات الحلقة, drawer label fix, NestedScrollView workspace (scrolling header + pinned tabs), rename circle (تعديل الحلقة).
+
+- **[NEW][P2] Roll `CenteredContent` across remaining pages** (profile, settings, join circle, reports, all-students).
+- **[NEW][P3] "Next session" chip** on circle cards.
+
+---
+
+## Suggested next order
+
+1. `flutter analyze` pass + smoke test the merged build (Section 0).
+2. Confirm teacher-vs-supervisor power limits + tighten Firestore rules (1, 0).
+3. Feed attendance % into التقارير (4).
+4. Exams polish: rubric, CSV export, reminder (2).
+5. Finish layout sweep + remaining nice-to-haves (6, 3, 5).

@@ -103,11 +103,21 @@ Steps to move over:
 
 ---
 
-## 8. Suggested build order
+## 8. Build order — status
 
-1. Rule editor in the الجلسات tab (set days/time/duration). *(Data already on Circle.)*
-2. Occurrence generator (rule → dated occurrences for a range) + status derivation.
-3. الجلسات tab = rule + القادمة + السجل using the generator.
-4. الجلسة المباشرة = today-only, start anytime ≥ time, highlight today.
-5. Exceptions: move / cancel / add-extra per date.
-6. Point أيام الحلقة + attendance grid at the rule; retire the old per-doc derivation.
+1. **[DONE]** Rule editor in the الجلسات tab (days/time/duration).
+2. **[DONE]** Occurrence generator (rule → dated occurrences) + status derivation.
+3. **[DONE]** الجلسات tab = rule + القادمة + السجل from the generator.
+4. **[DONE]** الجلسة المباشرة = today-only; start anytime on/after time.
+5. **[DONE]** Exceptions: move / cancel / add-extra per date.
+6. **[DONE]** أيام الحلقة + attendance grid read the rule (fallback to sessions when no rule).
+
+Extras shipped beyond the original plan:
+- **[DONE]** Materialize-on-start (بدء a generated occurrence creates + starts the session).
+- **[DONE]** Calendar tap-to-act popup (start / join / cancel from the weekly calendar).
+- **[DONE]** Notify circle students on cancel / move.
+
+Still open:
+- **[NEW]** Notify students when a session is edited via the «جلسة جديدة»/edit form.
+- **[FIX]** Dedupe materialize-on-start (double-tap can create duplicate docs).
+- **[NEW]** Optional dedicated "started/ended" record for precise منتهية (currently inferred from attendance).
