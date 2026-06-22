@@ -119,6 +119,9 @@ class ExamResultRecorded extends ExamEvent {
   final num score;
   final ExamAttendance attendance;
   final String feedback;
+  final num? hifz;
+  final num? tajweed;
+  final num? fluency;
 
   const ExamResultRecorded({
     required this.circleId,
@@ -128,11 +131,24 @@ class ExamResultRecorded extends ExamEvent {
     required this.score,
     this.attendance = ExamAttendance.present,
     this.feedback = '',
+    this.hifz,
+    this.tajweed,
+    this.fluency,
   });
 
   @override
-  List<Object?> get props =>
-      [circleId, examId, uid, name, score, attendance, feedback];
+  List<Object?> get props => [
+        circleId,
+        examId,
+        uid,
+        name,
+        score,
+        attendance,
+        feedback,
+        hifz,
+        tajweed,
+        fluency
+      ];
 }
 
 /// US-21: a student requests their own score for an exam.

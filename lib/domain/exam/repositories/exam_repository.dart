@@ -51,6 +51,9 @@ abstract class ExamRepository {
     required num score,
     ExamAttendance attendance,
     String feedback,
+    num? hifz,
+    num? tajweed,
+    num? fluency,
   });
 
   /// US-21: list all results of an exam (teacher view).

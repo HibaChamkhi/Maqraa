@@ -197,7 +197,8 @@ class _ExamResultsViewState extends State<_ExamResultsView> {
                           result: results[student.uid],
                           totalMarks: exam.totalMarks,
                           passMark: exam.passMark,
-                          onSave: (score, attendance, feedback) =>
+                          onSave: (score, attendance, feedback, hifz, tajweed,
+                                  fluency) =>
                               context.read<ExamBloc>().add(
                                     ExamResultRecorded(
                                       circleId: widget.circleId,
@@ -207,6 +208,9 @@ class _ExamResultsViewState extends State<_ExamResultsView> {
                                       score: score,
                                       attendance: attendance,
                                       feedback: feedback,
+                                      hifz: hifz,
+                                      tajweed: tajweed,
+                                      fluency: fluency,
                                     ),
                                   ),
                         )),
@@ -265,8 +269,8 @@ class _ResultTile extends StatefulWidget {
   final ExamResult? result;
   final num totalMarks;
   final num passMark;
-  final void Function(num score, ExamAttendance attendance, String feedback)
-      onSave;
+  final void Function(num score, ExamAttendance attendance, String feedback,
+      num? hifz, num? tajweed, num? fluency) onSave;
 
   const _ResultTile({
     required this.student,
@@ -283,6 +287,9 @@ class _ResultTile extends StatefulWidget {
 class _ResultTileState extends State<_ResultTile> {
   late final TextEditingController _scoreController;
   late final TextEditingController _feedbackController;
+  late final TextEditingController _hifzController;
+  late final TextEditingController _tajweedController;
+  late final TextEditingController _fluencyController;
   late ExamAttendance _attendance;
 
   @override
@@ -293,7 +300,31 @@ class _ResultTileState extends State<_ResultTile> {
     );
     _feedbackController =
         TextEditingController(text: widget.result?.feedback ?? '');
+    _hifzController =
+        TextEditingController(text: widget.result?.hifz?.toString() ?? '');
+    _tajweedController =
+        TextEditingController(text: widget.result?.tajweed?.toString() ?? '');
+    _fluencyController =
+        TextEditingController(text: widget.result?.fluency?.toString() ?? '');
     _attendance = widget.result?.attendance ?? ExamAttendance.present;
+  }
+
+  num? _num(TextEditingController c) => num.tryParse(c.text.trim());
+
+  bool get _usesRubric =>
+      _hifzController.text.trim().isNotEmpty ||
+      _tajweedController.text.trim().isNotEmpty ||
+      _fluencyController.text.trim().isNotEmpty;
+
+  /// When any rubric field is filled, the total score = sum of the three.
+  void _recomputeFromRubric() {
+    if (_usesRubric) {
+      final sum = (_num(_hifzController) ?? 0) +
+          (_num(_tajweedController) ?? 0) +
+          (_num(_fluencyController) ?? 0);
+      _scoreController.text = sum.toString();
+    }
+    setState(() {});
   }
 
   @override
@@ -303,6 +334,9 @@ class _ResultTileState extends State<_ResultTile> {
     if (oldWidget.result != r && r != null) {
       _scoreController.text = r.score.toString();
       _feedbackController.text = r.feedback;
+      _hifzController.text = r.hifz?.toString() ?? '';
+      _tajweedController.text = r.tajweed?.toString() ?? '';
+      _fluencyController.text = r.fluency?.toString() ?? '';
       _attendance = r.attendance;
     }
   }
@@ -311,11 +345,15 @@ class _ResultTileState extends State<_ResultTile> {
   void dispose() {
     _scoreController.dispose();
     _feedbackController.dispose();
+    _hifzController.dispose();
+    _tajweedController.dispose();
+    _fluencyController.dispose();
     super.dispose();
   }
 
   void _save() {
     num score = 0;
+    num? hifz, tajweed, fluency;
     if (_attendance == ExamAttendance.present) {
       final value = num.tryParse(_scoreController.text.trim());
       if (value == null || value < 0 || value > widget.totalMarks) {
@@ -326,9 +364,23 @@ class _ResultTileState extends State<_ResultTile> {
         return;
       }
       score = value;
+      hifz = _num(_hifzController);
+      tajweed = _num(_tajweedController);
+      fluency = _num(_fluencyController);
     }
     FocusScope.of(context).unfocus();
-    widget.onSave(score, _attendance, _feedbackController.text.trim());
+    widget.onSave(
+        score, _attendance, _feedbackController.text.trim(), hifz, tajweed, fluency);
+  }
+
+  Widget _rubricField(String label, TextEditingController c) {
+    return TextField(
+      controller: c,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      textAlign: TextAlign.center,
+      onChanged: (_) => _recomputeFromRubric(),
+      decoration: InputDecoration(labelText: label, isDense: true),
+    );
   }
 
   @override
@@ -364,7 +416,8 @@ class _ResultTileState extends State<_ResultTile> {
                   width: 96,
                   child: TextField(
                     controller: _scoreController,
-                    enabled: isPresent,
+                    // Auto-computed (read-only) when the rubric is in use.
+                    enabled: isPresent && !_usesRubric,
                     keyboardType:
                         const TextInputType.numberWithOptions(decimal: true),
                     textAlign: TextAlign.center,
@@ -394,6 +447,27 @@ class _ResultTileState extends State<_ResultTile> {
                       ))
                   .toList(),
             ),
+            if (isPresent) ...[
+              const SizedBox(height: AppSpacing.sm),
+              Row(
+                children: [
+                  Expanded(child: _rubricField('الحفظ', _hifzController)),
+                  const SizedBox(width: 8),
+                  Expanded(child: _rubricField('التجويد', _tajweedController)),
+                  const SizedBox(width: 8),
+                  Expanded(child: _rubricField('الطلاقة', _fluencyController)),
+                ],
+              ),
+              if (_usesRubric)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    'المجموع تلقائيًا = الحفظ + التجويد + الطلاقة',
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: AppColors.textMuted),
+                  ),
+                ),
+            ],
             if (grade.isNotEmpty) ...[
               const SizedBox(height: AppSpacing.sm),
               Row(

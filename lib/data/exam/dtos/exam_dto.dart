@@ -39,6 +39,9 @@ class ExamResultDto {
       score: (map['score'] ?? 0) as num,
       attendance: ExamAttendance.fromKey(map['attendance'] as String?),
       feedback: (map['feedback'] ?? '') as String,
+      hifz: map['hifz'] as num?,
+      tajweed: map['tajweed'] as num?,
+      fluency: map['fluency'] as num?,
     );
   }
 
@@ -49,6 +52,9 @@ class ExamResultDto {
       'score': result.score,
       'attendance': result.attendance.storageKey,
       'feedback': result.feedback,
+      'hifz': result.hifz,
+      'tajweed': result.tajweed,
+      'fluency': result.fluency,
     };
   }
 }

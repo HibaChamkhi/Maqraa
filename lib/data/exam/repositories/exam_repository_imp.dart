@@ -84,6 +84,9 @@ class ExamRepositoryImpl implements ExamRepository {
     required num score,
     ExamAttendance attendance = ExamAttendance.present,
     String feedback = '',
+    num? hifz,
+    num? tajweed,
+    num? fluency,
   }) =>
       remoteDataSource.recordResult(
         circleId: circleId,
@@ -93,6 +96,9 @@ class ExamRepositoryImpl implements ExamRepository {
         score: score,
         attendance: attendance,
         feedback: feedback,
+        hifz: hifz,
+        tajweed: tajweed,
+        fluency: fluency,
       );
 
   @override
