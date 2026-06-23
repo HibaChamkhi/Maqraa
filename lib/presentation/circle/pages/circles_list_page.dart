@@ -558,7 +558,7 @@ class _StudentCircleCard extends StatelessWidget {
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _infoRow(Icons.calendar_event_outlined,
+                        _infoRow(Icons.event_outlined,
                             'الجلسة القادمة: $sessionText'),
                         const SizedBox(height: 8),
                         Row(
