@@ -1,7 +1,11 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/di/injection.dart';
+import '../../../data/homework/homework_repository.dart';
+import '../../../domain/homework/models/weekly_homework.dart';
 import '../../../core/ui/styles/theme.dart';
 import '../../../domain/auth/models/app_user.dart';
 import '../../../domain/circle/models/circle.dart';
@@ -41,7 +45,7 @@ class ReportsPage extends StatelessWidget {
         ),
         body: TabBarView(
           children: [
-            const _ComingSoon(label: 'تقرير التسليم الأسبوعي'),
+            _TaslimReport(circleId: circleId),
             const _ComingSoon(label: 'تقرير الحضور'),
             _ExamsReport(circleId: circleId, user: user),
           ],
@@ -70,6 +74,399 @@ class _ComingSoon extends StatelessWidget {
                   .textTheme
                   .bodySmall
                   ?.copyWith(color: AppColors.textMuted)),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+//  التسليم الأسبوعي report (homework)
+// ---------------------------------------------------------------------------
+
+class _TaslimData {
+  final List<CircleMember> students;
+  final WeeklyHomework week;
+  final Map<String, HomeworkCompletion> byUid;
+  _TaslimData(this.students, this.week, this.byUid);
+}
+
+class _TaslimReport extends StatefulWidget {
+  final String circleId;
+  const _TaslimReport({required this.circleId});
+
+  @override
+  State<_TaslimReport> createState() => _TaslimReportState();
+}
+
+class _TaslimReportState extends State<_TaslimReport> {
+  late DateTime _weekStart = WeeklyHomework.weekStartOf(DateTime.now());
+  late Future<_TaslimData> _future = _load();
+
+  Future<_TaslimData> _load() async {
+    final repo =
+        HomeworkRepository(getIt<FirebaseFirestore>(), getIt<FirebaseAuth>());
+    final members = await getIt<CircleRepository>().getMembers(widget.circleId);
+    final students = members
+        .where((m) =>
+            m.role == UserRole.student && m.status == MemberStatus.active)
+        .toList();
+    final weekId = DateFormat('yyyy-MM-dd').format(_weekStart);
+    final week =
+        await repo.weekStream(widget.circleId, weekId, _weekStart).first;
+    final comps =
+        await repo.completionsStream(widget.circleId, weekId).first;
+    return _TaslimData(students, week, {for (final c in comps) c.uid: c});
+  }
+
+  void _changeWeek(int delta) {
+    setState(() {
+      _weekStart = _weekStart.add(Duration(days: 7 * delta));
+      _future = _load();
+    });
+  }
+
+  /// 0 = no homework that day · 1 = submitted · 2 = late · 3 = pending.
+  int _status(_TaslimData d, String uid, String code, DateTime today) {
+    if (d.week.planOf(code).isEmpty) return 0;
+    if (d.byUid[uid]?.isDone(code) ?? false) return 1;
+    return d.week.dateOf(code).isBefore(today) ? 2 : 3;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final thisWeek = WeeklyHomework.weekStartOf(DateTime.now());
+    final isCurrent = !_weekStart.isAfter(thisWeek) && !_weekStart.isBefore(thisWeek);
+    return Column(
+      children: [
+        _WeekNav(
+          weekStart: _weekStart,
+          isCurrent: isCurrent,
+          onPrev: () => _changeWeek(-1),
+          onNext: () => _changeWeek(1),
+        ),
+        Expanded(
+          child: FutureBuilder<_TaslimData>(
+            future: _future,
+            builder: (context, snap) {
+              if (!snap.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final d = snap.data!;
+              final days = WeeklyHomework.dayOrder
+                  .where((c) => !d.week.planOf(c).isEmpty)
+                  .toList();
+              if (days.isEmpty) {
+                return const _ComingSoon(label: 'لا واجب مُسجّل لهذا الأسبوع');
+              }
+              if (d.students.isEmpty) {
+                return Center(
+                  child: Text('لا توجد طالبات في الحلقة',
+                      style: Theme.of(context).textTheme.bodyMedium),
+                );
+              }
+              final now = DateTime.now();
+              final today = DateTime(now.year, now.month, now.day);
+
+              var done = 0, late = 0;
+              for (final m in d.students) {
+                for (final c in days) {
+                  final s = _status(d, m.uid, c, today);
+                  if (s == 1) done++;
+                  if (s == 2) late++;
+                }
+              }
+              final pct =
+                  (done + late) == 0 ? 0 : (done / (done + late) * 100).round();
+
+              return ListView(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                children: [
+                  Row(children: [
+                    _miniKpi('$done', 'تم التسليم', filled: true),
+                    const SizedBox(width: AppSpacing.sm),
+                    _miniKpi('$late', 'متأخرون', danger: true),
+                    const SizedBox(width: AppSpacing.sm),
+                    _miniKpi('$pct٪', 'نسبة الإنجاز'),
+                  ]),
+                  const SizedBox(height: AppSpacing.md),
+                  _dailyChart(d, days, today),
+                  const SizedBox(height: AppSpacing.md),
+                  _grid(d, days, today),
+                  const SizedBox(height: AppSpacing.sm),
+                  _legend(),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _miniKpi(String v, String l, {bool filled = false, bool danger = false}) {
+    final bg = danger
+        ? const Color(0xFFFCEBEB)
+        : (filled ? AppColors.sky : AppColors.surface);
+    final fg = danger
+        ? const Color(0xFFA32D2D)
+        : (filled ? AppColors.primaryDark : AppColors.ink);
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border: (filled || danger)
+              ? null
+              : Border.all(color: AppColors.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(v,
+                style: TextStyle(
+                    fontSize: 20, fontWeight: FontWeight.w700, color: fg)),
+            const SizedBox(height: 2),
+            Text(l,
+                style: TextStyle(
+                    fontSize: 11,
+                    color: danger ? const Color(0xFFA32D2D) : AppColors.textMuted)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _dailyChart(_TaslimData d, List<String> days, DateTime today) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('التقدّم اليومي',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 90,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                for (final c in days)
+                  Expanded(
+                    child: _bar(d, c, today),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _bar(_TaslimData d, String code, DateTime today) {
+    final total = d.students.length;
+    final doneCount =
+        d.students.where((m) => _status(d, m.uid, code, today) == 1).length;
+    final ratio = total == 0 ? 0.0 : doneCount / total;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          Text('${(ratio * 100).round()}٪',
+              style: const TextStyle(fontSize: 9, color: AppColors.textMuted)),
+          const SizedBox(height: 2),
+          Container(
+            height: (60 * ratio).clamp(2, 60).toDouble(),
+            decoration: BoxDecoration(
+              color: AppColors.primary,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(WeeklyHomework.dayLabels[code] ?? code,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 9, color: AppColors.textMuted)),
+        ],
+      ),
+    );
+  }
+
+  Widget _grid(_TaslimData d, List<String> days, DateTime today) {
+    Widget head(String t, int flex, {bool center = false}) => Expanded(
+          flex: flex,
+          child: Text(t,
+              textAlign: center ? TextAlign.center : TextAlign.start,
+              style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textMuted)),
+        );
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.border),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          Container(
+            color: AppColors.gray,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            child: Row(
+              children: [
+                head('الطالبة', 3),
+                for (final c in days)
+                  head(WeeklyHomework.dayLabels[c] ?? c, 2, center: true),
+                head('النسبة', 2, center: true),
+              ],
+            ),
+          ),
+          for (final m in d.students) _row(d, m, days, today),
+        ],
+      ),
+    );
+  }
+
+  Widget _row(
+      _TaslimData d, CircleMember m, List<String> days, DateTime today) {
+    var done = 0, due = 0;
+    final cells = <Widget>[];
+    for (final c in days) {
+      final s = _status(d, m.uid, c, today);
+      if (s == 1) {
+        done++;
+        due++;
+      } else if (s == 2) {
+        due++;
+      }
+      cells.add(Expanded(flex: 2, child: Center(child: _mark(s))));
+    }
+    final pct = due == 0 ? null : (done / due * 100).round();
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: AppColors.border, width: .5)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 3,
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 13,
+                  backgroundColor: AppColors.sky,
+                  child: Text(
+                      m.name.isNotEmpty ? m.name.characters.first : '؟',
+                      style: const TextStyle(
+                          color: AppColors.primary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700)),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(m.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w700)),
+                ),
+              ],
+            ),
+          ),
+          ...cells,
+          Expanded(
+            flex: 2,
+            child: Center(
+              child: Text(pct == null ? '—' : '$pct٪',
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color:
+                          pct == null ? AppColors.textMuted : AppColors.primary)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _mark(int s) {
+    switch (s) {
+      case 1:
+        return const Icon(Icons.check_circle, size: 20, color: AppColors.success);
+      case 2:
+        return const Icon(Icons.cancel, size: 20, color: AppColors.error);
+      case 3:
+        return const Icon(Icons.schedule, size: 20, color: AppColors.warning);
+      default:
+        return const Text('—', style: TextStyle(color: AppColors.textMuted));
+    }
+  }
+
+  Widget _legend() {
+    Widget item(IconData ic, Color c, String t) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(ic, size: 14, color: c),
+          const SizedBox(width: 4),
+          Text(t,
+              style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
+        ]);
+    return Wrap(spacing: 14, runSpacing: 6, children: [
+      item(Icons.check_circle, AppColors.success, 'سلّمت'),
+      item(Icons.cancel, AppColors.error, 'متأخرة'),
+      item(Icons.schedule, AppColors.warning, 'بانتظار'),
+      const Text('— لا واجب',
+          style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
+    ]);
+  }
+}
+
+class _WeekNav extends StatelessWidget {
+  final DateTime weekStart;
+  final bool isCurrent;
+  final VoidCallback onPrev, onNext;
+  const _WeekNav({
+    required this.weekStart,
+    required this.isCurrent,
+    required this.onPrev,
+    required this.onNext,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final end = weekStart.add(const Duration(days: 6));
+    final fmt = DateFormat('d MMM', 'ar');
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          IconButton(
+              onPressed: onPrev, icon: const Icon(Icons.chevron_right)),
+          const SizedBox(width: 4),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('${fmt.format(weekStart)} – ${fmt.format(end)}',
+                  style: Theme.of(context).textTheme.titleSmall),
+              if (isCurrent)
+                const Text('هذا الأسبوع',
+                    style: TextStyle(fontSize: 11, color: AppColors.primary)),
+            ],
+          ),
+          const SizedBox(width: 4),
+          IconButton(onPressed: onNext, icon: const Icon(Icons.chevron_left)),
         ],
       ),
     );
