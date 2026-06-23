@@ -15,7 +15,7 @@ import '../../../presentation/profile/pages/profile_page.dart';
 import '../../../presentation/profile/pages/settings_page.dart';
 import '../../../presentation/progress/pages/reports_page.dart';
 import '../../../presentation/progress/pages/my_progress_page.dart';
-import '../../../presentation/task/pages/today_task_entry.dart';
+import '../../../presentation/task/pages/today_wajib_page.dart';
 import '../styles/theme.dart';
 
 /// The green «ورْد» side navigation drawer (the sidebar in the reference).
@@ -230,9 +230,9 @@ class WardDrawer extends StatelessWidget {
             .push(MaterialPageRoute(builder: (_) => const HelpPage()));
         break;
       case 'واجب اليوم':
-        // Full-screen: resolves the student's circle, then opens today's task.
+        // Aggregated واجبات across all her halaqat (no picker).
         Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => TodayTaskEntryPage(user: user)));
+            MaterialPageRoute(builder: (_) => TodayWajibPage(user: user)));
         break;
       case 'تقدّمي':
         Navigator.of(context)
