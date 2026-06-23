@@ -83,7 +83,8 @@ class _JoinCircleViewState extends State<_JoinCircleView> {
           final loading = state.status == UIStatus.loading;
           return SingleChildScrollView(
             padding: const EdgeInsets.all(AppSpacing.lg),
-            child: ConstrainedBox(
+            child: Center(
+              child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 440),
               child: Form(
                 key: _formKey,
@@ -163,6 +164,7 @@ class _JoinCircleViewState extends State<_JoinCircleView> {
                   ],
                 ),
               ),
+            ),
             ),
           );
         },
