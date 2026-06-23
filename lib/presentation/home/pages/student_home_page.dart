@@ -127,10 +127,16 @@ class StudentHomeTabState extends State<StudentHomeTab> {
       } catch (_) {/* homework optional */}
       halaqat.add(_HalaqaToday(c, plan, done, partner));
 
-      // --- upcoming / live sessions ---
+      // --- this week's live / upcoming sessions (Sat–Fri) ---
+      final weekEnd = weekStart.add(const Duration(days: 7));
       try {
         final ss = await getIt<SessionRepository>().getSessions(c.id);
         for (final s in ss) {
+          // only sessions in the current week window
+          if (s.scheduledAt.isBefore(weekStart) ||
+              !s.scheduledAt.isBefore(weekEnd)) {
+            continue;
+          }
           final live = s.status == SessionStatus.live;
           final upcoming =
               s.scheduledAt.isAfter(now) && s.status != SessionStatus.ended;
