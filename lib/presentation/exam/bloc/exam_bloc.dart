@@ -5,8 +5,10 @@ import 'package:injectable/injectable.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/error/error_utils.dart';
 import '../../../core/model /ui_state.dart';
+import '../../../core/util/notify.dart';
 import '../../../domain/exam/models/exam.dart';
 import '../../../domain/exam/repositories/exam_repository.dart';
+import '../../../domain/notification/models/app_notification.dart';
 import '../../../domain/reminder/repositories/reminder_repository.dart';
 
 part 'exam_event.dart';
@@ -143,6 +145,14 @@ class ExamBloc extends Bloc<ExamEvent, ExamState> {
         examId: event.examId,
         published: event.published,
       );
+      if (event.published) {
+        await notifyCircleStudents(
+          circleId: event.circleId,
+          title: 'نتيجة اختبار جاهزة',
+          body: 'ظهرت نتيجة اختبار جديد — تفقّدي قسم الاختبارات',
+          type: NotificationType.exam,
+        );
+      }
       emit(state.copyWith(
         status: UIStatus.success,
         message: event.published ? 'تم نشر النتائج' : 'تم إخفاء النتائج',
