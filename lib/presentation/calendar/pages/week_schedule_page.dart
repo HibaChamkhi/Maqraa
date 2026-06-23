@@ -3,14 +3,17 @@ import 'package:intl/intl.dart' hide TextDirection;
 
 import '../../../core/di/injection.dart';
 import '../../../core/ui/styles/theme.dart';
+import '../../../core/util/notify.dart';
 import '../../../domain/auth/models/app_user.dart';
 import '../../../domain/circle/models/circle.dart';
 import '../../../domain/circle/repositories/circle_repository.dart';
 import '../../../domain/calendar/repositories/calendar_repository.dart';
 import '../../../domain/session/models/session.dart';
+import '../../../domain/session/repositories/session_repository.dart';
 import '../../../domain/task/models/daily_task.dart';
 import '../../../domain/task/repositories/task_repository.dart';
 import '../../circle/pages/circle_workspace_page.dart';
+import '../../session/pages/live_session_page.dart';
 
 /// الجدول الأسبوعي والجلسات — a global weekly timetable that aggregates the
 /// recurring meeting times of every circle (plus one-off sessions),
@@ -41,14 +44,20 @@ class _Ev {
   final int colorIndex;
   final SessionStatus? status;
   final SessionType? type;
+  final String circleId;
+  final String sessionId;
+  final String link;
   _Ev({
     required this.start,
     required this.durationMin,
     required this.circleName,
     required this.title,
     required this.colorIndex,
+    required this.circleId,
+    required this.sessionId,
     this.status,
     this.type,
+    this.link = '',
   });
   DateTime get end => start.add(Duration(minutes: durationMin));
 }
@@ -109,6 +118,9 @@ class _WeekSchedulePageState extends State<WeekSchedulePage> {
           colorIndex: color,
           status: s.status,
           type: s.type,
+          circleId: c.id,
+          sessionId: s.id,
+          link: s.link,
         ));
       }
       try {
@@ -129,6 +141,142 @@ class _WeekSchedulePageState extends State<WeekSchedulePage> {
 
   void _shiftWeek(int weeks) =>
       setState(() => _weekStart = _weekStart.add(Duration(days: 7 * weeks)));
+
+  /// Tap a session in the calendar → quick actions (start / join / cancel).
+  Future<void> _openSessionSheet(BuildContext context, _Ev e) async {
+    final isTeacher = widget.user.role == UserRole.teacher ||
+        widget.user.role == UserRole.supervisor;
+    final canStart = isTeacher &&
+        e.status == SessionStatus.scheduled &&
+        _sameDay(e.start, DateTime.now());
+    final fmt = DateFormat('EEEE d MMMM • HH:mm', 'ar');
+    final fmtEnd = DateFormat('HH:mm');
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        content: SizedBox(
+          width: 360,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(e.circleName,
+                      style: Theme.of(ctx).textTheme.titleLarge),
+                ),
+                if (e.status != null)
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.sky,
+                      borderRadius: BorderRadius.circular(AppRadius.pill),
+                    ),
+                    child: Text(e.status!.arabicLabel,
+                        style: const TextStyle(
+                            fontSize: 11, color: AppColors.primaryDark)),
+                  ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.xs),
+            Text('${fmt.format(e.start)} - ${fmtEnd.format(e.end)}',
+                style: Theme.of(ctx).textTheme.bodyMedium),
+            if (e.type != null) ...[
+              const SizedBox(height: 2),
+              Text(e.type!.arabicLabel,
+                  style: Theme.of(ctx)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: AppColors.textMuted)),
+            ],
+            const SizedBox(height: AppSpacing.lg),
+            if (e.status == SessionStatus.live)
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => LiveSessionPage(
+                          circleId: e.circleId, user: widget.user)));
+                },
+                icon: const Icon(Icons.videocam_outlined),
+                label: const Text('انضمام للقاء'),
+              )
+            else if (canStart)
+              ElevatedButton.icon(
+                onPressed: () => _startSession(ctx, e),
+                icon: const Icon(Icons.play_arrow_rounded),
+                label: const Text('بدء الجلسة'),
+              )
+            else if (e.status == SessionStatus.scheduled)
+              ElevatedButton.icon(
+                onPressed: null,
+                icon: const Icon(Icons.schedule),
+                label: const Text('تبدأ في وقتها'),
+              )
+            else
+              Text('انتهت الجلسة',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(ctx)
+                      .textTheme
+                      .bodyMedium
+                      ?.copyWith(color: AppColors.textMuted)),
+            if (isTeacher && e.status != SessionStatus.ended) ...[
+              const SizedBox(height: AppSpacing.sm),
+              TextButton.icon(
+                onPressed: () => _cancelSession(ctx, e),
+                icon: const Icon(Icons.close, color: AppColors.error),
+                label: const Text('إلغاء الجلسة',
+                    style: TextStyle(color: AppColors.error)),
+              ),
+            ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _startSession(BuildContext sheetCtx, _Ev e) async {
+    Navigator.pop(sheetCtx);
+    try {
+      await getIt<SessionRepository>()
+          .startSession(circleId: e.circleId, sessionId: e.sessionId);
+      if (!mounted) return;
+      _reload();
+      Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) =>
+              LiveSessionPage(circleId: e.circleId, user: widget.user)));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(content: Text('تعذّر بدء الجلسة')));
+      }
+    }
+  }
+
+  Future<void> _cancelSession(BuildContext sheetCtx, _Ev e) async {
+    Navigator.pop(sheetCtx);
+    try {
+      await getIt<CalendarRepository>()
+          .deleteSession(circleId: e.circleId, sessionId: e.sessionId);
+      final d = DateFormat('EEEE d MMMM • HH:mm', 'ar').format(e.start);
+      await notifyCircleStudents(
+        circleId: e.circleId,
+        title: 'أُلغيت جلسة',
+        body: '${e.circleName}: أُلغيت جلسة $d',
+      );
+      if (mounted) _reload();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(content: Text('تعذّر إلغاء الجلسة')));
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -188,7 +336,11 @@ class _WeekSchedulePageState extends State<WeekSchedulePage> {
                 const SizedBox(height: AppSpacing.sm),
                 Expanded(
                   child: _listView
-                      ? _AgendaList(days: days, events: weekEvents)
+                      ? _AgendaList(
+                          days: days,
+                          events: weekEvents,
+                          onTapEvent: (e) => _openSessionSheet(context, e),
+                        )
                       : _WeekGrid(
                           days: days,
                           events: weekEvents,
@@ -196,6 +348,7 @@ class _WeekSchedulePageState extends State<WeekSchedulePage> {
                           endHour: _endHour,
                           rowH: _rowH,
                           sameDay: _sameDay,
+                          onTapEvent: (e) => _openSessionSheet(context, e),
                         ),
                 ),
               ],
@@ -377,6 +530,7 @@ class _WeekGrid extends StatelessWidget {
   final int startHour, endHour;
   final double rowH;
   final bool Function(DateTime, DateTime) sameDay;
+  final ValueChanged<_Ev>? onTapEvent;
   const _WeekGrid({
     required this.days,
     required this.events,
@@ -384,6 +538,7 @@ class _WeekGrid extends StatelessWidget {
     required this.endHour,
     required this.rowH,
     required this.sameDay,
+    this.onTapEvent,
   });
 
   @override
@@ -456,6 +611,7 @@ class _WeekGrid extends StatelessWidget {
                           startHour: startHour,
                           slots: slots,
                           rowH: rowH,
+                          onTapEvent: onTapEvent,
                         ),
                       ),
                   ],
@@ -509,11 +665,13 @@ class _DayColumn extends StatelessWidget {
   final List<_Ev> events;
   final int startHour, slots;
   final double rowH;
+  final ValueChanged<_Ev>? onTapEvent;
   const _DayColumn({
     required this.events,
     required this.startHour,
     required this.slots,
     required this.rowH,
+    this.onTapEvent,
   });
 
   @override
@@ -558,7 +716,7 @@ class _DayColumn extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppRadius.sm),
         child: InkWell(
           borderRadius: BorderRadius.circular(AppRadius.sm),
-          onTap: () {},
+          onTap: onTapEvent == null ? null : () => onTapEvent!(e),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
             child: Column(
@@ -595,7 +753,9 @@ class _DayColumn extends StatelessWidget {
 class _AgendaList extends StatelessWidget {
   final List<DateTime> days;
   final List<_Ev> events;
-  const _AgendaList({required this.days, required this.events});
+  final ValueChanged<_Ev>? onTapEvent;
+  const _AgendaList(
+      {required this.days, required this.events, this.onTapEvent});
 
   bool _sameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
@@ -634,6 +794,7 @@ class _AgendaList extends StatelessWidget {
             title: Text(e.circleName, style: theme.textTheme.titleSmall),
             subtitle: Text(
                 '${fmt.format(e.start)} - ${fmt.format(e.end)} · ${e.type?.arabicLabel ?? e.title}'),
+            onTap: onTapEvent == null ? null : () => onTapEvent!(e),
           ),
         ));
       }

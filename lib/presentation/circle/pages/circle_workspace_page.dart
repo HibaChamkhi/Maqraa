@@ -10,6 +10,7 @@ import '../../../core/data/quran_surahs.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/model /ui_state.dart';
 import '../../../core/util/last_location_store.dart';
+import '../../../core/util/notify.dart';
 import '../../../core/ui/styles/theme.dart';
 import '../../../core/ui/widgets/werd_widgets.dart';
 import '../../../domain/auth/models/app_user.dart';
@@ -17,6 +18,7 @@ import '../../../domain/circle/models/circle.dart';
 import '../../../domain/circle/repositories/circle_repository.dart';
 import '../../../domain/calendar/repositories/calendar_repository.dart';
 import '../../../domain/session/models/session.dart';
+import '../../../domain/session/repositories/session_repository.dart';
 import '../../calendar/bloc/calendar_bloc.dart';
 import '../../exam/pages/teacher_exams_page.dart';
 import '../../exam/pages/student_exams_page.dart';
@@ -74,6 +76,8 @@ class _CircleWorkspacePageState extends State<CircleWorkspacePage> {
   // Authority is scoped to THIS circle, not the global account role.
   bool get _canManage => widget.circle.canManage(widget.user);
 
+  late Circle _circle = widget.circle;
+
   @override
   void initState() {
     super.initState();
@@ -90,7 +94,7 @@ class _CircleWorkspacePageState extends State<CircleWorkspacePage> {
 
   @override
   Widget build(BuildContext context) {
-    final circle = widget.circle;
+    final circle = _circle;
     final user = widget.user;
     return DefaultTabController(
       length: 4,
@@ -103,7 +107,11 @@ class _CircleWorkspacePageState extends State<CircleWorkspacePage> {
           headerSliverBuilder: (context, _) => [
             SliverToBoxAdapter(
               child: _CircleHeader(
-                  circle: circle, user: user, canManage: _canManage),
+                circle: circle,
+                user: user,
+                canManage: _canManage,
+                onEdited: (c) => setState(() => _circle = c),
+              ),
             ),
             SliverPersistentHeader(
               pinned: true,
@@ -132,7 +140,11 @@ class _CircleWorkspacePageState extends State<CircleWorkspacePage> {
               WeeklyHomeworkTab(
                   circle: circle, user: user, canManage: _canManage),
               // الجلسات = the session-times manager (moved here)
-              _ScheduleTab(circle: circle, user: user, canManage: _canManage),
+              _ScheduleTab(
+                  circle: circle,
+                  user: user,
+                  canManage: _canManage,
+                  onCircleChanged: (c) => setState(() => _circle = c)),
               // الاختبارات = exams list inline (managers grade, students view)
               _canManage
                   ? TeacherExamsPage(
@@ -189,8 +201,12 @@ class _CircleHeader extends StatelessWidget {
   final Circle circle;
   final AppUser user;
   final bool canManage;
+  final ValueChanged<Circle>? onEdited;
   const _CircleHeader(
-      {required this.circle, required this.user, required this.canManage});
+      {required this.circle,
+      required this.user,
+      required this.canManage,
+      this.onEdited});
 
   /// The owning teacher's name — falls back to the current owner's name when
   /// the stored teacherName is empty (legacy circles).
@@ -211,9 +227,33 @@ class _CircleHeader extends StatelessWidget {
             style:
                 theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted)),
         const SizedBox(height: 4),
-        Text(circle.name,
-            style: theme.textTheme.headlineMedium
-                ?.copyWith(fontWeight: FontWeight.w700)),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Flexible(
+              child: Text(circle.name,
+                  style: theme.textTheme.headlineMedium
+                      ?.copyWith(fontWeight: FontWeight.w700)),
+            ),
+            if (canManage) ...[
+              const SizedBox(width: 6),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                tooltip: 'تعديل الحلقة',
+                icon: const Icon(Icons.edit_outlined,
+                    size: 20, color: AppColors.primary),
+                onPressed: () async {
+                  final updated = await showDialog<Circle>(
+                    context: context,
+                    builder: (_) => _EditCircleDialog(circle: circle),
+                  );
+                  if (updated != null) onEdited?.call(updated);
+                },
+              ),
+            ],
+          ],
+        ),
         const SizedBox(height: 4),
         _DescriptionLine(circle: circle, canManage: canManage),
         const SizedBox(height: 2),
@@ -226,7 +266,7 @@ class _CircleHeader extends StatelessWidget {
           icon: Icons.person_outline,
           label: 'المعلم المسؤول',
           value: _teacherName),
-      _DaysInfoCard(circleId: circle.id),
+      _DaysInfoCard(circle: circle, canManage: canManage),
       _LevelInfoCard(circle: circle, canManage: canManage),
       _RiwayahInfoCard(circle: circle, canManage: canManage),
     ];
@@ -270,6 +310,129 @@ class _CircleHeader extends StatelessWidget {
           ],
         );
       }),
+    );
+  }
+}
+
+/// Owner-only "تعديل الحلقة" popup — fix the title and toggle privacy.
+/// (نبذة / المستوى / الرواية stay editable on their own header cards.)
+class _EditCircleDialog extends StatefulWidget {
+  final Circle circle;
+  const _EditCircleDialog({required this.circle});
+
+  @override
+  State<_EditCircleDialog> createState() => _EditCircleDialogState();
+}
+
+class _EditCircleDialogState extends State<_EditCircleDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _name =
+      TextEditingController(text: widget.circle.name);
+  late Privacy _privacy = widget.circle.privacy;
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_formKey.currentState?.validate() != true) return;
+    setState(() => _saving = true);
+    final repo = getIt<CircleRepository>();
+    final newName = _name.text.trim();
+    try {
+      if (newName != widget.circle.name) {
+        await repo.updateName(circleId: widget.circle.id, name: newName);
+      }
+      if (_privacy != widget.circle.privacy) {
+        await repo.updatePrivacy(circleId: widget.circle.id, privacy: _privacy);
+      }
+      if (mounted) {
+        Navigator.of(context)
+            .pop(widget.circle.copyWith(name: newName, privacy: _privacy));
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(
+              content: Text('تعذّر حفظ التعديلات — تحقّقي من الاتصال/الصلاحيات')));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return AlertDialog(
+      titlePadding: const EdgeInsets.fromLTRB(
+          AppSpacing.md, AppSpacing.sm, AppSpacing.sm, 0),
+      title: Row(
+        children: [
+          const Expanded(child: Text('تعديل الحلقة')),
+          IconButton(
+            icon: const Icon(Icons.close),
+            tooltip: 'إلغاء',
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ],
+      ),
+      content: SizedBox(
+        width: 360,
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextFormField(
+                controller: _name,
+                decoration: const InputDecoration(
+                  labelText: 'اسم الحلقة',
+                  prefixIcon: Icon(Icons.groups_outlined),
+                ),
+                validator: (v) => (v == null || v.trim().isEmpty)
+                    ? 'يرجى إدخال اسم الحلقة'
+                    : null,
+              ),
+              const SizedBox(height: AppSpacing.md),
+              Text('الخصوصية',
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: AppColors.textMuted)),
+              const SizedBox(height: 6),
+              SegmentedButton<Privacy>(
+                segments: const [
+                  ButtonSegment(
+                      value: Privacy.private,
+                      label: Text('خاصة'),
+                      icon: Icon(Icons.lock_outline)),
+                  ButtonSegment(
+                      value: Privacy.public,
+                      label: Text('عامة'),
+                      icon: Icon(Icons.public)),
+                ],
+                selected: {_privacy},
+                onSelectionChanged: (s) => setState(() => _privacy = s.first),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              ElevatedButton(
+                onPressed: _saving ? null : _save,
+                child: _saving
+                    ? const SizedBox(
+                        height: 22,
+                        width: 22,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Text('حفظ التعديلات'),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -430,13 +593,39 @@ class _DescriptionLineState extends State<_DescriptionLine> {
 /// «أيام الحلقة» card — derives the meeting days from the circle's actual
 /// sessions (their distinct weekdays), since scheduling is session-based.
 class _DaysInfoCard extends StatelessWidget {
-  final String circleId;
-  const _DaysInfoCard({required this.circleId});
+  final Circle circle;
+  final bool canManage;
+  const _DaysInfoCard({required this.circle, required this.canManage});
+
+  // Tapping jumps to the الجلسات tab where the fixed schedule is edited.
+  Widget _wrap(BuildContext context, Widget card) {
+    if (!canManage) return card;
+    return InkWell(
+      borderRadius: BorderRadius.circular(AppRadius.lg),
+      onTap: () => DefaultTabController.maybeOf(context)?.animateTo(2),
+      child: card,
+    );
+  }
+
+  Widget _card(String value) => _InfoCard(
+        icon: Icons.event_outlined,
+        label: 'أيام الحلقة',
+        value: value,
+      );
 
   @override
   Widget build(BuildContext context) {
+    // Prefer the fixed rule (single source of truth); fall back to deriving
+    // days from sessions for circles that haven't set a rule yet.
+    if (circle.days.isNotEmpty) {
+      final days = [
+        for (final code in _scheduleDayOrder)
+          if (circle.days.contains(code)) _scheduleDayLabels[code]!
+      ];
+      return _wrap(context, _card(days.isEmpty ? 'لم تُحدَّد' : days.join(' · ')));
+    }
     return FutureBuilder<List<Session>>(
-      future: getIt<CalendarRepository>().getSessions(circleId),
+      future: getIt<CalendarRepository>().getSessions(circle.id),
       builder: (context, snap) {
         final sessions = snap.data ?? const <Session>[];
         final wds = sessions.map((s) => s.scheduledAt.weekday).toSet();
@@ -444,11 +633,8 @@ class _DaysInfoCard extends StatelessWidget {
           for (final code in _scheduleDayOrder)
             if (wds.contains(_codeToWeekday[code])) _scheduleDayLabels[code]!
         ];
-        return _InfoCard(
-          icon: Icons.event_outlined,
-          label: 'أيام الحلقة',
-          value: days.isEmpty ? 'لم تُحدَّد' : days.join(' · '),
-        );
+        return _wrap(
+            context, _card(days.isEmpty ? 'لم تُحدَّد' : days.join(' · ')));
       },
     );
   }
@@ -910,15 +1096,23 @@ class _ScheduleTab extends StatelessWidget {
   final Circle circle;
   final AppUser user;
   final bool canManage;
+  final ValueChanged<Circle>? onCircleChanged;
   const _ScheduleTab(
-      {required this.circle, required this.user, required this.canManage});
+      {required this.circle,
+      required this.user,
+      required this.canManage,
+      this.onCircleChanged});
 
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
       create: (_) =>
           getIt<CalendarBloc>()..add(CalendarSessionsRequested(circle.id)),
-      child: _ScheduleView(circle: circle, user: user, canManage: canManage),
+      child: _ScheduleView(
+          circle: circle,
+          user: user,
+          canManage: canManage,
+          onCircleChanged: onCircleChanged),
     );
   }
 }
@@ -927,8 +1121,12 @@ class _ScheduleView extends StatelessWidget {
   final Circle circle;
   final AppUser user;
   final bool canManage;
+  final ValueChanged<Circle>? onCircleChanged;
   const _ScheduleView(
-      {required this.circle, required this.user, required this.canManage});
+      {required this.circle,
+      required this.user,
+      required this.canManage,
+      this.onCircleChanged});
 
   @override
   Widget build(BuildContext context) {
@@ -987,8 +1185,22 @@ class _ScheduleView extends StatelessWidget {
                 ],
               ),
             ),
+            if (canManage || circle.days.isNotEmpty)
+              _FixedScheduleCard(
+                  circle: circle,
+                  canManage: canManage,
+                  onChanged: onCircleChanged),
             Expanded(
-              child: upcoming.isEmpty
+              child: circle.days.isNotEmpty
+                  ? _GeneratedSchedule(
+                      circle: circle,
+                      user: user,
+                      canManage: canManage,
+                      onAddExtra: canManage
+                          ? () => _openForm(context, circle.id)
+                          : null,
+                    )
+                  : upcoming.isEmpty
                   ? Center(
                       child: Padding(
                         padding: const EdgeInsets.all(AppSpacing.xl),
@@ -1082,6 +1294,560 @@ class _ScheduleView extends StatelessWidget {
             child: Text(s.isRecurring ? 'حذف هذه فقط' : 'حذف'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// «الجدول الثابت» — the حلقة's fixed recurring rule (days + time + duration),
+/// the single source of truth for أيام الحلقة and the attendance columns.
+class _FixedScheduleCard extends StatefulWidget {
+  final Circle circle;
+  final bool canManage;
+  final ValueChanged<Circle>? onChanged;
+  const _FixedScheduleCard(
+      {required this.circle, required this.canManage, this.onChanged});
+
+  @override
+  State<_FixedScheduleCard> createState() => _FixedScheduleCardState();
+}
+
+class _FixedScheduleCardState extends State<_FixedScheduleCard> {
+  late Map<String, String> _dayTimes =
+      Map<String, String>.from(widget.circle.dayTimes);
+  late int _duration = widget.circle.durationMinutes;
+
+  List<String> get _days =>
+      [for (final c in _scheduleDayOrder) if (_dayTimes.containsKey(c)) c];
+
+  String get _commonTime =>
+      _dayTimes.isEmpty ? '06:00' : _dayTimes.values.first;
+
+  static TimeOfDay _parseTime(String hhmm) {
+    final parts = hhmm.split(':');
+    return TimeOfDay(
+      hour: int.tryParse(parts.first) ?? 6,
+      minute: int.tryParse(parts.length > 1 ? parts[1] : '0') ?? 0,
+    );
+  }
+
+  String _fmtTime(String hhmm) {
+    final t = _parseTime(hhmm);
+    final period = t.hour < 12 ? 'ص' : 'م';
+    final h12 = t.hour % 12 == 0 ? 12 : t.hour % 12;
+    return '$h12:${t.minute.toString().padLeft(2, '0')} $period';
+  }
+
+  Future<void> _edit() async {
+    final result =
+        await showDialog<({Set<String> days, TimeOfDay time, int duration})>(
+      context: context,
+      builder: (_) => _FixedScheduleEditor(
+        initialDays: _days.toSet(),
+        initialTime: _parseTime(_commonTime),
+        initialDuration: _duration,
+      ),
+    );
+    if (result == null) return;
+    final hh = result.time.hour.toString().padLeft(2, '0');
+    final mm = result.time.minute.toString().padLeft(2, '0');
+    final map = {for (final d in result.days) d: '$hh:$mm'};
+    setState(() {
+      _dayTimes = map;
+      _duration = result.duration;
+    });
+    try {
+      await getIt<CircleRepository>().updateSchedule(
+        circleId: widget.circle.id,
+        dayTimes: map,
+        durationMinutes: result.duration,
+      );
+      final newDays = [
+        for (final c in _scheduleDayOrder)
+          if (map.containsKey(c)) c
+      ];
+      widget.onChanged?.call(widget.circle.copyWith(
+        days: newDays,
+        dayTimes: map,
+        durationMinutes: result.duration,
+      ));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+              const SnackBar(content: Text('تم تحديث الجدول الثابت')));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(content: Text('تعذّر حفظ الجدول')));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final days = _days;
+    final hasRule = days.isNotEmpty;
+    final label = hasRule
+        ? days.map((d) => _scheduleDayLabels[d]).join(' · ')
+        : 'لم يُحدَّد الجدول الثابت';
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+          AppSpacing.md, AppSpacing.sm, AppSpacing.md, AppSpacing.sm),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.sky,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border: Border.all(
+              color: AppColors.primaryLight.withValues(alpha: 0.35)),
+        ),
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: AppColors.primary,
+                borderRadius: BorderRadius.circular(AppRadius.md),
+              ),
+              child: const Icon(Icons.event_repeat_outlined,
+                  color: Colors.white, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('الجدول الثابت',
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: AppColors.primaryDark)),
+                  const SizedBox(height: 2),
+                  Text(hasRule ? '$label · ${_fmtTime(_commonTime)}' : label,
+                      style: theme.textTheme.titleSmall
+                          ?.copyWith(fontWeight: FontWeight.w700)),
+                  if (hasRule)
+                    Text('مدة الجلسة $_duration دقيقة',
+                        style: theme.textTheme.bodySmall
+                            ?.copyWith(color: AppColors.textMuted)),
+                ],
+              ),
+            ),
+            if (widget.canManage)
+              TextButton.icon(
+                onPressed: _edit,
+                icon: const Icon(Icons.edit_outlined, size: 16),
+                label: Text(hasRule ? 'تعديل' : 'تحديد'),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Sessions generated from the fixed rule (no doc per occurrence):
+/// القادمة (today + upcoming) and السجل (past, منتهية if attendance was taken
+/// that day, else فائتة).
+class _GeneratedSchedule extends StatefulWidget {
+  final Circle circle;
+  final AppUser user;
+  final bool canManage;
+  final VoidCallback? onAddExtra;
+  const _GeneratedSchedule({
+    required this.circle,
+    required this.user,
+    required this.canManage,
+    this.onAddExtra,
+  });
+
+  @override
+  State<_GeneratedSchedule> createState() => _GeneratedScheduleState();
+}
+
+class _GeneratedScheduleState extends State<_GeneratedSchedule> {
+  List<DateTime> _upcoming = const [];
+  List<DateTime> _past = const [];
+  Map<String, Map<String, AttendanceState>> _att = const {};
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final from = today.subtract(const Duration(days: 28));
+    final to = today.add(const Duration(days: 28));
+
+    Map<String, ({String type, String? time})> exc = const {};
+    try {
+      exc = await getIt<CircleRepository>()
+          .getScheduleExceptions(widget.circle.id);
+    } catch (_) {}
+
+    final occ = <DateTime>[];
+    for (var d = from; !d.isAfter(to); d = d.add(const Duration(days: 1))) {
+      for (final entry in widget.circle.dayTimes.entries) {
+        if (_codeToWeekday[entry.key] == d.weekday) {
+          final dateId = DateFormat('yyyy-MM-dd').format(d);
+          final e = exc[dateId];
+          if (e != null && e.type == 'cancelled') continue; // skip cancelled
+          final timeStr = (e != null && e.type == 'moved' && e.time != null)
+              ? e.time!
+              : entry.value;
+          final p = timeStr.split(':');
+          occ.add(DateTime(d.year, d.month, d.day,
+              int.tryParse(p.first) ?? 6,
+              int.tryParse(p.length > 1 ? p[1] : '0') ?? 0));
+        }
+      }
+    }
+    occ.sort();
+    final past = occ.where((o) => o.isBefore(today)).toList();
+    final upcoming = occ.where((o) => !o.isBefore(today)).toList();
+    final pastIds =
+        past.map((o) => DateFormat('yyyy-MM-dd').format(o)).toList();
+    Map<String, Map<String, AttendanceState>> att = const {};
+    try {
+      att = await getIt<CircleRepository>()
+          .getWeekAttendance(circleId: widget.circle.id, dateIds: pastIds);
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() {
+      _past = past;
+      _upcoming = upcoming;
+      _att = att;
+      _loading = false;
+    });
+  }
+
+  Future<void> _cancelOccurrence(DateTime o) async {
+    try {
+      await getIt<CircleRepository>().setScheduleException(
+        circleId: widget.circle.id,
+        dateId: DateFormat('yyyy-MM-dd').format(o),
+        type: 'cancelled',
+      );
+      await notifyCircleStudents(
+        circleId: widget.circle.id,
+        title: 'أُلغيت جلسة',
+        body:
+            '${widget.circle.name}: أُلغيت جلسة ${DateFormat('EEEE d MMMM', 'ar').format(o)}',
+      );
+      await _load();
+    } catch (_) {
+      _err();
+    }
+  }
+
+  Future<void> _moveOccurrence(DateTime o) async {
+    final picked = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay(hour: o.hour, minute: o.minute));
+    if (picked == null) return;
+    final t =
+        '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+    try {
+      await getIt<CircleRepository>().setScheduleException(
+        circleId: widget.circle.id,
+        dateId: DateFormat('yyyy-MM-dd').format(o),
+        type: 'moved',
+        time: t,
+      );
+      await notifyCircleStudents(
+        circleId: widget.circle.id,
+        title: 'تغيّر موعد جلسة',
+        body:
+            '${widget.circle.name}: أصبحت جلسة ${DateFormat('EEEE d MMMM', 'ar').format(o)} في $t',
+      );
+      await _load();
+    } catch (_) {
+      _err();
+    }
+  }
+
+  void _err() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(content: Text('تعذّر تحديث الجلسة')));
+  }
+
+  bool _isToday(DateTime o) {
+    final n = DateTime.now();
+    return o.year == n.year && o.month == n.month && o.day == n.day;
+  }
+
+  /// Materialize-on-start: turn today's generated occurrence into a real
+  /// session, start it live, and open the live screen.
+  Future<void> _startToday(DateTime o) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final nav = Navigator.of(context);
+    try {
+      final session = await getIt<CalendarRepository>().addSession(
+        circleId: widget.circle.id,
+        title: 'جلسة ${widget.circle.name}',
+        scheduledAt: o,
+        durationMinutes: widget.circle.durationMinutes,
+        type: SessionType.tasmi3,
+      );
+      await getIt<SessionRepository>()
+          .startSession(circleId: widget.circle.id, sessionId: session.id);
+      if (!mounted) return;
+      nav.push(MaterialPageRoute(
+        builder: (_) =>
+            LiveSessionPage(circleId: widget.circle.id, user: widget.user),
+      ));
+    } catch (_) {
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text('تعذّر بدء الجلسة')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final fmt = DateFormat('EEEE d MMMM • h:mm a', 'ar');
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    final att = _att;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+          AppSpacing.md, 0, AppSpacing.md, AppSpacing.lg),
+      children: [
+            if (widget.onAddExtra != null)
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: OutlinedButton.icon(
+                    onPressed: widget.onAddExtra,
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('جلسة استثنائية'),
+                  ),
+                ),
+              ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 6, 4, 8),
+              child: Text('القادمة', style: theme.textTheme.titleSmall),
+            ),
+            if (_upcoming.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                child: Text('لا جلسات قادمة',
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: AppColors.textMuted)),
+              )
+            else
+              for (final o in _upcoming.take(8))
+                _row(theme, fmt, o, today: _isToday(o)),
+            if (_past.isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+                child: Text('السجل', style: theme.textTheme.titleSmall),
+              ),
+              for (final o in _past.reversed.take(8))
+                _row(theme, fmt, o,
+                    past: true,
+                    done: (att[DateFormat('yyyy-MM-dd').format(o)]
+                            ?.isNotEmpty ??
+                        false)),
+            ],
+          ],
+        );
+  }
+
+  Widget _row(ThemeData theme, DateFormat fmt, DateTime o,
+      {bool today = false, bool past = false, bool done = false}) {
+    late Color color;
+    late String label;
+    late IconData icon;
+    if (past) {
+      color = done ? AppColors.success : AppColors.error;
+      label = done ? 'منتهية' : 'فائتة';
+      icon = done ? Icons.check_circle : Icons.cancel;
+    } else if (today) {
+      color = AppColors.primary;
+      label = 'اليوم';
+      icon = Icons.calendar_today;
+    } else {
+      color = AppColors.textMuted;
+      label = 'قادمة';
+      icon = Icons.event_outlined;
+    }
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(
+          color: today ? AppColors.primary : AppColors.border,
+          width: today ? 1.6 : 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: past ? color : AppColors.primary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(fmt.format(o), style: theme.textTheme.bodyMedium),
+          ),
+          if (today && widget.canManage)
+            FilledButton.icon(
+              onPressed: () => _startToday(o),
+              icon: const Icon(Icons.play_arrow_rounded, size: 18),
+              label: const Text('بدء'),
+              style:
+                  FilledButton.styleFrom(visualDensity: VisualDensity.compact),
+            )
+          else
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(AppRadius.pill),
+              ),
+              child: Text(label,
+                  style: TextStyle(
+                      color: color,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600)),
+            ),
+          if (widget.canManage && !past)
+            PopupMenuButton<String>(
+              tooltip: 'خيارات',
+              onSelected: (v) {
+                if (v == 'move') _moveOccurrence(o);
+                if (v == 'cancel') _cancelOccurrence(o);
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'move', child: Text('تعديل الوقت')),
+                PopupMenuItem(
+                  value: 'cancel',
+                  child: Text('إلغاء هذه الجلسة',
+                      style: TextStyle(color: AppColors.error)),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FixedScheduleEditor extends StatefulWidget {
+  final Set<String> initialDays;
+  final TimeOfDay initialTime;
+  final int initialDuration;
+  const _FixedScheduleEditor({
+    required this.initialDays,
+    required this.initialTime,
+    required this.initialDuration,
+  });
+
+  @override
+  State<_FixedScheduleEditor> createState() => _FixedScheduleEditorState();
+}
+
+class _FixedScheduleEditorState extends State<_FixedScheduleEditor> {
+  late Set<String> _days = {...widget.initialDays};
+  late TimeOfDay _time = widget.initialTime;
+  late int _duration = widget.initialDuration;
+
+  Future<void> _pickTime() async {
+    final t = await showTimePicker(context: context, initialTime: _time);
+    if (t != null) setState(() => _time = t);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return AlertDialog(
+      titlePadding: const EdgeInsets.fromLTRB(
+          AppSpacing.md, AppSpacing.sm, AppSpacing.sm, 0),
+      title: Row(
+        children: [
+          const Expanded(child: Text('الجدول الثابت')),
+          IconButton(
+            icon: const Icon(Icons.close),
+            tooltip: 'إلغاء',
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ],
+      ),
+      content: SizedBox(
+        width: 360,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('أيام الحلقة',
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: AppColors.textMuted)),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final c in _scheduleDayOrder)
+                    FilterChip(
+                      label: Text(_scheduleDayLabels[c]!),
+                      selected: _days.contains(c),
+                      onSelected: (v) => setState(
+                          () => v ? _days.add(c) : _days.remove(c)),
+                    ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.md),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.access_time_outlined),
+                title: const Text('وقت البدء'),
+                subtitle: Text(_time.format(context)),
+                trailing: TextButton(
+                    onPressed: _pickTime, child: const Text('تغيير')),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Text('مدة الجلسة',
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: AppColors.textMuted)),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                children: [
+                  for (final d in [30, 45, 60, 90])
+                    ChoiceChip(
+                      label: Text('$d د'),
+                      selected: _duration == d,
+                      onSelected: (_) => setState(() => _duration = d),
+                    ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              ElevatedButton(
+                onPressed: _days.isEmpty
+                    ? null
+                    : () => Navigator.of(context).pop((
+                          days: _days,
+                          time: _time,
+                          duration: _duration,
+                        )),
+                child: const Text('حفظ'),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -2462,9 +3228,9 @@ class _WeeklyAttendance extends StatefulWidget {
 class _WeeklyAttendanceState extends State<_WeeklyAttendance> {
   late DateTime _thisWeekStart; // Saturday of the current week
   late DateTime _weekStart; // Saturday of the displayed week
-  late List<String> _codes;
-  late List<String> _dateIds;
-  late Future<Map<String, Map<String, AttendanceState>>> _future;
+  List<String> _codes = const [];
+  List<String> _dateIds = const [];
+  Future<Map<String, Map<String, AttendanceState>>>? _future;
 
   @override
   void initState() {
@@ -2474,15 +3240,38 @@ class _WeeklyAttendanceState extends State<_WeeklyAttendance> {
     final daysSinceSat = (today.weekday - DateTime.saturday) % 7;
     _thisWeekStart = today.subtract(Duration(days: daysSinceSat));
     _weekStart = _thisWeekStart;
-    final src = widget.circle.days.isNotEmpty
-        ? widget.circle.days
-        : _scheduleDayOrder;
-    _codes = src.where((c) => _scheduleDayOrder.contains(c)).toList()
-      ..sort((a, b) => _scheduleDayOrder
-          .indexOf(a)
-          .compareTo(_scheduleDayOrder.indexOf(b)));
-    if (_codes.isEmpty) _codes = List.of(_scheduleDayOrder);
-    _recompute();
+    _initCodes();
+  }
+
+  /// Meeting days come from the حلقة's fixed rule (single source of truth,
+  /// same as the «أيام الحلقة» card). Falls back to deriving from sessions for
+  /// circles with no rule yet, then to the full week.
+  Future<void> _initCodes() async {
+    List<String> codes;
+    if (widget.circle.days.isNotEmpty) {
+      codes = [
+        for (final c in _scheduleDayOrder)
+          if (widget.circle.days.contains(c)) c,
+      ];
+    } else {
+      try {
+        final sessions =
+            await getIt<CalendarRepository>().getSessions(widget.circle.id);
+        final wds = sessions.map((s) => s.scheduledAt.weekday).toSet();
+        codes = [
+          for (final c in _scheduleDayOrder)
+            if (wds.contains(_codeToWeekday[c])) c,
+        ];
+      } catch (_) {
+        codes = const [];
+      }
+    }
+    if (codes.isEmpty) codes = List.of(_scheduleDayOrder);
+    if (!mounted) return;
+    setState(() {
+      _codes = codes;
+      _recompute();
+    });
   }
 
   /// Rebuild the visible date ids from [_weekStart] and reload the week.
@@ -2548,27 +3337,28 @@ class _WeeklyAttendanceState extends State<_WeeklyAttendance> {
     final end = _weekStart.add(const Duration(days: 6));
     final label =
         '${DateFormat('d MMM', 'ar').format(_weekStart)} – ${DateFormat('d MMM', 'ar').format(end)}';
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           IconButton(
             tooltip: 'الأسبوع السابق',
             icon: const Icon(Icons.chevron_right),
             onPressed: () => _changeWeek(-1),
           ),
-          Expanded(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(label, style: theme.textTheme.titleSmall),
-                if (_isCurrentWeek)
-                  Text('هذا الأسبوع',
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: AppColors.primary)),
-              ],
-            ),
+          const SizedBox(width: 4),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(label, style: theme.textTheme.titleSmall),
+              if (_isCurrentWeek)
+                Text('هذا الأسبوع',
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: AppColors.primary)),
+            ],
           ),
+          const SizedBox(width: 4),
           IconButton(
             tooltip: 'الأسبوع التالي',
             icon: const Icon(Icons.chevron_left),
@@ -2582,8 +3372,6 @@ class _WeeklyAttendanceState extends State<_WeeklyAttendance> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    const nameW = 150.0, dayW = 58.0, pctW = 64.0;
-    final totalW = nameW + dayW * _codes.length + pctW;
     return Column(
       children: [
         _weekNavBar(theme),
@@ -2608,119 +3396,124 @@ class _WeeklyAttendanceState extends State<_WeeklyAttendance> {
               ],
             ),
           ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+          child: Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: _legend(theme),
+          ),
+        ),
+        const SizedBox(height: AppSpacing.sm),
         Expanded(
-          child: FutureBuilder<Map<String, Map<String, AttendanceState>>>(
-            future: _future,
-            builder: (context, snap) {
-              if (!snap.hasData) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              final data = snap.data!;
-              return SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-          child: SizedBox(
-            width: totalW,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Container(
-                  color: AppColors.gray,
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  child: Row(
-                    children: [
-                      SizedBox(
-                        width: nameW,
-                        child: const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 12),
-                          child: Text('الطالبة',
-                              style: TextStyle(
-                                  color: AppColors.textMuted, fontSize: 12)),
+          child: _future == null
+              ? const Center(child: CircularProgressIndicator())
+              : FutureBuilder<Map<String, Map<String, AttendanceState>>>(
+                  future: _future,
+                  builder: (context, snap) {
+                    if (!snap.hasData) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    final data = snap.data!;
+                    final codes = _codes;
+                    final dateIds = _dateIds;
+                    Widget head(String t, int flex, {bool center = false}) =>
+                        Expanded(
+                          flex: flex,
+                          child: Text(t,
+                              textAlign:
+                                  center ? TextAlign.center : TextAlign.start,
+                              style: theme.textTheme.bodySmall
+                                  ?.copyWith(color: AppColors.textMuted)),
+                        );
+                    return Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                          AppSpacing.md, 0, AppSpacing.md, AppSpacing.md),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: AppColors.surface,
+                          borderRadius: BorderRadius.circular(AppRadius.lg),
+                          border: Border.all(color: AppColors.border),
                         ),
-                      ),
-                      for (final c in _codes)
-                        SizedBox(
-                          width: dayW,
-                          child: Center(
-                            child: Text(_scheduleDayLabels[c] ?? c,
-                                style: const TextStyle(
-                                    color: AppColors.textMuted, fontSize: 12)),
-                          ),
-                        ),
-                      const SizedBox(
-                        width: pctW,
-                        child: Center(
-                          child: Text('النسبة',
-                              style: TextStyle(
-                                  color: AppColors.textMuted, fontSize: 12)),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1),
-                Expanded(
-                  child: ListView.separated(
-                    itemCount: widget.students.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (context, i) {
-                      final m = widget.students[i];
-                      var recorded = 0, attended = 0;
-                      final cells = <Widget>[];
-                      for (var j = 0; j < _codes.length; j++) {
-                        final dateId = _dateIds[j];
-                        final st = data[dateId]?[m.uid];
-                        if (st != null) {
-                          recorded++;
-                          if (st == AttendanceState.present ||
-                              st == AttendanceState.late_) attended++;
-                        }
-                        cells.add(SizedBox(
-                          width: dayW,
-                          child: Center(
-                            child: _AttCell(
-                              state: st,
-                              onTap: widget.canManage
-                                  ? () => _cycle(dateId, m.uid, st)
-                                  : null,
-                            ),
-                          ),
-                        ));
-                      }
-                      final pct = recorded == 0
-                          ? 0
-                          : (attended / recorded * 100).round();
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Row(
+                        clipBehavior: Clip.antiAlias,
+                        child: Column(
                           children: [
-                            SizedBox(
-                              width: nameW,
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 12),
-                                child: _nameCell(theme, m),
+                            Container(
+                              color: AppColors.gray,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 14, vertical: 10),
+                              child: Row(
+                                children: [
+                                  head('الطالبة', 3),
+                                  for (final c in codes)
+                                    head(_scheduleDayLabels[c] ?? c, 2,
+                                        center: true),
+                                  head('النسبة', 2, center: true),
+                                ],
                               ),
                             ),
-                            ...cells,
-                            SizedBox(
-                                width: pctW,
-                                child: Center(child: _pctChip(pct))),
+                            const Divider(height: 1),
+                            Expanded(
+                              child: ListView.separated(
+                                itemCount: widget.students.length,
+                                separatorBuilder: (_, __) =>
+                                    const Divider(height: 1),
+                                itemBuilder: (context, i) {
+                                  final m = widget.students[i];
+                                  var recorded = 0, attended = 0;
+                                  final cells = <Widget>[];
+                                  for (var j = 0; j < codes.length; j++) {
+                                    final dateId = dateIds[j];
+                                    final st = data[dateId]?[m.uid];
+                                    if (st != null) {
+                                      recorded++;
+                                      if (st == AttendanceState.present ||
+                                          st == AttendanceState.late_) {
+                                        attended++;
+                                      }
+                                    }
+                                    cells.add(Expanded(
+                                      flex: 2,
+                                      child: Center(
+                                        child: _AttCell(
+                                          state: st,
+                                          onTap: widget.canManage
+                                              ? () => _cycle(dateId, m.uid, st)
+                                              : null,
+                                        ),
+                                      ),
+                                    ));
+                                  }
+                                  final pct = recorded == 0
+                                      ? 0
+                                      : (attended / recorded * 100).round();
+                                  return Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 14, vertical: 10),
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                            flex: 3,
+                                            child: _nameCell(theme, m)),
+                                        ...cells,
+                                        Expanded(
+                                            flex: 2,
+                                            child:
+                                                Center(child: _pctChip(pct))),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
                           ],
                         ),
-                      );
-                    },
-                  ),
+                      ),
+                    );
+                  },
                 ),
-                _legend(theme),
-              ],
-            ),
-          ),
-        );
-      },
-            ),
-          ),
-        ],
-      );
+        ),
+      ],
+    );
   }
 
   Widget _nameCell(ThemeData theme, CircleMember m) {

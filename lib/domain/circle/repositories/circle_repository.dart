@@ -127,6 +127,9 @@ abstract class CircleRepository {
   /// Remove a student from a حلقة.
   Future<void> removeMember({required String circleId, required String uid});
 
+  /// Rename a حلقة (fix the title).
+  Future<void> updateName({required String circleId, required String name});
+
   /// Mark (or clear, when [state] is null) a student's attendance for a given
   /// day, identified by [dateId] (yyyy-MM-dd).
   Future<void> markAttendance({
@@ -140,5 +143,24 @@ abstract class CircleRepository {
   Future<Map<String, Map<String, AttendanceState>>> getWeekAttendance({
     required String circleId,
     required List<String> dateIds,
+  });
+
+  /// Per-date exceptions to the fixed schedule. Returns dateId →
+  /// (type: 'cancelled' | 'moved', time: 'HH:mm' when moved).
+  Future<Map<String, ({String type, String? time})>> getScheduleExceptions(
+      String circleId);
+
+  /// Cancel or move a single rule occurrence on [dateId].
+  Future<void> setScheduleException({
+    required String circleId,
+    required String dateId,
+    required String type,
+    String? time,
+  });
+
+  /// Remove an exception (restore the rule occurrence on [dateId]).
+  Future<void> clearScheduleException({
+    required String circleId,
+    required String dateId,
   });
 }

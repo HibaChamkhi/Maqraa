@@ -8,7 +8,7 @@ import '../../../core/ui/styles/theme.dart';
 import '../../../domain/auth/models/app_user.dart';
 import '../../../domain/exam/models/exam.dart';
 import '../bloc/exam_bloc.dart';
-import 'exam_results_page.dart';
+import 'exam_analysis_page.dart';
 
 /// US-20: teacher schedules an exam (title, range, type, marks, date) and lists
 /// exams. Tapping an exam opens its grading/results screen (US-21).
@@ -108,7 +108,7 @@ class _TeacherExamsView extends StatelessWidget {
                   final bloc = context.read<ExamBloc>();
                   await Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => ExamResultsPage(
+                      builder: (_) => ExamAnalysisPage(
                         circleId: circleId,
                         exam: exam,
                         user: user,
@@ -116,7 +116,7 @@ class _TeacherExamsView extends StatelessWidget {
                     ),
                   );
                   // Refresh so the منشورة/مخفية badge reflects any toggle made
-                  // on the results screen.
+                  // on the analysis/results screen.
                   bloc.add(ExamsRequested(circleId));
                 },
                 onEdit: () => _openEditor(context, exam),
@@ -430,7 +430,7 @@ class _ExamFormState extends State<_ExamForm> {
         ],
       ),
       content: SizedBox(
-        width: double.maxFinite,
+        width: 360,
         child: SingleChildScrollView(
           child: Form(
             key: _formKey,

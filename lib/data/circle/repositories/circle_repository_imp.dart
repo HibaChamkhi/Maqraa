@@ -180,6 +180,10 @@ class CircleRepositoryImpl implements CircleRepository {
       remoteDataSource.removeMember(circleId: circleId, uid: uid);
 
   @override
+  Future<void> updateName({required String circleId, required String name}) =>
+      remoteDataSource.updateName(circleId: circleId, name: name);
+
+  @override
   Future<void> markAttendance({
     required String circleId,
     required String dateId,
@@ -201,5 +205,34 @@ class CircleRepositoryImpl implements CircleRepository {
       remoteDataSource.getWeekAttendance(
         circleId: circleId,
         dateIds: dateIds,
+      );
+
+  @override
+  Future<Map<String, ({String type, String? time})>> getScheduleExceptions(
+          String circleId) =>
+      remoteDataSource.getScheduleExceptions(circleId);
+
+  @override
+  Future<void> setScheduleException({
+    required String circleId,
+    required String dateId,
+    required String type,
+    String? time,
+  }) =>
+      remoteDataSource.setScheduleException(
+        circleId: circleId,
+        dateId: dateId,
+        type: type,
+        time: time,
+      );
+
+  @override
+  Future<void> clearScheduleException({
+    required String circleId,
+    required String dateId,
+  }) =>
+      remoteDataSource.clearScheduleException(
+        circleId: circleId,
+        dateId: dateId,
       );
 }

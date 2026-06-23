@@ -12,7 +12,7 @@ import '../../../presentation/exam/pages/teacher_exams_page.dart';
 import '../../../presentation/help/help_page.dart';
 import '../../../presentation/profile/pages/profile_page.dart';
 import '../../../presentation/profile/pages/settings_page.dart';
-import '../../../presentation/progress/pages/teacher_tracking_page.dart';
+import '../../../presentation/progress/pages/reports_page.dart';
 import '../../../presentation/progress/pages/my_progress_page.dart';
 import '../../../presentation/task/pages/today_task_entry.dart';
 import '../styles/theme.dart';
@@ -207,7 +207,7 @@ class WardDrawer extends StatelessWidget {
         push(SectionCirclePickerPage(
           title: 'التقارير',
           icon: Icons.bar_chart_outlined,
-          pageBuilder: (c) => TeacherTrackingPage(circleId: c.id),
+          pageBuilder: (c) => ReportsPage(circleId: c.id, user: user),
         ));
         break;
       case 'الإشعارات':

@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../core/di/injection.dart';
+import '../../../core/model /ui_state.dart';
 import '../../../core/ui/styles/theme.dart';
 import '../../../domain/auth/models/app_user.dart';
 import '../../../domain/circle/models/circle.dart';
@@ -137,7 +138,9 @@ class _ExamResultsViewState extends State<_ExamResultsView> {
         ],
       ),
       body: BlocConsumer<ExamBloc, ExamState>(
-        listenWhen: (prev, curr) => curr.message.isNotEmpty && curr.actionDone,
+        listenWhen: (prev, curr) =>
+            curr.message.isNotEmpty &&
+            (curr.actionDone || curr.status == UIStatus.error),
         listener: (context, state) {
           ScaffoldMessenger.of(context)
             ..hideCurrentSnackBar()
@@ -368,8 +371,39 @@ class _ResultTileState extends State<_ResultTile> {
       fluency = _num(_fluencyController);
     }
     FocusScope.of(context).unfocus();
-    widget.onSave(
-        score, _attendance, _feedbackController.text.trim(), hifz, tajweed, fluency);
+    widget.onSave(score, _attendance, _feedbackController.text.trim(),
+        hifz, tajweed, fluency);
+  }
+
+  /// Auto-save quietly: present saves the score only when valid; absent/excused
+  /// records a 0. Invalid scores aren't saved (the row shows «غير محفوظ») — no
+  /// error popups, since saving is automatic. Rubric marks ride along when set.
+  void _saveQuiet() {
+    if (_attendance == ExamAttendance.present) {
+      final v = num.tryParse(_scoreController.text.trim());
+      if (v == null || v < 0 || v > widget.totalMarks) return;
+      widget.onSave(v, _attendance, _feedbackController.text.trim(),
+          _num(_hifzController), _num(_tajweedController), _num(_fluencyController));
+    } else {
+      widget.onSave(
+          0, _attendance, _feedbackController.text.trim(), null, null, null);
+    }
+  }
+
+  /// Whether current edits differ from the last saved result.
+  bool get _dirty {
+    final r = widget.result;
+    final present = _attendance == ExamAttendance.present;
+    final txt = _scoreController.text.trim();
+    final fb = _feedbackController.text.trim();
+    if (r == null) return present ? txt.isNotEmpty : true;
+    if (_attendance != r.attendance) return true;
+    if (fb != r.feedback) return true;
+    if (present) {
+      final v = num.tryParse(txt);
+      return v == null || v != r.score;
+    }
+    return false;
   }
 
   Widget _rubricField(String label, TextEditingController c) {
@@ -420,7 +454,10 @@ class _ResultTileState extends State<_ResultTile> {
                     keyboardType:
                         const TextInputType.numberWithOptions(decimal: true),
                     textAlign: TextAlign.center,
+                    textInputAction: TextInputAction.done,
                     onChanged: (_) => setState(() {}),
+                    onSubmitted: (_) => _saveQuiet(),
+                    onTapOutside: (_) => _saveQuiet(),
                     decoration: InputDecoration(
                       labelText: 'الدرجة',
                       helperText: 'من ${widget.totalMarks}',
@@ -428,11 +465,26 @@ class _ResultTileState extends State<_ResultTile> {
                     ),
                   ),
                 ),
-                IconButton(
-                  icon:
-                      const Icon(Icons.save_outlined, color: AppColors.primary),
-                  onPressed: _save,
-                ),
+                const SizedBox(width: AppSpacing.sm),
+                _dirty
+                    ? const Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.fiber_manual_record,
+                            size: 10, color: AppColors.warning),
+                        SizedBox(width: 4),
+                        Text('غير محفوظ',
+                            style: TextStyle(
+                                fontSize: 11, color: AppColors.warning)),
+                      ])
+                    : (widget.result != null
+                        ? const Row(mainAxisSize: MainAxisSize.min, children: [
+                            Icon(Icons.check_circle,
+                                size: 14, color: AppColors.success),
+                            SizedBox(width: 4),
+                            Text('محُفظ',
+                                style: TextStyle(
+                                    fontSize: 11, color: AppColors.success)),
+                          ])
+                        : const SizedBox.shrink()),
               ],
             ),
             const SizedBox(height: AppSpacing.sm),
@@ -442,7 +494,10 @@ class _ResultTileState extends State<_ResultTile> {
                   .map((a) => ChoiceChip(
                         label: Text(a.arabicLabel),
                         selected: _attendance == a,
-                        onSelected: (_) => setState(() => _attendance = a),
+                        onSelected: (_) {
+                          setState(() => _attendance = a);
+                          _saveQuiet();
+                        },
                       ))
                   .toList(),
             ),
@@ -497,6 +552,8 @@ class _ResultTileState extends State<_ResultTile> {
               minLines: 1,
               maxLines: 3,
               style: theme.textTheme.bodySmall,
+              onChanged: (_) => setState(() {}),
+              onTapOutside: (_) => _saveQuiet(),
               decoration: const InputDecoration(
                 labelText: 'ملاحظة للطالبة (اختياري)',
                 isDense: true,
