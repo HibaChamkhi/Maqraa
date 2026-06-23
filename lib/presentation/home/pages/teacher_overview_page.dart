@@ -1,18 +1,25 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 
 import '../../../core/di/injection.dart';
 import '../../../core/ui/styles/theme.dart';
+import '../../../domain/announcement/models/announcement.dart';
+import '../../../domain/announcement/repositories/announcement_repository.dart';
 import '../../../domain/auth/models/app_user.dart';
 import '../../../domain/calendar/repositories/calendar_repository.dart';
 import '../../../domain/circle/models/circle.dart';
 import '../../../domain/circle/repositories/circle_repository.dart';
+import '../../../domain/exam/models/exam.dart';
+import '../../../domain/exam/repositories/exam_repository.dart';
 import '../../../domain/session/models/session.dart';
+import '../../../domain/task/models/daily_task.dart';
+import '../../../domain/task/repositories/task_repository.dart';
+import '../../notification/pages/notifications_page.dart';
 
-/// الرئيسية — overview dashboard matching the «ورْد» reference.
+const Color _green = AppColors.primary;
+
+/// الرئيسية — teacher overview dashboard.
 class TeacherOverviewPage extends StatefulWidget {
   final AppUser user;
   final List<Circle> circles;
@@ -23,122 +30,148 @@ class TeacherOverviewPage extends StatefulWidget {
   State<TeacherOverviewPage> createState() => _TeacherOverviewPageState();
 }
 
-class _Status {
-  int excellent = 0, good = 0, average = 0, follow = 0;
-  int get total => excellent + good + average + follow;
-}
+typedef _Delivery = ({String name, String circle, String range, String date, int state});
+typedef _Upcoming = ({String circle, DateTime at});
+typedef _Note = ({String text, String sub, DateTime? at});
 
 class _Data {
-  final int totalStudents;
-  final int avgPercent;
-  final int memorizedJuz;
-  final int circleCount;
-  final _Status circleStatus;
-  final List<double?> thisWeek;
-  final List<double?> lastWeek;
-  final List<({String title, String circle, DateTime at})> tasks;
-  _Data(this.totalStudents, this.avgPercent, this.memorizedJuz,
-      this.circleCount, this.circleStatus, this.thisWeek, this.lastWeek, this.tasks);
+  final int activeStudents, totalStudents, attendancePct, joinRequests, activeExams;
+  final List<_Delivery> delivery;
+  final Map<String, int> grades; // label -> count
+  final List<_Upcoming> upcoming;
+  final List<_Note> announcements;
+  _Data(this.activeStudents, this.totalStudents, this.attendancePct,
+      this.joinRequests, this.activeExams, this.delivery, this.grades,
+      this.upcoming, this.announcements);
 }
 
 class _TeacherOverviewPageState extends State<TeacherOverviewPage> {
   late final Future<_Data> _future = _load();
 
-  bool _isToday(DateTime d) {
-    final n = DateTime.now();
-    return d.year == n.year && d.month == n.month && d.day == n.day;
-  }
-
   Future<_Data> _load() async {
     final circleRepo = getIt<CircleRepository>();
     final calRepo = getIt<CalendarRepository>();
-    final fs = getIt<FirebaseFirestore>();
-    final uid = getIt<FirebaseAuth>().currentUser?.uid;
+    final examRepo = getIt<ExamRepository>();
+    final taskRepo = getIt<TaskRepository>();
+    final noteRepo = getIt<AnnouncementRepository>();
     final circles = widget.circles;
+    final now = DateTime.now();
+    final todayId = _ymd(now);
+    final sat = DateTime(now.year, now.month, now.day)
+        .subtract(Duration(days: now.weekday % 7));
+    final weekIds = [for (var i = 0; i < 7; i++) _ymd(sat.add(Duration(days: i)))];
 
-    final members = await Future.wait(circles.map((c) async {
+    Future<T> guard<T>(Future<T> Function() f, T fallback) async {
       try {
-        return await circleRepo.getMembers(c.id);
+        return await f();
       } catch (_) {
-        return <CircleMember>[];
+        return fallback;
       }
-    }));
-    final sessions = await Future.wait(circles.map((c) async {
-      try {
-        return await calRepo.getSessions(c.id);
-      } catch (_) {
-        return <Session>[];
-      }
-    }));
+    }
 
-    var totalStudents = 0, totalPercent = 0, totalPages = 0;
-    final status = _Status();
-    final tasks = <({String title, String circle, DateTime at})>[];
+    // --- per-circle parallel reads ---
+    final members = await Future.wait(circles.map(
+        (c) => guard(() => circleRepo.getMembers(c.id), <CircleMember>[])));
+    final pending = await Future.wait(circles.map(
+        (c) => guard(() => circleRepo.getPendingRequests(c.id), <CircleMember>[])));
+    final sessions = await Future.wait(circles.map(
+        (c) => guard(() => calRepo.getSessions(c.id), <Session>[])));
+    final exams = await Future.wait(circles.map(
+        (c) => guard(() => examRepo.getExams(c.id), <Exam>[])));
+    final tasks = await Future.wait(circles.map(
+        (c) => guard(() => taskRepo.getTasksForDay(circleId: c.id, dateId: todayId),
+            <DailyTask>[])));
+    final notes = await Future.wait(circles.map(
+        (c) => guard(() => noteRepo.getAnnouncements(c.id), <Announcement>[])));
+    final attendance = await Future.wait(circles.map((c) => guard(
+        () => circleRepo.getWeekAttendance(circleId: c.id, dateIds: weekIds),
+        <String, Map<String, AttendanceState>>{})));
 
+    // --- KPIs ---
+    var active = 0, total = 0, joinRequests = 0, activeExams = 0;
+    var present = 0, marked = 0;
     for (var i = 0; i < circles.length; i++) {
       final students = members[i]
-          .where((m) => m.role == UserRole.student && m.status == MemberStatus.active)
+          .where((m) => m.role == UserRole.student)
           .toList();
-      totalStudents += students.length;
-      var sum = 0;
-      for (final s in students) {
-        totalPercent += s.memorizedPercent;
-        totalPages += s.memorizedPages;
-        sum += s.memorizedPercent;
-      }
-      final avg = students.isEmpty ? 0 : (sum / students.length).round();
-      if (avg >= 85) {
-        status.excellent++;
-      } else if (avg >= 70) {
-        status.good++;
-      } else if (avg >= 50) {
-        status.average++;
-      } else {
-        status.follow++;
-      }
-      for (final ses in sessions[i]) {
-        if (_isToday(ses.scheduledAt)) {
-          tasks.add((title: ses.title, circle: circles[i].name, at: ses.scheduledAt));
+      total += students.length;
+      active += students.where((m) => m.status == MemberStatus.active).length;
+      joinRequests += pending[i].length;
+      activeExams += exams[i]
+          .where((e) => !e.date.isBefore(DateTime(now.year, now.month, now.day)))
+          .length;
+      for (final byUid in attendance[i].values) {
+        for (final st in byUid.values) {
+          marked++;
+          if (st == AttendanceState.present) present++;
         }
       }
     }
-    tasks.sort((a, b) => a.at.compareTo(b.at));
-    final avgPercent = totalStudents == 0 ? 0 : (totalPercent / totalStudents).round();
+    final attendancePct = marked == 0 ? 0 : (present * 100 / marked).round();
 
-    // --- daily history snapshot (real week-over-week data) ---
-    final thisWeek = List<double?>.filled(7, null);
-    final lastWeek = List<double?>.filled(7, null);
-    if (uid != null) {
-      final now = DateTime.now();
-      final weekStart = DateTime(now.year, now.month, now.day)
-          .subtract(Duration(days: now.weekday % 7));
-      final lastWeekStart = weekStart.subtract(const Duration(days: 7));
-      final col = fs.collection('users').doc(uid).collection('dailyStats');
-      try {
-        // write today's snapshot
-        final todayId = DateFormat('yyyy-MM-dd').format(now);
-        await col.doc(todayId).set(
-            {'avg': avgPercent, 'date': Timestamp.fromDate(now)},
-            SetOptions(merge: true));
-        // read history (one tiny doc per day)
-        final snap = await col.get();
-        for (final doc in snap.docs) {
-          final ts = (doc.data()['date'] as Timestamp?)?.toDate();
-          final avgV = (doc.data()['avg'] as num?)?.toDouble();
-          if (ts == null || avgV == null) continue;
-          final day = DateTime(ts.year, ts.month, ts.day);
-          final idx = day.weekday % 7;
-          if (!day.isBefore(weekStart)) {
-            thisWeek[idx] = avgV;
-          } else if (!day.isBefore(lastWeekStart)) {
-            lastWeek[idx] = avgV;
-          }
-        }
-      } catch (_) {/* history is best-effort */}
+    // --- delivery tracking (today) ---
+    final delivery = <_Delivery>[];
+    for (var i = 0; i < circles.length; i++) {
+      for (final t in tasks[i]) {
+        final state = t.status == TaskStatus.done
+            ? 0
+            : t.awaitingConfirmation
+                ? 1
+                : 2;
+        delivery.add((
+          name: t.name,
+          circle: circles[i].name,
+          range: t.range,
+          date: t.dateId,
+          state: state,
+        ));
+      }
     }
 
-    return _Data(totalStudents, avgPercent, (totalPages / 20).round(),
-        circles.length, status, thisWeek, lastWeek, tasks);
+    // --- exam analysis (results of completed exams) ---
+    final grades = <String, int>{};
+    final past = <({String circleId, Exam exam})>[];
+    for (var i = 0; i < circles.length; i++) {
+      for (final e in exams[i]) {
+        if (e.date.isBefore(now)) past.add((circleId: circles[i].id, exam: e));
+      }
+    }
+    past.sort((a, b) => b.exam.date.compareTo(a.exam.date));
+    for (final p in past.take(10)) {
+      final results = await guard(
+          () => examRepo.getResults(circleId: p.circleId, examId: p.exam.id),
+          <ExamResult>[]);
+      for (final r in results) {
+        if (r.attendance != ExamAttendance.present) continue;
+        final label = examGradeLabel(r.score, p.exam.totalMarks);
+        if (label.isEmpty) continue;
+        grades[label] = (grades[label] ?? 0) + 1;
+      }
+    }
+
+    // --- upcoming sessions ---
+    final upcoming = <_Upcoming>[];
+    for (var i = 0; i < circles.length; i++) {
+      for (final s in sessions[i]) {
+        if (s.scheduledAt.isAfter(now) && s.status != SessionStatus.ended) {
+          upcoming.add((circle: circles[i].name, at: s.scheduledAt));
+        }
+      }
+    }
+    upcoming.sort((a, b) => a.at.compareTo(b.at));
+
+    // --- announcements ---
+    final ann = <_Note>[];
+    for (var i = 0; i < circles.length; i++) {
+      for (final n in notes[i]) {
+        ann.add((text: n.text, sub: circles[i].name, at: n.createdAt));
+      }
+    }
+    ann.sort((a, b) =>
+        (b.at ?? DateTime(0)).compareTo(a.at ?? DateTime(0)));
+
+    return _Data(active, total, attendancePct, joinRequests, activeExams,
+        delivery, grades, upcoming, ann);
   }
 
   @override
@@ -146,330 +179,311 @@ class _TeacherOverviewPageState extends State<TeacherOverviewPage> {
     return FutureBuilder<_Data>(
       future: _future,
       builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
+        if (!snap.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
-        if (snap.hasError || !snap.hasData) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(AppSpacing.lg),
-              child: Text('تعذّر تحميل لوحة المعلومات',
-                  style: Theme.of(context).textTheme.bodyMedium),
+        final d = snap.data!;
+        return LayoutBuilder(builder: (context, c) {
+          final wide = c.maxWidth >= 860;
+          return SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1180),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _header(),
+                  const SizedBox(height: 18),
+                  _kpis(d, wide),
+                  const SizedBox(height: 16),
+                  _DeliveryCard(rows: d.delivery),
+                  const SizedBox(height: 16),
+                  if (wide)
+                    IntrinsicHeight(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(child: _AnnouncementsCard(notes: d.announcements)),
+                          const SizedBox(width: 16),
+                          Expanded(child: _UpcomingCard(items: d.upcoming)),
+                          const SizedBox(width: 16),
+                          Expanded(child: _AnalysisCard(grades: d.grades)),
+                        ],
+                      ),
+                    )
+                  else ...[
+                    _AnalysisCard(grades: d.grades),
+                    const SizedBox(height: 16),
+                    _UpcomingCard(items: d.upcoming),
+                    const SizedBox(height: 16),
+                    _AnnouncementsCard(notes: d.announcements),
+                  ],
+                ],
+              ),
             ),
           );
-        }
-        final d = snap.data!;
-        final wide = MediaQuery.of(context).size.width >= 900;
-        final progress = _ProgressCard(thisWeek: d.thisWeek, lastWeek: d.lastWeek);
-        final donut = _StatusDonut(status: d.circleStatus, circleCount: d.circleCount);
-        final tasks = _TasksCard(tasks: d.tasks);
-        return ListView(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          children: [
-            _Welcome(name: widget.user.name),
-            const SizedBox(height: AppSpacing.md),
-            _StatsRow(d: d),
-            const SizedBox(height: AppSpacing.md),
-            if (wide)
-              IntrinsicHeight(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(flex: 2, child: progress),
-                    const SizedBox(width: 12),
-                    Expanded(child: donut),
-                    const SizedBox(width: 12),
-                    Expanded(child: tasks),
-                  ],
-                ),
-              )
-            else ...[
-              progress,
-              const SizedBox(height: AppSpacing.md),
-              donut,
-              const SizedBox(height: AppSpacing.md),
-              tasks,
-            ],
-          ],
-        );
+        });
       },
     );
   }
-}
 
-// ---------- shared card shell with soft shadow ----------
-class _Shell extends StatelessWidget {
-  final Widget child;
-  const _Shell({required this.child});
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        boxShadow: const [
-          BoxShadow(color: Color(0x0F1F2937), blurRadius: 14, offset: Offset(0, 4)),
-        ],
-      ),
-      child: child,
+  Widget _header() {
+    final u = widget.user;
+    return Row(
+      children: [
+        IconButton(
+          icon: const Icon(Icons.notifications_none_rounded),
+          onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const NotificationsPage())),
+        ),
+        const Spacer(),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text('أ. ${u.name}',
+                style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.ink)),
+            const Text('معلمة',
+                style: TextStyle(fontSize: 12.5, color: AppColors.textMuted)),
+          ],
+        ),
+        const SizedBox(width: 12),
+        CircleAvatar(
+          radius: 24,
+          backgroundColor: AppColors.sky,
+          backgroundImage:
+              u.photoUrl != null ? NetworkImage(u.photoUrl!) : null,
+          child: u.photoUrl == null
+              ? const Icon(Icons.person, color: _green)
+              : null,
+        ),
+      ],
     );
   }
-}
 
-class _CardShell extends StatelessWidget {
-  final String title;
-  final Widget child;
-  const _CardShell({required this.title, required this.child});
-  @override
-  Widget build(BuildContext context) {
-    return _Shell(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: AppSpacing.md),
-          child,
-        ],
-      ),
-    );
-  }
-}
-
-// ---------- welcome ----------
-class _Welcome extends StatelessWidget {
-  final String name;
-  const _Welcome({required this.name});
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return _Shell(
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('مرحبًا $name', style: theme.textTheme.headlineSmall),
-                const SizedBox(height: 6),
-                Text('استمر في متابعة طلابك وتحفيزهم', style: theme.textTheme.bodyMedium),
-              ],
-            ),
-          ),
-          Container(
-            width: 58,
-            height: 58,
-            decoration: BoxDecoration(
-                color: AppColors.sky, borderRadius: BorderRadius.circular(AppRadius.md)),
-            child: const Icon(Icons.spa_outlined, color: AppColors.primary, size: 32),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ---------- stat cards ----------
-class _StatsRow extends StatelessWidget {
-  final _Data d;
-  const _StatsRow({required this.d});
-  @override
-  Widget build(BuildContext context) {
+  Widget _kpis(_Data d, bool wide) {
     final tiles = [
-      _StatTile(icon: Icons.groups_2_outlined, value: '${d.totalStudents}', unit: 'طالب', label: 'إجمالي الطلاب', delta: 'هذا الأسبوع'),
-      _StatTile(icon: Icons.speed_outlined, value: '${d.avgPercent}%', unit: '', label: 'معدل الحفظ', delta: 'المتوسط العام'),
-      _StatTile(icon: Icons.menu_book_outlined, value: '${d.memorizedJuz}', unit: 'جزءًا', label: 'الأجزاء المحفوظة', delta: 'مجموع الطلاب'),
-      _StatTile(icon: Icons.workspaces_outline, value: '${d.circleCount}', unit: 'حلقات', label: 'الحلقات النشطة', delta: 'نشطة الآن'),
+      _Kpi(icon: Icons.groups_2_outlined, value: '${d.activeStudents}', sub: 'من ${d.totalStudents} طالبة', label: 'الطالبات النشطات'),
+      _Kpi(icon: Icons.verified_outlined, value: '${d.attendancePct}%', sub: 'هذا الأسبوع', label: 'نسبة الحضور'),
+      _Kpi(icon: Icons.person_add_alt, value: '${d.joinRequests}', sub: 'طلب جديد', label: 'طلبات الانضمام'),
+      _Kpi(icon: Icons.assignment_outlined, value: '${d.activeExams}', sub: 'اختبار نشط', label: 'الاختبارات'),
     ];
-    return LayoutBuilder(builder: (context, c) {
-      return GridView.count(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        crossAxisCount: c.maxWidth >= 900 ? 4 : 2,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        mainAxisExtent: 128,
-        children: tiles,
-      );
-    });
+    return GridView.count(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisCount: wide ? 4 : 2,
+      mainAxisSpacing: 14,
+      crossAxisSpacing: 14,
+      mainAxisExtent: 122,
+      children: tiles,
+    );
   }
 }
 
-class _StatTile extends StatelessWidget {
+// ── KPI tile ──────────────────────────────────────────────
+
+class _Kpi extends StatelessWidget {
   final IconData icon;
-  final String value, unit, label, delta;
-  const _StatTile({required this.icon, required this.value, required this.unit, required this.label, required this.delta});
+  final String value, sub, label;
+  const _Kpi({required this.icon, required this.value, required this.sub, required this.label});
+
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return _Shell(
+    return _card(
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Expanded(
-                  child: Text(label,
-                      style: theme.textTheme.bodyMedium
-                          ?.copyWith(color: AppColors.textMuted))),
+                child: Text(label,
+                    style: const TextStyle(
+                        fontSize: 12.5, color: AppColors.textMuted)),
+              ),
               Container(
                 padding: const EdgeInsets.all(7),
                 decoration: BoxDecoration(
-                    color: AppColors.sky, borderRadius: BorderRadius.circular(AppRadius.sm)),
-                child: Icon(icon, size: 18, color: AppColors.primary),
+                    color: _green.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(9)),
+                child: Icon(icon, size: 17, color: _green),
               ),
             ],
           ),
           const Spacer(),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(value,
-                  style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w700)),
-              if (unit.isNotEmpty) ...[
-                const SizedBox(width: 4),
-                Text(unit, style: theme.textTheme.bodySmall),
-              ],
-            ],
-          ),
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              const Icon(Icons.arrow_upward, size: 13, color: AppColors.primary),
-              const SizedBox(width: 3),
-              Text(delta, style: theme.textTheme.bodySmall?.copyWith(color: AppColors.primary)),
-            ],
-          ),
+          Text(value,
+              style: const TextStyle(
+                  fontSize: 26, fontWeight: FontWeight.w800, color: AppColors.ink)),
+          const SizedBox(height: 2),
+          Text(sub,
+              style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted)),
         ],
       ),
     );
   }
 }
 
-// ---------- progress chart (two area lines) ----------
-class _ProgressCard extends StatelessWidget {
-  final List<double?> thisWeek;
-  final List<double?> lastWeek;
-  const _ProgressCard({required this.thisWeek, required this.lastWeek});
-  static const _days = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+// ── متابعة التسليم ────────────────────────────────────────
 
-  List<FlSpot> _spots(List<double?> a) =>
-      [for (var i = 0; i < 7; i++) if (a[i] != null) FlSpot(i.toDouble(), a[i]!)];
+class _DeliveryCard extends StatelessWidget {
+  final List<_Delivery> rows;
+  const _DeliveryCard({required this.rows});
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final thisSpots = _spots(thisWeek);
-    final lastSpots = _spots(lastWeek);
-    return _CardShell(
-      title: 'تقدّم الحفظ (جميع الحلقات)',
+    return _card(
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              _legend(AppColors.primary, 'هذا الأسبوع'),
-              const SizedBox(width: 16),
-              _legend(AppColors.teal, 'الأسبوع الماضي'),
-            ],
-          ),
+          const Text('متابعة التسليم',
+              style: TextStyle(
+                  fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.ink)),
           const SizedBox(height: 12),
-          SizedBox(
-            height: 200,
-            child: (thisSpots.isEmpty && lastSpots.isEmpty)
-                ? Center(child: Text('سيظهر التقدّم بعد تسجيل الحفظ يوميًا', style: theme.textTheme.bodySmall))
-                : LineChart(LineChartData(
-                    minX: 0,
-                    maxX: 6,
-                    minY: 0,
-                    maxY: 100,
-                    gridData: const FlGridData(show: true, drawVerticalLine: false, horizontalInterval: 25),
-                    borderData: FlBorderData(show: false),
-                    titlesData: FlTitlesData(
-                      topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                      rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                      leftTitles: AxisTitles(
-                          sideTitles: SideTitles(showTitles: true, interval: 25, reservedSize: 34,
-                              getTitlesWidget: (v, _) => Text('${v.toInt()}%', style: const TextStyle(fontSize: 10, color: AppColors.textMuted)))),
-                      bottomTitles: AxisTitles(
-                          sideTitles: SideTitles(showTitles: true, interval: 1, reservedSize: 26, getTitlesWidget: (v, _) {
-                        // Only label whole-number positions (0..6); fl_chart
-                        // otherwise emits fractional ticks that repeat a label.
-                        if (v != v.roundToDouble()) return const SizedBox.shrink();
-                        final i = v.toInt();
-                        if (i < 0 || i > 6) return const SizedBox.shrink();
-                        return Padding(padding: const EdgeInsets.only(top: 6), child: Text(_days[i], style: const TextStyle(fontSize: 9, color: AppColors.ink)));
-                      })),
-                    ),
-                    lineBarsData: [
-                      if (lastSpots.isNotEmpty)
-                        _bar(lastSpots, AppColors.teal),
-                      if (thisSpots.isNotEmpty)
-                        _bar(thisSpots, AppColors.primary),
-                    ],
-                  )),
-          ),
+          if (rows.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 10),
+              child: Text('لا تسليمات اليوم',
+                  style: TextStyle(fontSize: 13, color: AppColors.textMuted)),
+            )
+          else
+            for (final r in rows.take(8)) _row(r),
         ],
       ),
     );
   }
 
-  LineChartBarData _bar(List<FlSpot> spots, Color color) => LineChartBarData(
-        spots: spots,
-        isCurved: true,
-        color: color,
-        barWidth: 3,
-        dotData: const FlDotData(show: true),
-        belowBarData: BarAreaData(show: true, color: color.withValues(alpha: 0.12)),
-      );
-
-  Widget _legend(Color c, String label) => Row(mainAxisSize: MainAxisSize.min, children: [
-        Container(width: 10, height: 10, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
-        const SizedBox(width: 6),
-        Text(label, style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
-      ]);
+  Widget _row(_Delivery r) {
+    const labels = ['تم التسليم', 'في المراجعة', 'لم يتم التسليم'];
+    const colors = [AppColors.success, AppColors.warning, AppColors.error];
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 7),
+      child: Row(
+        children: [
+          const CircleAvatar(
+              radius: 16,
+              backgroundColor: AppColors.sky,
+              child: Icon(Icons.person, size: 17, color: _green)),
+          const SizedBox(width: 10),
+          Expanded(
+            flex: 3,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(r.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.ink)),
+                Text(r.circle,
+                    style: const TextStyle(
+                        fontSize: 11.5, color: AppColors.textMuted)),
+              ],
+            ),
+          ),
+          Expanded(
+            flex: 4,
+            child: Text(r.range.isEmpty ? '—' : r.range,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12.5, color: AppColors.ink)),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: colors[r.state].withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(labels[r.state],
+                style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: colors[r.state])),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
-// ---------- donut ----------
-class _StatusDonut extends StatelessWidget {
-  final _Status status;
-  final int circleCount;
-  const _StatusDonut({required this.status, required this.circleCount});
+// ── تحليل الاختبارات (donut) ──────────────────────────────
+
+class _AnalysisCard extends StatelessWidget {
+  final Map<String, int> grades;
+  const _AnalysisCard({required this.grades});
+
+  static const _order = ['ممتاز', 'جيد جدًا', 'جيد', 'مقبول', 'راسب'];
+  static const _colors = {
+    'ممتاز': AppColors.success,
+    'جيد جدًا': AppColors.teal,
+    'جيد': Color(0xFF6FBF73),
+    'مقبول': AppColors.warning,
+    'راسب': AppColors.error,
+  };
+
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final entries = <({String label, int count, Color color})>[
-      (label: 'ممتاز', count: status.excellent, color: AppColors.success),
-      (label: 'جيد', count: status.good, color: AppColors.teal),
-      (label: 'متوسط', count: status.average, color: AppColors.warning),
-      (label: 'يحتاج متابعة', count: status.follow, color: AppColors.error),
-    ].where((e) => e.count > 0).toList();
-    return _CardShell(
-      title: 'حالة الحلقات',
-      child: status.total == 0
-          ? Text('لا توجد حلقات بعد', style: theme.textTheme.bodySmall)
-          : Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
+    final total = grades.values.fold<int>(0, (a, b) => a + b);
+    final entries = [
+      for (final k in _order)
+        if ((grades[k] ?? 0) > 0)
+          (label: k, count: grades[k]!, color: _colors[k]!),
+    ];
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('تحليل الاختبارات',
+              style: TextStyle(
+                  fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.ink)),
+          const SizedBox(height: 12),
+          if (total == 0)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Text('لا نتائج اختبارات بعد',
+                  style: TextStyle(fontSize: 12.5, color: AppColors.textMuted)),
+            )
+          else
+            Row(
               children: [
                 SizedBox(
-                  height: 140,
-                  width: 140,
-                  child: Stack(alignment: Alignment.center, children: [
-                    PieChart(PieChartData(
-                      centerSpaceRadius: 40,
-                      sectionsSpace: 2,
-                      sections: [
-                        for (final e in entries)
-                          PieChartSectionData(value: e.count.toDouble(), color: e.color, showTitle: false, radius: 20),
-                      ],
-                    )),
-                    Column(mainAxisSize: MainAxisSize.min, children: [
-                      Text('$circleCount', style: theme.textTheme.headlineSmall),
-                      Text('حلقات', style: theme.textTheme.bodySmall),
-                    ]),
-                  ]),
+                  width: 120,
+                  height: 120,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      PieChart(PieChartData(
+                        centerSpaceRadius: 36,
+                        sectionsSpace: 2,
+                        sections: [
+                          for (final e in entries)
+                            PieChartSectionData(
+                                value: e.count.toDouble(),
+                                color: e.color,
+                                showTitle: false,
+                                radius: 18),
+                        ],
+                      )),
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('$total',
+                              style: const TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w800,
+                                  color: AppColors.ink)),
+                          const Text('نتيجة',
+                              style: TextStyle(
+                                  fontSize: 10.5, color: AppColors.textMuted)),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -477,62 +491,202 @@ class _StatusDonut extends StatelessWidget {
                       for (final e in entries)
                         Padding(
                           padding: const EdgeInsets.symmetric(vertical: 3),
-                          child: Row(children: [
-                            Container(width: 10, height: 10, decoration: BoxDecoration(color: e.color, shape: BoxShape.circle)),
-                            const SizedBox(width: 8),
-                            Expanded(child: Text(e.label, style: theme.textTheme.bodySmall)),
-                            Text('${e.count}', style: theme.textTheme.titleSmall),
-                          ]),
+                          child: Row(
+                            children: [
+                              Container(
+                                  width: 9,
+                                  height: 9,
+                                  decoration: BoxDecoration(
+                                      color: e.color, shape: BoxShape.circle)),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                  child: Text(e.label,
+                                      style: const TextStyle(
+                                          fontSize: 12.5, color: AppColors.ink))),
+                              Text('${(e.count * 100 / total).round()}%',
+                                  style: const TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.textMuted)),
+                            ],
+                          ),
                         ),
                     ],
                   ),
                 ),
               ],
             ),
-    );
-  }
-}
-
-// ---------- tasks ----------
-class _TasksCard extends StatelessWidget {
-  final List<({String title, String circle, DateTime at})> tasks;
-  const _TasksCard({required this.tasks});
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final fmt = DateFormat('h:mm a', 'ar');
-    return _CardShell(
-      title: 'مهام اليوم',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (tasks.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Text('لا توجد مهام اليوم', style: theme.textTheme.bodySmall),
-            )
-          else
-            for (final t in tasks)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Row(children: [
-                  const Icon(Icons.check_box_outline_blank, size: 20, color: AppColors.textMuted),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('${t.title} · ${t.circle}', style: theme.textTheme.titleSmall),
-                      Text(fmt.format(t.at), style: theme.textTheme.bodySmall),
-                    ]),
-                  ),
-                ]),
-              ),
-          const SizedBox(height: 4),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton(onPressed: () {}, child: const Text('عرض كل المهام')),
-          ),
         ],
       ),
     );
   }
 }
+
+// ── الجدول القادم ─────────────────────────────────────────
+
+class _UpcomingCard extends StatelessWidget {
+  final List<_Upcoming> items;
+  const _UpcomingCard({required this.items});
+
+  String _when(DateTime d) {
+    final now = DateTime.now();
+    final t = DateFormat('h:mm a', 'ar').format(d);
+    if (d.year == now.year && d.month == now.month && d.day == now.day) {
+      return 'اليوم • $t';
+    }
+    if (d.difference(DateTime(now.year, now.month, now.day)).inDays == 1) {
+      return 'غدًا • $t';
+    }
+    return '${DateFormat('EEEE', 'ar').format(d)} • $t';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final list = items.take(3).toList();
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('الجدول القادم',
+              style: TextStyle(
+                  fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.ink)),
+          const SizedBox(height: 12),
+          if (list.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 10),
+              child: Text('لا جلسات قادمة',
+                  style: TextStyle(fontSize: 12.5, color: AppColors.textMuted)),
+            )
+          else
+            for (final s in list)
+              Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceMuted,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                          color: _green.withValues(alpha: 0.10),
+                          borderRadius: BorderRadius.circular(9)),
+                      child: const Icon(Icons.event_note_outlined,
+                          size: 18, color: _green),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(s.circle,
+                              style: const TextStyle(
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.ink)),
+                          Text(_when(s.at),
+                              style: const TextStyle(
+                                  fontSize: 11.5, color: AppColors.textMuted)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── الإعلانات ─────────────────────────────────────────────
+
+class _AnnouncementsCard extends StatelessWidget {
+  final List<_Note> notes;
+  const _AnnouncementsCard({required this.notes});
+
+  @override
+  Widget build(BuildContext context) {
+    final list = notes.take(3).toList();
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('الإعلانات',
+              style: TextStyle(
+                  fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.ink)),
+          const SizedBox(height: 12),
+          if (list.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 10),
+              child: Text('لا إعلانات',
+                  style: TextStyle(fontSize: 12.5, color: AppColors.textMuted)),
+            )
+          else
+            for (final n in list)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                          color: AppColors.warning.withValues(alpha: 0.14),
+                          borderRadius: BorderRadius.circular(9)),
+                      child: const Icon(Icons.campaign_outlined,
+                          size: 18, color: AppColors.warning),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(n.text,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.ink)),
+                          Text(
+                            n.at == null
+                                ? n.sub
+                                : '${n.sub} • ${DateFormat('d MMM', 'ar').format(n.at!)}',
+                            style: const TextStyle(
+                                fontSize: 11.5, color: AppColors.textMuted),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── shared card ───────────────────────────────────────────
+
+Widget _card({required Widget child, EdgeInsets? padding}) {
+  return Container(
+    padding: padding ?? const EdgeInsets.all(18),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      boxShadow: const [
+        BoxShadow(color: Color(0x0F000000), blurRadius: 16, offset: Offset(0, 6)),
+      ],
+    ),
+    child: child,
+  );
+}
+
+String _ymd(DateTime d) =>
+    '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
