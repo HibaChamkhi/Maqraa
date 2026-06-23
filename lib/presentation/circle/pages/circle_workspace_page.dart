@@ -1472,7 +1472,10 @@ class _GeneratedScheduleState extends State<_GeneratedSchedule> {
   List<DateTime> _upcoming = const [];
   List<DateTime> _past = const [];
   Map<String, Map<String, AttendanceState>> _att = const {};
+  Map<String, ({String type, String? time})> _exc = const {};
   bool _loading = true;
+
+  String _id(DateTime o) => DateFormat('yyyy-MM-dd').format(o);
 
   @override
   void initState() {
@@ -1524,6 +1527,7 @@ class _GeneratedScheduleState extends State<_GeneratedSchedule> {
       _past = past;
       _upcoming = upcoming;
       _att = att;
+      _exc = exc;
       _loading = false;
     });
   }
@@ -1615,130 +1619,287 @@ class _GeneratedScheduleState extends State<_GeneratedSchedule> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final fmt = DateFormat('EEEE d MMMM • h:mm a', 'ar');
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
-    final att = _att;
+    final todays = _upcoming.where(_isToday).toList();
+    final today = todays.isEmpty ? null : todays.first;
+    final laters = _upcoming.where((o) => !_isToday(o)).toList();
+    final next = laters.isEmpty ? null : laters.first;
+
+    final now = DateTime.now();
+    final from =
+        DateTime(now.year, now.month, now.day).subtract(const Duration(days: 28));
+    final exc = _exc.entries
+        .map((e) => (
+              date: DateTime.tryParse(e.key) ?? from,
+              type: e.value.type,
+              time: e.value.time
+            ))
+        .where((x) => !x.date.isBefore(from))
+        .toList()
+      ..sort((a, b) => a.date.compareTo(b.date));
+
+    final held = _past.where((o) => _att[_id(o)]?.isNotEmpty ?? false).length;
+    final notHeld = _past.length - held;
+    final ratios = <double>[];
+    for (final o in _past) {
+      final m = _att[_id(o)];
+      if (m != null && m.isNotEmpty) {
+        final present =
+            m.values.where((s) => s == AttendanceState.present).length;
+        ratios.add(present / m.length);
+      }
+    }
+    final avg = ratios.isEmpty
+        ? null
+        : (ratios.reduce((a, b) => a + b) / ratios.length * 100).round();
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(
           AppSpacing.md, 0, AppSpacing.md, AppSpacing.lg),
       children: [
-            if (widget.onAddExtra != null)
-              Align(
-                alignment: AlignmentDirectional.centerStart,
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: OutlinedButton.icon(
-                    onPressed: widget.onAddExtra,
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('جلسة استثنائية'),
-                  ),
-                ),
-              ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(4, 6, 4, 8),
-              child: Text('القادمة', style: theme.textTheme.titleSmall),
-            ),
-            if (_upcoming.isEmpty)
-              Padding(
-                padding: const EdgeInsets.all(AppSpacing.md),
-                child: Text('لا جلسات قادمة',
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: AppColors.textMuted)),
-              )
-            else
-              for (final o in _upcoming.take(8))
-                _row(theme, fmt, o, today: _isToday(o)),
-            if (_past.isNotEmpty) ...[
-              Padding(
-                padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
-                child: Text('السجل', style: theme.textTheme.titleSmall),
-              ),
-              for (final o in _past.reversed.take(8))
-                _row(theme, fmt, o,
-                    past: true,
-                    done: (att[DateFormat('yyyy-MM-dd').format(o)]
-                            ?.isNotEmpty ??
-                        false)),
-            ],
-          ],
-        );
+        _actionCard(theme, today, next),
+        const SizedBox(height: AppSpacing.md),
+        _exceptionsCard(theme, exc),
+        const SizedBox(height: AppSpacing.md),
+        _historyCard(theme, held, notHeld, avg),
+      ],
+    );
   }
 
-  Widget _row(ThemeData theme, DateFormat fmt, DateTime o,
-      {bool today = false, bool past = false, bool done = false}) {
-    late Color color;
-    late String label;
-    late IconData icon;
-    if (past) {
-      color = done ? AppColors.success : AppColors.error;
-      label = done ? 'منتهية' : 'فائتة';
-      icon = done ? Icons.check_circle : Icons.cancel;
-    } else if (today) {
-      color = AppColors.primary;
-      label = 'اليوم';
-      icon = Icons.calendar_today;
-    } else {
-      color = AppColors.textMuted;
-      label = 'قادمة';
-      icon = Icons.event_outlined;
+  // ── today / next action card ───────────────────────────────
+  Widget _actionCard(ThemeData theme, DateTime? today, DateTime? next) {
+    final fmt = DateFormat('EEEE d MMMM • h:mm a', 'ar');
+    if (today == null && next == null) {
+      return Container(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(children: [
+          const Icon(Icons.event_busy_outlined, color: AppColors.textMuted),
+          const SizedBox(width: 10),
+          Text('لا جلسات قادمة',
+              style: theme.textTheme.bodyMedium
+                  ?.copyWith(color: AppColors.textMuted)),
+        ]),
+      );
     }
+    final show = today ?? next!;
+    final isToday = today != null;
     return Container(
-      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: isToday ? AppColors.primary : AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(
+            color: isToday ? AppColors.primary : AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.event_available_outlined,
+                  size: 16,
+                  color: isToday ? Colors.white70 : AppColors.primary),
+              const SizedBox(width: 6),
+              Text(isToday ? 'جلسة اليوم' : 'الجلسة القادمة',
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: isToday ? Colors.white70 : AppColors.textMuted)),
+              const Spacer(),
+              if (widget.canManage)
+                _occMenu(show, light: isToday),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: Text(fmt.format(show),
+                    style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: isToday ? Colors.white : AppColors.ink)),
+              ),
+              if (isToday && widget.canManage)
+                FilledButton.icon(
+                  onPressed: () => _startToday(show),
+                  icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                  label: const Text('بدء'),
+                  style: FilledButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: AppColors.primary,
+                      visualDensity: VisualDensity.compact),
+                ),
+            ],
+          ),
+          Text('مدة ${widget.circle.durationMinutes} دقيقة',
+              style: TextStyle(
+                  fontSize: 11,
+                  color: isToday ? Colors.white70 : AppColors.textMuted)),
+          if (isToday && next != null) ...[
+            const SizedBox(height: 8),
+            Text('التالية: ${fmt.format(next)}',
+                style: const TextStyle(fontSize: 11, color: Colors.white70)),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _occMenu(DateTime o, {required bool light}) => PopupMenuButton<String>(
+        tooltip: 'خيارات',
+        icon: Icon(Icons.more_horiz,
+            color: light ? Colors.white : AppColors.textMuted),
+        onSelected: (v) {
+          if (v == 'move') _moveOccurrence(o);
+          if (v == 'cancel') _cancelOccurrence(o);
+        },
+        itemBuilder: (_) => const [
+          PopupMenuItem(value: 'move', child: Text('تعديل الوقت')),
+          PopupMenuItem(
+            value: 'cancel',
+            child: Text('إلغاء هذه الجلسة',
+                style: TextStyle(color: AppColors.error)),
+          ),
+        ],
+      );
+
+  // ── exceptions only ────────────────────────────────────────
+  Widget _exceptionsCard(
+      ThemeData theme,
+      List<({DateTime date, String type, String? time})> exc) {
+    final dF = DateFormat('EEEE d MMMM', 'ar');
+    return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(
-          color: today ? AppColors.primary : AppColors.border,
-          width: today ? 1.6 : 1,
-        ),
+        border: Border.all(color: AppColors.border),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 20, color: past ? color : AppColors.primary),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(fmt.format(o), style: theme.textTheme.bodyMedium),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(children: [
+                const Icon(Icons.event_repeat_outlined,
+                    size: 17, color: AppColors.primary),
+                const SizedBox(width: 6),
+                Text('الاستثناءات', style: theme.textTheme.titleSmall),
+              ]),
+              if (widget.onAddExtra != null)
+                TextButton.icon(
+                  onPressed: widget.onAddExtra,
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('جلسة استثنائية'),
+                  style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact),
+                ),
+            ],
           ),
-          if (today && widget.canManage)
-            FilledButton.icon(
-              onPressed: () => _startToday(o),
-              icon: const Icon(Icons.play_arrow_rounded, size: 18),
-              label: const Text('بدء'),
-              style:
-                  FilledButton.styleFrom(visualDensity: VisualDensity.compact),
+          if (exc.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Text('لا استثناءات — الجلسات تسير وفق الجدول الثابت',
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: AppColors.textMuted)),
             )
           else
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.14),
-                borderRadius: BorderRadius.circular(AppRadius.pill),
-              ),
-              child: Text(label,
-                  style: TextStyle(
-                      color: color,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600)),
-            ),
-          if (widget.canManage && !past)
-            PopupMenuButton<String>(
-              tooltip: 'خيارات',
-              onSelected: (v) {
-                if (v == 'move') _moveOccurrence(o);
-                if (v == 'cancel') _cancelOccurrence(o);
-              },
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'move', child: Text('تعديل الوقت')),
-                PopupMenuItem(
-                  value: 'cancel',
-                  child: Text('إلغاء هذه الجلسة',
-                      style: TextStyle(color: AppColors.error)),
+            for (final x in exc)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 7),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: (x.type == 'cancelled'
+                                ? AppColors.error
+                                : AppColors.warning)
+                            .withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                      child: Icon(
+                          x.type == 'cancelled'
+                              ? Icons.event_busy_outlined
+                              : Icons.update,
+                          size: 17,
+                          color: x.type == 'cancelled'
+                              ? AppColors.error
+                              : AppColors.warning),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        x.type == 'cancelled'
+                            ? '${dF.format(x.date)} — أُلغيت'
+                            : '${dF.format(x.date)} — نُقلت إلى ${x.time ?? ''}',
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                    ),
+                  ],
                 ),
+              ),
+        ],
+      ),
+    );
+  }
+
+  // ── compact month history ──────────────────────────────────
+  Widget _historyCard(ThemeData theme, int held, int notHeld, int? avg) {
+    Widget tile(String v, String l, Color bg, Color fg) => Expanded(
+          child: Container(
+            padding: const EdgeInsets.all(AppSpacing.sm),
+            decoration:
+                BoxDecoration(color: bg, borderRadius: BorderRadius.circular(12)),
+            child: Column(
+              children: [
+                Text(v,
+                    style: TextStyle(
+                        fontSize: 19, fontWeight: FontWeight.w700, color: fg)),
+                const SizedBox(height: 2),
+                Text(l,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 10, color: fg)),
               ],
             ),
+          ),
+        );
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            const Icon(Icons.history, size: 17, color: AppColors.primary),
+            const SizedBox(width: 6),
+            Text('سجل آخر ٤ أسابيع', style: theme.textTheme.titleSmall),
+          ]),
+          const SizedBox(height: AppSpacing.sm),
+          Row(
+            children: [
+              tile('$held', 'جلسة منعقدة', const Color(0xFFE1F5EE),
+                  const Color(0xFF0F6E56)),
+              const SizedBox(width: 8),
+              tile('$notHeld', 'لم تُعقد', AppColors.gray, AppColors.textMuted),
+              const SizedBox(width: 8),
+              tile(avg == null ? '—' : '$avg٪', 'متوسط الحضور',
+                  const Color(0xFFFAEEDA), const Color(0xFF854F0B)),
+            ],
+          ),
         ],
       ),
     );
