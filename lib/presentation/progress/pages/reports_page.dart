@@ -277,7 +277,7 @@ class _TaslimReportState extends State<_TaslimReport> {
           Row(
             children: [
               IconButton(
-                onPressed: canNewer ? _pageNewer : null,
+                onPressed: _pageOlder,
                 icon: const Icon(Icons.chevron_right),
                 color: AppColors.textMuted,
                 visualDensity: VisualDensity.compact,
@@ -287,7 +287,7 @@ class _TaslimReportState extends State<_TaslimReport> {
                 card(weeks[i]),
               ],
               IconButton(
-                onPressed: _pageOlder,
+                onPressed: canNewer ? _pageNewer : null,
                 icon: const Icon(Icons.chevron_left),
                 color: AppColors.textMuted,
                 visualDensity: VisualDensity.compact,
