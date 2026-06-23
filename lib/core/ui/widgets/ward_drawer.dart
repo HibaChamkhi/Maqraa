@@ -206,7 +206,7 @@ class WardDrawer extends StatelessWidget {
         push(SectionCirclePickerPage(
           title: 'التقارير',
           icon: Icons.bar_chart_outlined,
-          pageBuilder: (c) => ReportsPage(circleId: c.id),
+          pageBuilder: (c) => ReportsPage(circleId: c.id, user: user),
         ));
         break;
       case 'الإشعارات':

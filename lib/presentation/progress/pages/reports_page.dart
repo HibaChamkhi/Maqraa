@@ -8,13 +8,15 @@ import '../../../domain/circle/models/circle.dart';
 import '../../../domain/circle/repositories/circle_repository.dart';
 import '../../../domain/exam/models/exam.dart';
 import '../../../domain/exam/repositories/exam_repository.dart';
+import '../../exam/pages/exam_results_page.dart';
 
 /// التقارير — per-circle reports with three sections:
 /// التسليم الأسبوعي (homework) · الحضور (sessions) · الاختبارات (exams).
 /// The الاختبارات tab is built; the other two are placeholders for now.
 class ReportsPage extends StatelessWidget {
   final String circleId;
-  const ReportsPage({super.key, required this.circleId});
+  final AppUser user;
+  const ReportsPage({super.key, required this.circleId, required this.user});
 
   @override
   Widget build(BuildContext context) {
@@ -41,7 +43,7 @@ class ReportsPage extends StatelessWidget {
           children: [
             const _ComingSoon(label: 'تقرير التسليم الأسبوعي'),
             const _ComingSoon(label: 'تقرير الحضور'),
-            _ExamsReport(circleId: circleId),
+            _ExamsReport(circleId: circleId, user: user),
           ],
         ),
       ),
@@ -87,7 +89,8 @@ class _RepData {
 
 class _ExamsReport extends StatefulWidget {
   final String circleId;
-  const _ExamsReport({required this.circleId});
+  final AppUser user;
+  const _ExamsReport({required this.circleId, required this.user});
 
   @override
   State<_ExamsReport> createState() => _ExamsReportState();
@@ -161,7 +164,7 @@ class _ExamsReportState extends State<_ExamsReport> {
             _Matrix(
               data: d,
               onStudent: (m) => _showStudent(context, d, m),
-              onExam: (e) => _showExam(context, d, e),
+              onExam: _editExam,
             ),
             const SizedBox(height: AppSpacing.sm),
             _legend(context),
@@ -313,57 +316,13 @@ class _ExamsReportState extends State<_ExamsReport> {
     );
   }
 
-  void _showExam(BuildContext context, _RepData d, Exam e) {
-    final results = d.byExam[e.id] ?? const {};
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(e.title),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('${e.type.arabicLabel} · ${DateFormat('d MMM y', 'ar').format(e.date)} · من ${e.totalMarks}',
-                  style: const TextStyle(
-                      fontSize: 11, color: AppColors.textMuted)),
-              const SizedBox(height: AppSpacing.sm),
-              for (final m in d.students) _historyRow2(e, results[m.uid], m),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('إغلاق')),
-        ],
-      ),
-    );
-  }
-
-  Widget _historyRow2(Exam e, ExamResult? r, CircleMember m) {
-    String trailing;
-    Color color;
-    if (r == null) {
-      trailing = 'لم تُرصد';
-      color = AppColors.textMuted;
-    } else if (r.attendance != ExamAttendance.present) {
-      trailing = r.attendance.arabicLabel;
-      color = AppColors.textMuted;
-    } else {
-      trailing = '${r.score}/${e.totalMarks}';
-      color = r.score >= e.passMark ? AppColors.success : AppColors.error;
-    }
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        children: [
-          Expanded(child: Text(m.name, style: const TextStyle(fontSize: 13))),
-          Text(trailing,
-              style: TextStyle(
-                  color: color, fontSize: 13, fontWeight: FontWeight.w700)),
-        ],
-      ),
-    );
+  /// Tap an exam header → open its grading screen to edit results; reload after.
+  Future<void> _editExam(Exam e) async {
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ExamResultsPage(
+          circleId: widget.circleId, exam: e, user: widget.user),
+    ));
+    if (mounted) setState(() => _future = _load());
   }
 }
 
@@ -551,37 +510,50 @@ class _RowTile extends StatelessWidget {
   }
 
   Widget _cell(Exam e, ExamResult? r) {
-    String text;
-    Color bg, fg;
-    if (r == null) {
-      text = '—';
-      bg = AppColors.gray;
-      fg = AppColors.textMuted;
-    } else if (r.attendance == ExamAttendance.absent) {
-      text = 'غائبة';
-      bg = AppColors.gray;
-      fg = AppColors.textMuted;
-    } else if (r.attendance == ExamAttendance.excused) {
-      text = 'معذورة';
-      bg = AppColors.gray;
-      fg = AppColors.textMuted;
-    } else {
+    // Graded + present → raw score with the percent under it (comparable
+    // across exams with different totals).
+    if (r != null && r.attendance == ExamAttendance.present) {
       final pass = r.score >= e.passMark;
-      text = '${r.score}';
-      bg = (pass ? AppColors.success : AppColors.error).withValues(alpha: 0.14);
-      fg = pass ? AppColors.success : AppColors.error;
+      final color = pass ? AppColors.success : AppColors.error;
+      final pct = e.totalMarks > 0 ? (r.score / e.totalMarks * 100).round() : 0;
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(AppRadius.md),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('${r.score}',
+                style: TextStyle(
+                    color: color,
+                    fontSize: 12,
+                    height: 1.1,
+                    fontWeight: FontWeight.w700)),
+            Text('$pct٪',
+                style: TextStyle(
+                    color: color.withValues(alpha: 0.75),
+                    fontSize: 9,
+                    height: 1.1)),
+          ],
+        ),
+      );
     }
+    final text = r == null
+        ? '—'
+        : (r.attendance == ExamAttendance.absent ? 'غائبة' : 'معذورة');
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: bg,
+        color: AppColors.gray,
         borderRadius: BorderRadius.circular(AppRadius.pill),
       ),
       child: Text(text,
-          style: TextStyle(
-              color: fg,
-              fontSize: text.length > 3 ? 9 : 11,
-              fontWeight: FontWeight.w700)),
+          style: const TextStyle(
+              color: AppColors.textMuted,
+              fontSize: 10,
+              fontWeight: FontWeight.w600)),
     );
   }
 }
