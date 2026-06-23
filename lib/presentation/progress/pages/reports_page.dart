@@ -100,51 +100,120 @@ class _TaslimReport extends StatefulWidget {
 }
 
 class _TaslimReportState extends State<_TaslimReport> {
+  static const int _windowSize = 4;
   late final DateTime _thisWeek = WeeklyHomework.weekStartOf(DateTime.now());
-  late final List<DateTime> _weeks =
-      List.generate(5, (i) => _thisWeek.subtract(Duration(days: 7 * i)));
-  late DateTime _selected = _thisWeek;
-  final Map<String, _TaslimData> _data = {}; // weekId -> full data
-  final ScrollController _stripCtrl = ScrollController();
-  late final Future<void> _init = _loadAll();
-
-  @override
-  void dispose() {
-    _stripCtrl.dispose();
-    super.dispose();
-  }
-
-  void _scrollStrip(int dir) {
-    if (!_stripCtrl.hasClients) return;
-    final target = (_stripCtrl.offset + dir * 180)
-        .clamp(0.0, _stripCtrl.position.maxScrollExtent);
-    _stripCtrl.animateTo(target,
-        duration: const Duration(milliseconds: 220), curve: Curves.easeOut);
-  }
+  late DateTime _anchor = _thisWeek; // newest week shown in the strip window
+  late DateTime _selected = _thisWeek; // week whose detail is shown
+  List<CircleMember>? _students; // loaded once
+  late Future<_TaslimData> _detailFuture = _loadDetail(_selected);
 
   String _id(DateTime w) => DateFormat('yyyy-MM-dd').format(w);
 
-  Future<void> _loadAll() async {
-    final repo =
-        HomeworkRepository(getIt<FirebaseFirestore>(), getIt<FirebaseAuth>());
+  Future<List<CircleMember>> _ensureStudents() async {
+    if (_students != null) return _students!;
     final members = await getIt<CircleRepository>().getMembers(widget.circleId);
-    final students = members
+    _students = members
         .where((m) =>
             m.role == UserRole.student && m.status == MemberStatus.active)
         .toList();
-    for (final w in _weeks) {
-      final weekId = _id(w);
-      final week = await repo.weekStream(widget.circleId, weekId, w).first;
-      final comps =
-          await repo.completionsStream(widget.circleId, weekId).first;
-      _data[weekId] =
-          _TaslimData(students, week, {for (final c in comps) c.uid: c});
-    }
+    return _students!;
+  }
+
+  Future<_TaslimData> _loadDetail(DateTime week) async {
+    final students = await _ensureStudents();
+    final repo =
+        HomeworkRepository(getIt<FirebaseFirestore>(), getIt<FirebaseAuth>());
+    final weekId = _id(week);
+    final wk = await repo.weekStream(widget.circleId, weekId, week).first;
+    final comps =
+        await repo.completionsStream(widget.circleId, weekId).first;
+    return _TaslimData(students, wk, {for (final c in comps) c.uid: c});
+  }
+
+  void _select(DateTime week) {
+    setState(() {
+      _selected = week;
+      _detailFuture = _loadDetail(week);
+    });
+  }
+
+  void _pageOlder() =>
+      setState(() => _anchor = _anchor.subtract(const Duration(days: 7)));
+
+  void _pageNewer() {
+    final next = _anchor.add(const Duration(days: 7));
+    if (!next.isAfter(_thisWeek)) setState(() => _anchor = next);
+  }
+
+  Future<void> _pickWeek() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selected,
+      firstDate: DateTime(2020),
+      lastDate: _thisWeek.add(const Duration(days: 6)),
+    );
+    if (picked == null) return;
+    final wk = WeeklyHomework.weekStartOf(picked);
+    setState(() {
+      _anchor = wk.isAfter(_thisWeek) ? _thisWeek : wk;
+      _selected = wk;
+      _detailFuture = _loadDetail(wk);
+    });
   }
 
   Widget _weeksHistory() {
     final dayF = DateFormat('d', 'ar');
     final monthYF = DateFormat('MMMM y', 'ar');
+    final windowWeeks = List.generate(
+        _windowSize, (i) => _anchor.subtract(Duration(days: 7 * i)));
+    final canNewer = _anchor.isBefore(_thisWeek);
+
+    String label(DateTime w) {
+      final ago = (_thisWeek.difference(w).inDays / 7).round();
+      if (ago == 0) return 'الأسبوع الحالي';
+      if (ago == 1) return 'الأسبوع السابق';
+      if (ago == 2) return 'قبل أسبوعين';
+      return monthYF.format(w);
+    }
+
+    Widget card(DateTime w) {
+      final selected = _id(w) == _id(_selected);
+      final end = w.add(const Duration(days: 6));
+      return InkWell(
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        onTap: () => _select(w),
+        child: Container(
+          width: 150,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: selected ? AppColors.sky : AppColors.surface,
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            border: Border.all(
+                color: selected ? AppColors.primary : AppColors.border),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(label(w),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color:
+                          selected ? AppColors.primaryDark : AppColors.ink)),
+              const SizedBox(height: 3),
+              Text('${dayF.format(w)} - ${dayF.format(end)} ${monthYF.format(end)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style:
+                      const TextStyle(fontSize: 10, color: AppColors.textMuted)),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Container(
       margin: const EdgeInsets.fromLTRB(
           AppSpacing.md, AppSpacing.sm, AppSpacing.md, AppSpacing.md),
@@ -157,82 +226,40 @@ class _TaslimReportState extends State<_TaslimReport> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('سجل الأسابيع',
-              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('سجل الأسابيع',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+              OutlinedButton.icon(
+                onPressed: _pickWeek,
+                icon: const Icon(Icons.calendar_month_outlined, size: 16),
+                label: const Text('اختر أسبوعًا'),
+                style: OutlinedButton.styleFrom(
+                    visualDensity: VisualDensity.compact),
+              ),
+            ],
+          ),
           const SizedBox(height: AppSpacing.sm),
           Row(
             children: [
               IconButton(
-                onPressed: () => _scrollStrip(-1),
-                icon: const Icon(Icons.chevron_right, color: AppColors.textMuted),
+                onPressed: canNewer ? _pageNewer : null,
+                icon: const Icon(Icons.chevron_right),
+                color: AppColors.textMuted,
               ),
               Expanded(
-                child: SizedBox(
-                  height: 64,
-                  child: ListView.separated(
-                    controller: _stripCtrl,
-                    scrollDirection: Axis.horizontal,
-                    itemCount: _weeks.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 8),
-                    itemBuilder: (context, i) {
-                      final w = _weeks[i];
-                      final selected = _id(w) == _id(_selected);
-                      final end = w.add(const Duration(days: 6));
-                      final top = i == 0
-                          ? 'الأسبوع الحالي'
-                          : i == 1
-                              ? 'الأسبوع السابق'
-                              : i == 2
-                                  ? 'قبل أسبوعين'
-                                  : monthYF.format(w);
-                      final range =
-                          '${dayF.format(w)} - ${dayF.format(end)} ${monthYF.format(end)}';
-                      return InkWell(
-                        borderRadius: BorderRadius.circular(AppRadius.lg),
-                        onTap: () => setState(() => _selected = w),
-                        child: Container(
-                          width: 150,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 8),
-                          decoration: BoxDecoration(
-                            color:
-                                selected ? AppColors.sky : AppColors.surface,
-                            borderRadius: BorderRadius.circular(AppRadius.lg),
-                            border: Border.all(
-                                color: selected
-                                    ? AppColors.primary
-                                    : AppColors.border),
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(top,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w700,
-                                      color: selected
-                                          ? AppColors.primaryDark
-                                          : AppColors.ink)),
-                              const SizedBox(height: 3),
-                              Text(range,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                      fontSize: 10,
-                                      color: AppColors.textMuted)),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+                child: Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [for (final w in windowWeeks) card(w)],
                 ),
               ),
               IconButton(
-                onPressed: () => _scrollStrip(1),
-                icon: const Icon(Icons.chevron_left, color: AppColors.textMuted),
+                onPressed: _pageOlder,
+                icon: const Icon(Icons.chevron_left),
+                color: AppColors.textMuted,
               ),
             ],
           ),
@@ -250,23 +277,22 @@ class _TaslimReportState extends State<_TaslimReport> {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<void>(
-      future: _init,
-      builder: (context, snap) {
-        if (snap.connectionState != ConnectionState.done) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        final sel = _data[_id(_selected)];
-        return Column(
-          children: [
-            Expanded(
-              child: sel == null ? const SizedBox.shrink() : _detail(sel),
-            ),
-            const Divider(height: 1),
-            _weeksHistory(),
-          ],
-        );
-      },
+    return Column(
+      children: [
+        Expanded(
+          child: FutureBuilder<_TaslimData>(
+            future: _detailFuture,
+            builder: (context, snap) {
+              if (!snap.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              return _detail(snap.data!);
+            },
+          ),
+        ),
+        const Divider(height: 1),
+        _weeksHistory(),
+      ],
     );
   }
 
