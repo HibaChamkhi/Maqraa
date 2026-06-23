@@ -292,23 +292,41 @@ class _TaslimReportState extends State<_TaslimReport> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Expanded(
-          child: FutureBuilder<_TaslimData>(
-            future: _detailFuture,
-            builder: (context, snap) {
-              if (!snap.hasData) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              return _detail(snap.data!);
-            },
+    // Defensive: if this tab is ever handed an unbounded width, clamp it so the
+    // vertical ListView / Rows don't blow up with "forces an infinite width".
+    return LayoutBuilder(builder: (context, c) {
+      final body = Column(
+        children: [
+          Expanded(
+            child: FutureBuilder<_TaslimData>(
+              future: _detailFuture,
+              builder: (context, snap) {
+                if (snap.hasError) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text('تعذّر تحميل التقرير:\n${snap.error}',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              color: AppColors.error, fontSize: 12)),
+                    ),
+                  );
+                }
+                if (!snap.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                return _detail(snap.data!);
+              },
+            ),
           ),
-        ),
-        const Divider(height: 1),
-        _weeksHistory(),
-      ],
-    );
+          const Divider(height: 1),
+          _weeksHistory(),
+        ],
+      );
+      return c.maxWidth.isFinite
+          ? body
+          : SizedBox(width: 800, child: body);
+    });
   }
 
   Widget _detail(_TaslimData d) {
