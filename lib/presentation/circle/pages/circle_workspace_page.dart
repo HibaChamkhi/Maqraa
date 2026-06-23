@@ -381,7 +381,7 @@ class _EditCircleDialogState extends State<_EditCircleDialog> {
         ],
       ),
       content: SizedBox(
-        width: double.maxFinite,
+        width: 360,
         child: Form(
           key: _formKey,
           child: Column(
@@ -1786,7 +1786,7 @@ class _FixedScheduleEditorState extends State<_FixedScheduleEditor> {
         ],
       ),
       content: SizedBox(
-        width: double.maxFinite,
+        width: 360,
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,

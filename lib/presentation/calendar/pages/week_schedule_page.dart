@@ -155,7 +155,7 @@ class _WeekSchedulePageState extends State<WeekSchedulePage> {
       context: context,
       builder: (ctx) => AlertDialog(
         content: SizedBox(
-          width: double.maxFinite,
+          width: 360,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,

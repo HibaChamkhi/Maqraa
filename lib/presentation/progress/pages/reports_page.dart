@@ -262,7 +262,7 @@ class _ExamsReportState extends State<_ExamsReport> {
       builder: (ctx) => AlertDialog(
         title: Text(m.name),
         content: SizedBox(
-          width: double.maxFinite,
+          width: 360,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [

@@ -430,7 +430,7 @@ class _ExamFormState extends State<_ExamForm> {
         ],
       ),
       content: SizedBox(
-        width: double.maxFinite,
+        width: 360,
         child: SingleChildScrollView(
           child: Form(
             key: _formKey,
