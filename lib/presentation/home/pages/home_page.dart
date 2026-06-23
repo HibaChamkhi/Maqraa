@@ -178,18 +178,13 @@ class _HomePageState extends State<HomePage> {
         }
         final circle = circles.first;
 
-        // Students get the «وِرد» daily home with bottom navigation; the full
-        // feature grid lives behind the "المزيد" tab.
+        // Students get the same right-side menu shell as teachers (a permanent
+        // rail on wide screens, a ≡ drawer on narrow) — no bottom nav. The
+        // daily home is the landing; all tools live behind «المزيد» in the menu.
         if (user.role == UserRole.student) {
-          return StudentHomePage(
+          return _shell(
             user: user,
-            circle: circle,
-            more: Scaffold(
-              body: Column(children: [
-                const _TopBar(menu: false),
-                Expanded(child: _Dashboard(user: user, circle: circle)),
-              ]),
-            ),
+            content: StudentHomeTab(user: user, circle: circle),
           );
         }
 

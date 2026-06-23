@@ -18,62 +18,6 @@ import '../../reminder/pages/reminder_settings_page.dart';
 import '../../schedule/pages/weekly_schedule_page.dart';
 import '../../task/pages/today_task_page.dart';
 
-/// Student experience matching the «وِرد» mobile mockups: a quick daily
-/// overview with a bottom navigation bar.
-class StudentHomePage extends StatefulWidget {
-  final AppUser user;
-  final Circle circle;
-  final Widget more;
-
-  const StudentHomePage({
-    super.key,
-    required this.user,
-    required this.circle,
-    required this.more,
-  });
-
-  @override
-  State<StudentHomePage> createState() => _StudentHomePageState();
-}
-
-class _StudentHomePageState extends State<StudentHomePage> {
-  int _tab = 0;
-
-  @override
-  Widget build(BuildContext context) {
-    final pages = [
-      _HomeTab(user: widget.user, circle: widget.circle),
-      WeeklySchedulePage(circleId: widget.circle.id),
-      const MyProgressPage(),
-      widget.more,
-    ];
-
-    return Scaffold(
-      body: SafeArea(child: pages[_tab]),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _tab,
-        onDestinationSelected: (i) => setState(() => _tab = i),
-        destinations: const [
-          NavigationDestination(
-              icon: Icon(Icons.home_outlined),
-              selectedIcon: Icon(Icons.home_rounded),
-              label: 'الرئيسية'),
-          NavigationDestination(
-              icon: Icon(Icons.menu_book_outlined),
-              selectedIcon: Icon(Icons.menu_book_rounded),
-              label: 'الحلقات'),
-          NavigationDestination(
-              icon: Icon(Icons.insert_chart_outlined),
-              selectedIcon: Icon(Icons.insert_chart_rounded),
-              label: 'التقارير'),
-          NavigationDestination(
-              icon: Icon(Icons.more_horiz), label: 'المزيد'),
-        ],
-      ),
-    );
-  }
-}
-
 /// Holds the fetched-once data for the home tab.
 typedef _HomeData = ({
   ProgressInfo progress,
@@ -81,16 +25,16 @@ typedef _HomeData = ({
   Session? nextSession,
 });
 
-class _HomeTab extends StatefulWidget {
+class StudentHomeTab extends StatefulWidget {
   final AppUser user;
   final Circle circle;
-  const _HomeTab({required this.user, required this.circle});
+  const StudentHomeTab({required this.user, required this.circle});
 
   @override
-  State<_HomeTab> createState() => _HomeTabState();
+  State<StudentHomeTab> createState() => StudentHomeTabState();
 }
 
-class _HomeTabState extends State<_HomeTab> {
+class StudentHomeTabState extends State<StudentHomeTab> {
   late Future<_HomeData> _future;
 
   @override
