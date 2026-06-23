@@ -206,34 +206,68 @@ class StudentHomeTabState extends State<StudentHomeTab> {
             return const Center(child: CircularProgressIndicator());
           }
           final d = snap.data!;
-          return Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 780),
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
-                children: [
-                  _Header(
-                      user: widget.user,
-                      circleCount: d.halaqat.length,
-                      onProfile: () => _open(const ProfilePage())),
-                  const SizedBox(height: AppSpacing.lg),
-                  _wajibSection(d),
-                  if (d.sessions.isNotEmpty) ...[
-                    const SizedBox(height: AppSpacing.lg),
-                    _sessionsSection(d),
-                  ],
-                  if (d.exams.isNotEmpty) ...[
-                    const SizedBox(height: AppSpacing.lg),
-                    _examsSection(d),
-                  ],
-                  const SizedBox(height: AppSpacing.lg),
-                  _ProgressSnap(
-                      progress: d.progress,
-                      onTap: () => _open(const MyProgressPage())),
-                ],
-              ),
-            ),
-          );
+          return LayoutBuilder(builder: (context, c) {
+            final twoCol = c.maxWidth >= 1000;
+
+            final side = <Widget>[
+              if (d.sessions.isNotEmpty) ...[
+                _sessionsSection(d),
+                const SizedBox(height: AppSpacing.lg),
+              ],
+              if (d.exams.isNotEmpty) ...[
+                _examsSection(d),
+                const SizedBox(height: AppSpacing.lg),
+              ],
+              _ProgressSnap(
+                  progress: d.progress,
+                  onTap: () => _open(const MyProgressPage())),
+            ];
+
+            final Widget body = twoCol
+                ? Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [_wajibSection(d)],
+                        ),
+                      ),
+                      const SizedBox(width: 20),
+                      Expanded(
+                        flex: 2,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: side,
+                        ),
+                      ),
+                    ],
+                  )
+                : Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _wajibSection(d),
+                      const SizedBox(height: AppSpacing.lg),
+                      ...side,
+                    ],
+                  );
+
+            return ListView(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 28),
+              children: [
+                _Header(
+                    user: widget.user,
+                    circleCount: d.halaqat.length,
+                    onProfile: () => _open(const ProfilePage())),
+                const SizedBox(height: AppSpacing.lg),
+                body,
+              ],
+            );
+          });
         },
       ),
     );
