@@ -1,77 +1,87 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/di/injection.dart';
 import '../../../core/ui/styles/theme.dart';
 import '../../../core/ui/widgets/werd_widgets.dart';
+import '../../../data/homework/homework_repository.dart';
 import '../../../domain/auth/models/app_user.dart';
 import '../../../domain/circle/models/circle.dart';
+import '../../../domain/circle/repositories/circle_repository.dart';
+import '../../../domain/exam/models/exam.dart';
+import '../../../domain/exam/repositories/exam_repository.dart';
+import '../../../domain/homework/models/weekly_homework.dart';
 import '../../../domain/progress/models/progress_info.dart';
 import '../../../domain/progress/repositories/progress_repository.dart';
-import '../../../domain/schedule/repositories/schedule_repository.dart';
 import '../../../domain/session/models/session.dart';
 import '../../../domain/session/repositories/session_repository.dart';
+import '../../exam/pages/student_exams_page.dart';
 import '../../notification/pages/notifications_page.dart';
 import '../../profile/pages/profile_page.dart';
 import '../../progress/pages/my_progress_page.dart';
-import '../../reminder/pages/reminder_settings_page.dart';
-import '../../schedule/pages/weekly_schedule_page.dart';
+import '../../session/pages/student_session_page.dart';
 import '../../task/pages/today_task_page.dart';
 
-/// Holds the fetched-once data for the home tab.
-typedef _HomeData = ({
-  ProgressInfo progress,
-  String todayRange,
-  Session? nextSession,
-});
+// ---------------------------------------------------------------------------
+//  Aggregated data across ALL of the student's halaqat.
+// ---------------------------------------------------------------------------
+
+/// One halaqa's status for today: its plan, whether it's done, the partner.
+class _HalaqaToday {
+  final Circle circle;
+  final DayPlan? plan; // null = no واجب today
+  final bool done;
+  final String partner;
+  final DateTime? doneAt;
+  const _HalaqaToday(this.circle, this.plan, this.done, this.partner,
+      [this.doneAt]);
+}
+
+class _SessionItem {
+  final Circle circle;
+  final Session session;
+  const _SessionItem(this.circle, this.session);
+}
+
+class _ExamItem {
+  final Circle circle;
+  final Exam exam;
+  final ExamResult? myResult;
+  const _ExamItem(this.circle, this.exam, this.myResult);
+  bool get upcoming => exam.date.isAfter(DateTime.now());
+}
+
+class _HomeAgg {
+  final List<_HalaqaToday> halaqat;
+  final List<_SessionItem> sessions;
+  final List<_ExamItem> exams;
+  final ProgressInfo? progress;
+  const _HomeAgg(this.halaqat, this.sessions, this.exams, this.progress);
+
+  int get wajibTotal => halaqat.where((h) => h.plan != null).length;
+  int get wajibDone =>
+      halaqat.where((h) => h.plan != null && h.done).length;
+}
 
 class StudentHomeTab extends StatefulWidget {
   final AppUser user;
-  final Circle circle;
-  const StudentHomeTab({required this.user, required this.circle});
+  final Circle circle; // entry circle (kept for compatibility)
+  const StudentHomeTab({super.key, required this.user, required this.circle});
 
   @override
   State<StudentHomeTab> createState() => StudentHomeTabState();
 }
 
 class StudentHomeTabState extends State<StudentHomeTab> {
-  late Future<_HomeData> _future;
+  late Future<_HomeAgg> _future;
 
-  @override
-  void initState() {
-    super.initState();
-    _future = _load();
-  }
+  HomeworkRepository get _hw =>
+      HomeworkRepository(getIt<FirebaseFirestore>(), getIt<FirebaseAuth>());
 
-  Future<_HomeData> _load() async {
-    final progress = await getIt<ProgressRepository>().getMyProgress();
-    String range = '';
-    try {
-      final now = DateTime.now();
-      final saturday = now.subtract(Duration(days: (now.weekday) % 7));
-      final weekId =
-          '${saturday.year}-${saturday.month.toString().padLeft(2, '0')}-${saturday.day.toString().padLeft(2, '0')}';
-      final schedule = await getIt<ScheduleRepository>()
-          .getSchedule(circleId: widget.circle.id, weekId: weekId);
-      range = schedule?.days[_todayCode()] ?? '';
-    } catch (_) {/* schedule optional */}
-
-    // Next upcoming session — read live so teacher edits show immediately.
-    Session? next;
-    try {
-      final sessions =
-          await getIt<SessionRepository>().getSessions(widget.circle.id);
-      final now = DateTime.now();
-      final upcoming = sessions
-          .where((s) =>
-              s.scheduledAt.isAfter(now) && s.status != SessionStatus.ended)
-          .toList()
-        ..sort((a, b) => a.scheduledAt.compareTo(b.scheduledAt));
-      next = upcoming.isEmpty ? null : upcoming.first;
-    } catch (_) {/* sessions optional */}
-
-    return (progress: progress, todayRange: range, nextSession: next);
-  }
+  DateTime get _weekStart => WeeklyHomework.weekStartOf(DateTime.now());
+  String get _weekId => DateFormat('yyyy-MM-dd').format(_weekStart);
 
   String _todayCode() {
     const map = {
@@ -86,103 +96,141 @@ class StudentHomeTabState extends State<StudentHomeTab> {
     return map[DateTime.now().weekday] ?? 'sat';
   }
 
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  Future<_HomeAgg> _load() async {
+    final circles = await getIt<CircleRepository>().getMyCircles();
+    final now = DateTime.now();
+    final weekStart = _weekStart;
+    final weekId = _weekId;
+    final today = _todayCode();
+
+    final halaqat = <_HalaqaToday>[];
+    final sessions = <_SessionItem>[];
+    final exams = <_ExamItem>[];
+
+    for (final c in circles) {
+      // --- today's واجب + my completion ---
+      DayPlan? plan;
+      var done = false;
+      var partner = '';
+      try {
+        final wk = await _hw.weekStream(c.id, weekId, weekStart).first;
+        final p = wk.planOf(today);
+        if (!p.isEmpty) plan = p;
+        final comp = await _hw.myCompletion(c.id, weekId);
+        done = comp.isDone(today);
+        partner = comp.partners[today] ?? '';
+      } catch (_) {/* homework optional */}
+      halaqat.add(_HalaqaToday(c, plan, done, partner));
+
+      // --- upcoming / live sessions ---
+      try {
+        final ss = await getIt<SessionRepository>().getSessions(c.id);
+        for (final s in ss) {
+          final live = s.status == SessionStatus.live;
+          final upcoming =
+              s.scheduledAt.isAfter(now) && s.status != SessionStatus.ended;
+          if (live || upcoming) sessions.add(_SessionItem(c, s));
+        }
+      } catch (_) {/* sessions optional */}
+
+      // --- nearby exams (upcoming, or recent with my published result) ---
+      try {
+        final ex = await getIt<ExamRepository>().getExams(c.id);
+        for (final e in ex) {
+          if (e.date.isAfter(now)) {
+            exams.add(_ExamItem(c, e, null));
+          } else if (e.resultsPublished) {
+            final r = await getIt<ExamRepository>()
+                .getMyResult(circleId: c.id, examId: e.id);
+            exams.add(_ExamItem(c, e, r));
+          }
+        }
+      } catch (_) {/* exams optional */}
+    }
+
+    sessions.sort((a, b) => a.session.scheduledAt.compareTo(b.session.scheduledAt));
+    // upcoming exams first (soonest), then recent results (latest first)
+    exams.sort((a, b) {
+      if (a.upcoming != b.upcoming) return a.upcoming ? -1 : 1;
+      return a.upcoming
+          ? a.exam.date.compareTo(b.exam.date)
+          : b.exam.date.compareTo(a.exam.date);
+    });
+
+    ProgressInfo? progress;
+    try {
+      progress = await getIt<ProgressRepository>().getMyProgress();
+    } catch (_) {/* progress optional */}
+
+    return _HomeAgg(halaqat, sessions.take(4).toList(),
+        exams.take(4).toList(), progress);
+  }
+
+  Future<void> _toggleWajib(_HalaqaToday h) async {
+    try {
+      await _hw.setDayDone(
+        circleId: h.circle.id,
+        weekId: _weekId,
+        dayCode: _todayCode(),
+        done: !h.done,
+        studentName: widget.user.name,
+        partnerName: h.partner.isEmpty ? null : h.partner,
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تعذّر حفظ التسليم، حاولي مجددًا')),
+        );
+      }
+    }
+    if (mounted) setState(() => _future = _load());
+  }
+
   void _open(Widget page) =>
       Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final id = widget.circle.id;
-
     return RefreshIndicator(
       onRefresh: () async => setState(() => _future = _load()),
-      child: FutureBuilder<_HomeData>(
+      child: FutureBuilder<_HomeAgg>(
         future: _future,
         builder: (context, snap) {
-          final progress = snap.data?.progress;
-          final todayRange = snap.data?.todayRange ?? '';
-          final nextSession = snap.data?.nextSession;
-          final loadingSession = !snap.hasData;
+          if (!snap.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final d = snap.data!;
           return Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 780),
               child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-            children: [
-              _Header(user: widget.user, onProfile: () => _open(const ProfilePage())),
-              const SizedBox(height: AppSpacing.lg),
-
-              // واجب اليوم
-              _TodayTaskCard(
-                range: todayRange,
-                onTap: () => _open(TodayTaskPage(circleId: id, user: widget.user)),
-              ),
-              const SizedBox(height: AppSpacing.md),
-
-              // تقدمي العام
-              _ProgressCard(
-                progress: progress,
-                onTap: () => _open(const MyProgressPage()),
-              ),
-              const SizedBox(height: AppSpacing.lg),
-
-              // التذكيرات
-              SectionHeader(
-                title: 'التذكيرات',
-                actionLabel: 'الكل',
-                onAction: () => _open(const ReminderSettingsPage()),
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              const _InfoTile(
-                icon: Icons.notifications_active_outlined,
-                title: 'مراجعة الحفظ',
-                subtitle: 'اليوم • 7:00 م',
-              ),
-              const SizedBox(height: AppSpacing.lg),
-
-              // الجلسة القادمة
-              Text('الجلسة القادمة', style: theme.textTheme.titleMedium),
-              const SizedBox(height: AppSpacing.sm),
-              _InfoTile(
-                icon: Icons.event_available_outlined,
-                title: nextSession != null && nextSession.title.trim().isNotEmpty
-                    ? nextSession.title.trim()
-                    : 'حلقة ${widget.circle.name}',
-                subtitle: loadingSession
-                    ? '...'
-                    : nextSession == null
-                        ? 'لا توجد جلسة قادمة'
-                        : '${DateFormat('EEEE d MMM', 'ar').format(nextSession.scheduledAt)} • ${DateFormat('h:mm a', 'ar').format(nextSession.scheduledAt)}',
-                accent: AppColors.primaryLight,
-              ),
-              const SizedBox(height: AppSpacing.lg),
-
-              // إجراءات سريعة
-              Text('إجراءات سريعة', style: theme.textTheme.titleMedium),
-              const SizedBox(height: AppSpacing.md),
-              Row(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
                 children: [
-                  _QuickAction(
-                      icon: Icons.mic_none_rounded,
-                      label: 'تلاوة',
-                      onTap: () =>
-                          _open(TodayTaskPage(circleId: id, user: widget.user))),
-                  _QuickAction(
-                      icon: Icons.add_circle_outline,
-                      label: 'حفظ جديد',
-                      onTap: () =>
-                          _open(TodayTaskPage(circleId: id, user: widget.user))),
-                  _QuickAction(
-                      icon: Icons.replay_rounded,
-                      label: 'مراجعة',
-                      onTap: () => _open(WeeklySchedulePage(circleId: id))),
-                  _QuickAction(
-                      icon: Icons.insert_chart_outlined,
-                      label: 'تقارير',
+                  _Header(
+                      user: widget.user,
+                      circleCount: d.halaqat.length,
+                      onProfile: () => _open(const ProfilePage())),
+                  const SizedBox(height: AppSpacing.lg),
+                  _wajibSection(d),
+                  if (d.sessions.isNotEmpty) ...[
+                    const SizedBox(height: AppSpacing.lg),
+                    _sessionsSection(d),
+                  ],
+                  if (d.exams.isNotEmpty) ...[
+                    const SizedBox(height: AppSpacing.lg),
+                    _examsSection(d),
+                  ],
+                  const SizedBox(height: AppSpacing.lg),
+                  _ProgressSnap(
+                      progress: d.progress,
                       onTap: () => _open(const MyProgressPage())),
                 ],
-              ),
-            ],
               ),
             ),
           );
@@ -190,261 +238,573 @@ class StudentHomeTabState extends State<StudentHomeTab> {
       ),
     );
   }
+
+  // ----------------------------------------------------------- واجبات اليوم
+  Widget _wajibSection(_HomeAgg d) {
+    final withWajib = d.halaqat.where((h) => h.plan != null).toList();
+    final without = d.halaqat.where((h) => h.plan == null).toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(children: [
+              const Icon(Icons.menu_book_rounded,
+                  size: 18, color: AppColors.primary),
+              const SizedBox(width: 6),
+              Text('واجبات اليوم',
+                  style: Theme.of(context).textTheme.titleMedium),
+            ]),
+            if (d.wajibTotal > 0)
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppColors.primary,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text('${d.wajibDone} / ${d.wajibTotal} مكتمل',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700)),
+              ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        if (withWajib.isEmpty && without.isEmpty)
+          const _EmptyHint(text: 'لست مشتركة في أي حلقة بعد'),
+        for (final h in withWajib) ...[
+          _WajibCard(
+            h: h,
+            onToggle: () => _toggleWajib(h),
+            onOpen: () =>
+                _open(TodayTaskPage(circleId: h.circle.id, user: widget.user)),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+        ],
+        for (final h in without) ...[
+          _EmptyHint(text: 'حلقة ${h.circle.name} • لا واجب لهذا اليوم'),
+          const SizedBox(height: AppSpacing.sm),
+        ],
+      ],
+    );
+  }
+
+  // -------------------------------------------------------- جلساتك القادمة
+  Widget _sessionsSection(_HomeAgg d) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [
+          const Icon(Icons.event_available_outlined,
+              size: 18, color: AppColors.primary),
+          const SizedBox(width: 6),
+          Text('جلساتك القادمة',
+              style: Theme.of(context).textTheme.titleMedium),
+        ]),
+        const SizedBox(height: AppSpacing.sm),
+        for (final s in d.sessions) ...[
+          _SessionRow(
+            item: s,
+            onTap: () => _open(
+                StudentSessionPage(circleId: s.circle.id, user: widget.user)),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+        ],
+      ],
+    );
+  }
+
+  // -------------------------------------------------------- اختبارات قريبة
+  Widget _examsSection(_HomeAgg d) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [
+          const Icon(Icons.assignment_turned_in_outlined,
+              size: 18, color: AppColors.primary),
+          const SizedBox(width: 6),
+          Text('اختبارات قريبة',
+              style: Theme.of(context).textTheme.titleMedium),
+        ]),
+        const SizedBox(height: AppSpacing.sm),
+        for (final e in d.exams) ...[
+          _ExamRow(
+            item: e,
+            onTap: () => _open(
+                StudentExamsPage(circleId: e.circle.id, user: widget.user)),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+        ],
+      ],
+    );
+  }
 }
+
+// ===========================================================================
+//  Widgets
+// ===========================================================================
 
 class _Header extends StatelessWidget {
   final AppUser user;
+  final int circleCount;
   final VoidCallback onProfile;
-  const _Header({required this.user, required this.onProfile});
+  const _Header(
+      {required this.user,
+      required this.circleCount,
+      required this.onProfile});
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Row(
       children: [
-        // Notification bell with badge.
+        GestureDetector(
+          onTap: onProfile,
+          child: CircleAvatar(
+            radius: 18,
+            backgroundColor: AppColors.sky,
+            backgroundImage:
+                user.photoUrl != null ? NetworkImage(user.photoUrl!) : null,
+            child: user.photoUrl == null
+                ? const Icon(Icons.person, size: 19, color: AppColors.primary)
+                : null,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('السلام عليكم 👋',
+                style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
+            Text(user.name,
+                style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.ink)),
+          ],
+        ),
+        const Spacer(),
+        if (circleCount > 0)
+          Text('$circleCount حلقات',
+              style:
+                  const TextStyle(fontSize: 12, color: AppColors.textMuted)),
         Stack(
           clipBehavior: Clip.none,
           children: [
             IconButton(
-              icon: const Icon(Icons.notifications_none_rounded),
+              icon: const Icon(Icons.notifications_none_rounded,
+                  color: AppColors.textMuted),
               onPressed: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const NotificationsPage()),
               ),
             ),
             Positioned(
-              right: 6,
-              top: 6,
+              right: 8,
+              top: 8,
               child: Container(
-                width: 9,
-                height: 9,
+                width: 8,
+                height: 8,
                 decoration: const BoxDecoration(
                     color: AppColors.error, shape: BoxShape.circle),
               ),
             ),
           ],
         ),
-        const Spacer(),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text('السلام عليكم 👋', style: theme.textTheme.bodySmall),
-            Text(user.name, style: theme.textTheme.titleMedium),
-          ],
-        ),
-        const SizedBox(width: 12),
-        GestureDetector(
-          onTap: onProfile,
-          child: CircleAvatar(
-            radius: 24,
-            backgroundColor: AppColors.sky,
-            backgroundImage:
-                user.photoUrl != null ? NetworkImage(user.photoUrl!) : null,
-            child: user.photoUrl == null
-                ? const Icon(Icons.person, color: AppColors.primary)
-                : null,
-          ),
-        ),
       ],
     );
   }
 }
 
-class _TodayTaskCard extends StatelessWidget {
-  final String range;
-  final VoidCallback onTap;
-  const _TodayTaskCard({required this.range, required this.onTap});
+class _WajibCard extends StatelessWidget {
+  final _HalaqaToday h;
+  final VoidCallback onToggle;
+  final VoidCallback onOpen;
+  const _WajibCard(
+      {required this.h, required this.onToggle, required this.onOpen});
 
   @override
   Widget build(BuildContext context) {
-    final hasRange = range.isNotEmpty;
-    return Material(
-      color: AppColors.primary,
-      borderRadius: BorderRadius.circular(AppRadius.lg),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.menu_book_rounded,
-                      color: Colors.white70, size: 18),
-                  const SizedBox(width: 6),
-                  Text('واجب اليوم',
-                      style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.85),
-                          fontSize: 13)),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(hasRange ? range : 'لا يوجد تكليف لهذا اليوم',
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700)),
-              const SizedBox(height: 14),
-              Align(
-                alignment: AlignmentDirectional.centerStart,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.arrow_back, color: AppColors.primary, size: 15),
-                      SizedBox(width: 6),
-                      Text('فتح الواجب',
-                          style: TextStyle(
-                              color: AppColors.primary,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700)),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ProgressCard extends StatelessWidget {
-  final ProgressInfo? progress;
-  final VoidCallback onTap;
-  const _ProgressCard({required this.progress, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final p = progress;
-    return Card(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          child: Row(
-            children: [
-              ProgressRing(
-                value: p?.ratio ?? 0,
-                size: 92,
-                stroke: 10,
-                center: Text('${p?.percent ?? 0}%',
-                    style: theme.textTheme.titleLarge),
-              ),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('تقدّمي العام', style: theme.textTheme.titleMedium),
-                    const SizedBox(height: 6),
-                    Text('أنتِ على الطريق الصحيح',
-                        style: theme.textTheme.bodySmall),
-                    if (p != null) ...[
-                      const SizedBox(height: 4),
-                      Text('${p.pagesDone} من ${p.totalPages} صفحة',
-                          style: theme.textTheme.bodySmall),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _InfoTile extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final Color accent;
-  const _InfoTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    this.accent = AppColors.primary,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final plan = h.plan!;
+    final done = h.done;
     return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(color: AppColors.border),
       ),
+      padding: const EdgeInsets.all(AppSpacing.md),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(AppRadius.sm),
+          // checkbox
+          InkWell(
+            onTap: onToggle,
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(
+                color: done ? AppColors.success : Colors.transparent,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                    color: done ? AppColors.success : AppColors.primary,
+                    width: 2),
+              ),
+              child: done
+                  ? const Icon(Icons.check, size: 17, color: Colors.white)
+                  : null,
             ),
-            child: Icon(icon, color: accent, size: 22),
           ),
           const SizedBox(width: AppSpacing.md),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: theme.textTheme.titleSmall),
-                Text(subtitle, style: theme.textTheme.bodySmall),
-              ],
+            child: InkWell(
+              onTap: onOpen,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text('حلقة ${h.circle.name}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.primary)),
+                      ),
+                      if (plan.type.isNotEmpty) ...[
+                        const SizedBox(width: 6),
+                        _typeChip(plan.type),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(plan.wajib.isNotEmpty ? plan.wajib : 'واجب اليوم',
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.ink,
+                          decoration:
+                              done ? TextDecoration.lineThrough : null,
+                          decorationColor: AppColors.textMuted)),
+                  if (plan.notes.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Text('ملاحظة المعلّمة: ${plan.notes}',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontSize: 11, color: AppColors.textMuted)),
+                  ],
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      if (h.partner.isNotEmpty)
+                        _pill(Icons.people_alt_outlined,
+                            'رفيقتي: ${h.partner}', AppColors.gray,
+                            AppColors.textMuted),
+                      done
+                          ? _pill(Icons.check_circle, 'تم التسليم',
+                              const Color(0xFFE1F5EE), const Color(0xFF0F6E56))
+                          : _pill(null, 'بانتظار التسليم', AppColors.gray,
+                              AppColors.textMuted),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ],
       ),
     );
   }
+
+  Widget _typeChip(String type) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+        decoration: BoxDecoration(
+          color: AppColors.sky,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(type,
+            style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: AppColors.primaryDark)),
+      );
+
+  Widget _pill(IconData? icon, String text, Color bg, Color fg) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+        decoration:
+            BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 12, color: fg),
+              const SizedBox(width: 4),
+            ],
+            Text(text, style: TextStyle(fontSize: 11, color: fg)),
+          ],
+        ),
+      );
 }
 
-class _QuickAction extends StatelessWidget {
-  final IconData icon;
-  final String label;
+class _SessionRow extends StatelessWidget {
+  final _SessionItem item;
   final VoidCallback onTap;
-  const _QuickAction(
-      {required this.icon, required this.label, required this.onTap});
+  const _SessionRow({required this.item, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Column(
+    final s = item.session;
+    final live = s.status == SessionStatus.live;
+    final title = s.title.trim().isNotEmpty
+        ? '${s.title.trim()} — حلقة ${item.circle.name}'
+        : 'حلقة ${item.circle.name}';
+    final when = live
+        ? 'مباشرة الآن'
+        : '${DateFormat('EEEE d MMM', 'ar').format(s.scheduledAt)} • ${DateFormat('h:mm a', 'ar').format(s.scheduledAt)}';
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.border),
+      ),
+      padding: const EdgeInsets.all(AppSpacing.sm + 2),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: live ? const Color(0xFFFCEBEB) : AppColors.sky,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(live ? Icons.podcasts_rounded : Icons.event_outlined,
+                size: 20,
+                color: live ? const Color(0xFFA32D2D) : AppColors.primary),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w700)),
+                Text(when,
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: live
+                            ? const Color(0xFFA32D2D)
+                            : AppColors.textMuted)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          live
+              ? FilledButton(
+                  onPressed: onTap,
+                  style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                  child: const Text('انضمام', style: TextStyle(fontSize: 12)),
+                )
+              : Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 5),
+                  decoration: BoxDecoration(
+                      color: AppColors.gray,
+                      borderRadius: BorderRadius.circular(20)),
+                  child: const Text('مجدولة',
+                      style:
+                          TextStyle(fontSize: 11, color: AppColors.textMuted)),
+                ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ExamRow extends StatelessWidget {
+  final _ExamItem item;
+  final VoidCallback onTap;
+  const _ExamRow({required this.item, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final e = item.exam;
+    final upcoming = item.upcoming;
+    final r = item.myResult;
+    String subtitle;
+    Widget badge;
+    Color iconBg;
+    Color iconFg;
+    IconData icon;
+    if (upcoming) {
+      subtitle =
+          '${DateFormat('EEEE d MMM', 'ar').format(e.date)} • ${DateFormat('h:mm a', 'ar').format(e.date)}';
+      badge = _badge('قادم', const Color(0xFFFAEEDA), const Color(0xFF854F0B));
+      iconBg = const Color(0xFFFAEEDA);
+      iconFg = const Color(0xFF854F0B);
+      icon = Icons.assignment_outlined;
+    } else if (r != null && r.attendance == ExamAttendance.present) {
+      final pct = e.totalMarks == 0
+          ? 0
+          : (r.score / e.totalMarks * 100).round();
+      subtitle = 'نتيجتك: $pct٪ — ${examGradeLabel(r.score, e.totalMarks)}';
+      badge = _badge(
+          'النتيجة', const Color(0xFFE1F5EE), const Color(0xFF0F6E56));
+      iconBg = const Color(0xFFE1F5EE);
+      iconFg = const Color(0xFF0F6E56);
+      icon = Icons.check_circle_outline;
+    } else {
+      subtitle = 'بانتظار رصد النتيجة';
+      badge = _badge('انتهى', AppColors.gray, AppColors.textMuted);
+      iconBg = AppColors.gray;
+      iconFg = AppColors.textMuted;
+      icon = Icons.assignment_outlined;
+    }
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppRadius.lg),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border: Border.all(color: AppColors.border),
+        ),
+        padding: const EdgeInsets.all(AppSpacing.sm + 2),
+        child: Row(
           children: [
             Container(
-              width: 56,
-              height: 56,
+              width: 40,
+              height: 40,
               decoration: BoxDecoration(
-                color: theme.colorScheme.surface,
-                borderRadius: BorderRadius.circular(AppRadius.md),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: Icon(icon, color: AppColors.primary),
+                  color: iconBg, borderRadius: BorderRadius.circular(12)),
+              child: Icon(icon, size: 20, color: iconFg),
             ),
-            const SizedBox(height: 6),
-            Text(label, style: theme.textTheme.bodySmall),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('${e.title} — حلقة ${item.circle.name}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w700)),
+                  Text(subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 11, color: AppColors.textMuted)),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            badge,
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _badge(String t, Color bg, Color fg) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+        decoration:
+            BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
+        child: Text(t, style: TextStyle(fontSize: 11, color: fg)),
+      );
+}
+
+class _ProgressSnap extends StatelessWidget {
+  final ProgressInfo? progress;
+  final VoidCallback onTap;
+  const _ProgressSnap({required this.progress, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = progress;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppRadius.lg),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border: Border.all(color: AppColors.border),
+        ),
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: Row(
+          children: [
+            ProgressRing(
+              value: p?.ratio ?? 0,
+              size: 60,
+              stroke: 8,
+              center: Text('${p?.percent ?? 0}%',
+                  style: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w700)),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('تقدّمي العام',
+                      style: TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 3),
+                  Text(
+                      p == null
+                          ? 'سيظهر تقدّمك بعد تسجيل الحفظ'
+                          : '${p.pagesDone} من ${p.totalPages} صفحة محفوظة',
+                      style: const TextStyle(
+                          fontSize: 11, color: AppColors.textMuted)),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_left, color: AppColors.textMuted),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyHint extends StatelessWidget {
+  final String text;
+  const _EmptyHint({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.border, style: BorderStyle.solid),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.coffee_outlined,
+              size: 18, color: AppColors.textMuted),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(text,
+                style:
+                    const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+          ),
+        ],
       ),
     );
   }
