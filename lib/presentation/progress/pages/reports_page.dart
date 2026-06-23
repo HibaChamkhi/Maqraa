@@ -100,10 +100,17 @@ class _TaslimReport extends StatefulWidget {
 }
 
 class _TaslimReportState extends State<_TaslimReport> {
-  late DateTime _weekStart = WeeklyHomework.weekStartOf(DateTime.now());
-  late Future<_TaslimData> _future = _load();
+  late final DateTime _thisWeek = WeeklyHomework.weekStartOf(DateTime.now());
+  late final List<DateTime> _weeks =
+      List.generate(8, (i) => _thisWeek.subtract(Duration(days: 7 * i)));
+  late DateTime _selected = _thisWeek;
+  final Map<String, _TaslimData> _data = {}; // weekId -> full data
+  final Map<String, int> _summary = {}; // weekId -> pct (-1 = no homework)
+  late final Future<void> _init = _loadAll();
 
-  Future<_TaslimData> _load() async {
+  String _id(DateTime w) => DateFormat('yyyy-MM-dd').format(w);
+
+  Future<void> _loadAll() async {
     final repo =
         HomeworkRepository(getIt<FirebaseFirestore>(), getIt<FirebaseAuth>());
     final members = await getIt<CircleRepository>().getMembers(widget.circleId);
@@ -111,19 +118,115 @@ class _TaslimReportState extends State<_TaslimReport> {
         .where((m) =>
             m.role == UserRole.student && m.status == MemberStatus.active)
         .toList();
-    final weekId = DateFormat('yyyy-MM-dd').format(_weekStart);
-    final week =
-        await repo.weekStream(widget.circleId, weekId, _weekStart).first;
-    final comps =
-        await repo.completionsStream(widget.circleId, weekId).first;
-    return _TaslimData(students, week, {for (final c in comps) c.uid: c});
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    for (final w in _weeks) {
+      final weekId = _id(w);
+      final week = await repo.weekStream(widget.circleId, weekId, w).first;
+      final comps =
+          await repo.completionsStream(widget.circleId, weekId).first;
+      final data =
+          _TaslimData(students, week, {for (final c in comps) c.uid: c});
+      _data[weekId] = data;
+      final days = WeeklyHomework.dayOrder
+          .where((c) => !week.planOf(c).isEmpty)
+          .toList();
+      if (days.isEmpty) {
+        _summary[weekId] = -1;
+        continue;
+      }
+      var done = 0, late = 0;
+      for (final m in students) {
+        for (final c in days) {
+          final s = _status(data, m.uid, c, today);
+          if (s == 1) done++;
+          if (s == 2) late++;
+        }
+      }
+      _summary[weekId] =
+          (done + late) == 0 ? 0 : (done / (done + late) * 100).round();
+    }
   }
 
-  void _changeWeek(int delta) {
-    setState(() {
-      _weekStart = _weekStart.add(Duration(days: 7 * delta));
-      _future = _load();
-    });
+  Widget _weeksStrip() {
+    final fmt = DateFormat('d MMM', 'ar');
+    return SizedBox(
+      height: 96,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(
+            AppSpacing.md, AppSpacing.sm, AppSpacing.md, AppSpacing.sm),
+        itemCount: _weeks.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, i) {
+          final w = _weeks[i];
+          final id = _id(w);
+          final selected = id == _id(_selected);
+          final pct = _summary[id];
+          final noHw = pct == null || pct < 0;
+          final end = w.add(const Duration(days: 6));
+          final relative = i == 0
+              ? 'الأسبوع الحالي'
+              : i == 1
+                  ? 'الأسبوع السابق'
+                  : i == 2
+                      ? 'قبل أسبوعين'
+                      : null;
+          final range = '${fmt.format(w)} – ${fmt.format(end)}';
+          Color pctColor;
+          if (noHw) {
+            pctColor = AppColors.textMuted;
+          } else if (pct >= 75) {
+            pctColor = AppColors.success;
+          } else if (pct >= 50) {
+            pctColor = AppColors.warning;
+          } else {
+            pctColor = AppColors.error;
+          }
+          return InkWell(
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            onTap: () => setState(() => _selected = w),
+            child: Container(
+              width: 124,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: selected ? AppColors.primary : AppColors.surface,
+                borderRadius: BorderRadius.circular(AppRadius.lg),
+                border: selected ? null : Border.all(color: AppColors.border),
+              ),
+              child: Column(
+                children: [
+                  Text(relative ?? range,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: selected
+                              ? const Color(0xFFE3F0EC)
+                              : AppColors.textMuted)),
+                  if (relative != null) ...[
+                    const SizedBox(height: 2),
+                    Text(range,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: selected ? Colors.white : AppColors.ink)),
+                  ],
+                  const Spacer(),
+                  Text(noHw ? 'لا واجب' : '$pct٪',
+                      style: TextStyle(
+                          fontSize: noHw ? 12 : 18,
+                          fontWeight: FontWeight.w700,
+                          color: selected ? Colors.white : pctColor)),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   /// 0 = no homework that day · 1 = submitted · 2 = late · 3 = pending.
@@ -135,71 +238,68 @@ class _TaslimReportState extends State<_TaslimReport> {
 
   @override
   Widget build(BuildContext context) {
-    final thisWeek = WeeklyHomework.weekStartOf(DateTime.now());
-    final isCurrent = !_weekStart.isAfter(thisWeek) && !_weekStart.isBefore(thisWeek);
-    return Column(
+    return FutureBuilder<void>(
+      future: _init,
+      builder: (context, snap) {
+        if (snap.connectionState != ConnectionState.done) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final sel = _data[_id(_selected)];
+        return Column(
+          children: [
+            _weeksStrip(),
+            const Divider(height: 1),
+            Expanded(
+              child:
+                  sel == null ? const SizedBox.shrink() : _detail(sel),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _detail(_TaslimData d) {
+    final days = WeeklyHomework.dayOrder
+        .where((c) => !d.week.planOf(c).isEmpty)
+        .toList();
+    if (days.isEmpty) {
+      return const _ComingSoon(label: 'لا واجب مُسجّل لهذا الأسبوع');
+    }
+    if (d.students.isEmpty) {
+      return Center(
+        child: Text('لا توجد طالبات في الحلقة',
+            style: Theme.of(context).textTheme.bodyMedium),
+      );
+    }
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    var done = 0, late = 0;
+    for (final m in d.students) {
+      for (final c in days) {
+        final s = _status(d, m.uid, c, today);
+        if (s == 1) done++;
+        if (s == 2) late++;
+      }
+    }
+    final pct = (done + late) == 0 ? 0 : (done / (done + late) * 100).round();
+
+    return ListView(
+      padding: const EdgeInsets.all(AppSpacing.md),
       children: [
-        _WeekNav(
-          weekStart: _weekStart,
-          isCurrent: isCurrent,
-          onPrev: () => _changeWeek(-1),
-          onNext: () => _changeWeek(1),
-        ),
-        Expanded(
-          child: FutureBuilder<_TaslimData>(
-            future: _future,
-            builder: (context, snap) {
-              if (!snap.hasData) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              final d = snap.data!;
-              final days = WeeklyHomework.dayOrder
-                  .where((c) => !d.week.planOf(c).isEmpty)
-                  .toList();
-              if (days.isEmpty) {
-                return const _ComingSoon(label: 'لا واجب مُسجّل لهذا الأسبوع');
-              }
-              if (d.students.isEmpty) {
-                return Center(
-                  child: Text('لا توجد طالبات في الحلقة',
-                      style: Theme.of(context).textTheme.bodyMedium),
-                );
-              }
-              final now = DateTime.now();
-              final today = DateTime(now.year, now.month, now.day);
-
-              var done = 0, late = 0;
-              for (final m in d.students) {
-                for (final c in days) {
-                  final s = _status(d, m.uid, c, today);
-                  if (s == 1) done++;
-                  if (s == 2) late++;
-                }
-              }
-              final pct =
-                  (done + late) == 0 ? 0 : (done / (done + late) * 100).round();
-
-              return ListView(
-                padding: const EdgeInsets.all(AppSpacing.md),
-                children: [
-                  Row(children: [
-                    _miniKpi('$done', 'تم التسليم', filled: true),
-                    const SizedBox(width: AppSpacing.sm),
-                    _miniKpi('$late', 'متأخرون', danger: true),
-                    const SizedBox(width: AppSpacing.sm),
-                    _miniKpi('$pct٪', 'نسبة الإنجاز'),
-                  ]),
-                  const SizedBox(height: AppSpacing.md),
-                  _dailyChart(d, days, today),
-                  const SizedBox(height: AppSpacing.md),
-                  _grid(d, days, today),
-                  const SizedBox(height: AppSpacing.sm),
-                  _legend(),
-                ],
-              );
-            },
-          ),
-        ),
+        Row(children: [
+          _miniKpi('$done', 'تم التسليم', filled: true),
+          const SizedBox(width: AppSpacing.sm),
+          _miniKpi('$late', 'متأخرون', danger: true),
+          const SizedBox(width: AppSpacing.sm),
+          _miniKpi('$pct٪', 'نسبة الإنجاز'),
+        ]),
+        const SizedBox(height: AppSpacing.md),
+        _dailyChart(d, days, today),
+        const SizedBox(height: AppSpacing.md),
+        _grid(d, days, today),
+        const SizedBox(height: AppSpacing.sm),
+        _legend(),
       ],
     );
   }
@@ -429,47 +529,6 @@ class _TaslimReportState extends State<_TaslimReport> {
       const Text('— لا واجب',
           style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
     ]);
-  }
-}
-
-class _WeekNav extends StatelessWidget {
-  final DateTime weekStart;
-  final bool isCurrent;
-  final VoidCallback onPrev, onNext;
-  const _WeekNav({
-    required this.weekStart,
-    required this.isCurrent,
-    required this.onPrev,
-    required this.onNext,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final end = weekStart.add(const Duration(days: 6));
-    final fmt = DateFormat('d MMM', 'ar');
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          IconButton(
-              onPressed: onPrev, icon: const Icon(Icons.chevron_right)),
-          const SizedBox(width: 4),
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('${fmt.format(weekStart)} – ${fmt.format(end)}',
-                  style: Theme.of(context).textTheme.titleSmall),
-              if (isCurrent)
-                const Text('هذا الأسبوع',
-                    style: TextStyle(fontSize: 11, color: AppColors.primary)),
-            ],
-          ),
-          const SizedBox(width: 4),
-          IconButton(onPressed: onNext, icon: const Icon(Icons.chevron_left)),
-        ],
-      ),
-    );
   }
 }
 
