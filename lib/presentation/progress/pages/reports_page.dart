@@ -405,16 +405,11 @@ class _Matrix extends StatelessWidget {
                                     style: const TextStyle(
                                         fontSize: 11,
                                         fontWeight: FontWeight.w700,
-                                        color: AppColors.primary,
-                                        decoration: TextDecoration.underline,
-                                        decorationColor: AppColors.primary)),
+                                        color: AppColors.primary)),
                                 Text('${fmt.format(e.date)} · ${e.totalMarks}',
                                     style: const TextStyle(
                                         fontSize: 9,
                                         color: AppColors.textMuted)),
-                                const SizedBox(height: 2),
-                                const Icon(Icons.insights_outlined,
-                                    size: 12, color: AppColors.primary),
                               ],
                             ),
                           ),
