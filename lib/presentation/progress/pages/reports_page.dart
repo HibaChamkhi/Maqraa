@@ -102,11 +102,25 @@ class _TaslimReport extends StatefulWidget {
 class _TaslimReportState extends State<_TaslimReport> {
   late final DateTime _thisWeek = WeeklyHomework.weekStartOf(DateTime.now());
   late final List<DateTime> _weeks =
-      List.generate(8, (i) => _thisWeek.subtract(Duration(days: 7 * i)));
+      List.generate(5, (i) => _thisWeek.subtract(Duration(days: 7 * i)));
   late DateTime _selected = _thisWeek;
   final Map<String, _TaslimData> _data = {}; // weekId -> full data
-  final Map<String, int> _summary = {}; // weekId -> pct (-1 = no homework)
+  final ScrollController _stripCtrl = ScrollController();
   late final Future<void> _init = _loadAll();
+
+  @override
+  void dispose() {
+    _stripCtrl.dispose();
+    super.dispose();
+  }
+
+  void _scrollStrip(int dir) {
+    if (!_stripCtrl.hasClients) return;
+    final target = (_stripCtrl.offset + dir * 180)
+        .clamp(0.0, _stripCtrl.position.maxScrollExtent);
+    _stripCtrl.animateTo(target,
+        duration: const Duration(milliseconds: 220), curve: Curves.easeOut);
+  }
 
   String _id(DateTime w) => DateFormat('yyyy-MM-dd').format(w);
 
@@ -118,33 +132,13 @@ class _TaslimReportState extends State<_TaslimReport> {
         .where((m) =>
             m.role == UserRole.student && m.status == MemberStatus.active)
         .toList();
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
     for (final w in _weeks) {
       final weekId = _id(w);
       final week = await repo.weekStream(widget.circleId, weekId, w).first;
       final comps =
           await repo.completionsStream(widget.circleId, weekId).first;
-      final data =
+      _data[weekId] =
           _TaslimData(students, week, {for (final c in comps) c.uid: c});
-      _data[weekId] = data;
-      final days = WeeklyHomework.dayOrder
-          .where((c) => !week.planOf(c).isEmpty)
-          .toList();
-      if (days.isEmpty) {
-        _summary[weekId] = -1;
-        continue;
-      }
-      var done = 0, late = 0;
-      for (final m in students) {
-        for (final c in days) {
-          final s = _status(data, m.uid, c, today);
-          if (s == 1) done++;
-          if (s == 2) late++;
-        }
-      }
-      _summary[weekId] =
-          (done + late) == 0 ? 0 : (done / (done + late) * 100).round();
     }
   }
 
@@ -166,80 +160,81 @@ class _TaslimReportState extends State<_TaslimReport> {
           const Text('سجل الأسابيع',
               style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
           const SizedBox(height: AppSpacing.sm),
-          SizedBox(
-            height: 76,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: _weeks.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
-              itemBuilder: (context, i) {
-                final w = _weeks[i];
-                final id = _id(w);
-                final selected = id == _id(_selected);
-                final pct = _summary[id];
-                final noHw = pct == null || pct < 0;
-                final end = w.add(const Duration(days: 6));
-                final top = i == 0
-                    ? 'الأسبوع الحالي'
-                    : i == 1
-                        ? 'الأسبوع السابق'
-                        : i == 2
-                            ? 'قبل أسبوعين'
-                            : monthYF.format(w);
-                final range =
-                    '${dayF.format(w)} - ${dayF.format(end)} ${monthYF.format(end)}';
-                final pctColor = noHw
-                    ? AppColors.textMuted
-                    : pct >= 75
-                        ? AppColors.success
-                        : pct >= 50
-                            ? AppColors.warning
-                            : AppColors.error;
-                return InkWell(
-                  borderRadius: BorderRadius.circular(AppRadius.lg),
-                  onTap: () => setState(() => _selected = w),
-                  child: Container(
-                    width: 150,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: selected ? AppColors.sky : AppColors.surface,
-                      borderRadius: BorderRadius.circular(AppRadius.lg),
-                      border: Border.all(
-                          color: selected
-                              ? AppColors.primary
-                              : AppColors.border),
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(top,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
+          Row(
+            children: [
+              IconButton(
+                onPressed: () => _scrollStrip(-1),
+                icon: const Icon(Icons.chevron_right, color: AppColors.textMuted),
+              ),
+              Expanded(
+                child: SizedBox(
+                  height: 64,
+                  child: ListView.separated(
+                    controller: _stripCtrl,
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _weeks.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 8),
+                    itemBuilder: (context, i) {
+                      final w = _weeks[i];
+                      final selected = _id(w) == _id(_selected);
+                      final end = w.add(const Duration(days: 6));
+                      final top = i == 0
+                          ? 'الأسبوع الحالي'
+                          : i == 1
+                              ? 'الأسبوع السابق'
+                              : i == 2
+                                  ? 'قبل أسبوعين'
+                                  : monthYF.format(w);
+                      final range =
+                          '${dayF.format(w)} - ${dayF.format(end)} ${monthYF.format(end)}';
+                      return InkWell(
+                        borderRadius: BorderRadius.circular(AppRadius.lg),
+                        onTap: () => setState(() => _selected = w),
+                        child: Container(
+                          width: 150,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color:
+                                selected ? AppColors.sky : AppColors.surface,
+                            borderRadius: BorderRadius.circular(AppRadius.lg),
+                            border: Border.all(
                                 color: selected
-                                    ? AppColors.primaryDark
-                                    : AppColors.ink)),
-                        const SizedBox(height: 3),
-                        Text(range,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                                fontSize: 10, color: AppColors.textMuted)),
-                        const SizedBox(height: 4),
-                        Text(noHw ? 'لا واجب' : 'الإنجاز $pct٪',
-                            style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
-                                color: pctColor)),
-                      ],
-                    ),
+                                    ? AppColors.primary
+                                    : AppColors.border),
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(top,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700,
+                                      color: selected
+                                          ? AppColors.primaryDark
+                                          : AppColors.ink)),
+                              const SizedBox(height: 3),
+                              Text(range,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                      fontSize: 10,
+                                      color: AppColors.textMuted)),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
                   ),
-                );
-              },
-            ),
+                ),
+              ),
+              IconButton(
+                onPressed: () => _scrollStrip(1),
+                icon: const Icon(Icons.chevron_left, color: AppColors.textMuted),
+              ),
+            ],
           ),
         ],
       ),
