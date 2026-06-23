@@ -297,6 +297,15 @@ class _TaslimReportState extends State<_TaslimReport> {
     return LayoutBuilder(builder: (context, c) {
       final body = Column(
         children: [
+          Container(
+            width: double.infinity,
+            color: Colors.red,
+            padding: const EdgeInsets.all(8),
+            child: Text(
+              'TASLIM build ✓  maxW=${c.maxWidth}  maxH=${c.maxHeight}',
+              style: const TextStyle(color: Colors.white, fontSize: 12),
+            ),
+          ),
           Expanded(
             child: FutureBuilder<_TaslimData>(
               future: _detailFuture,
