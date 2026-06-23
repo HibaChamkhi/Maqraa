@@ -11,6 +11,7 @@ import 'create_circle_page.dart';
 import 'join_circle_page.dart';
 import 'qr_join_page.dart';
 import 'circle_workspace_page.dart';
+import 'student_circle_page.dart';
 
 /// One circle plus its quick stats for the list cards.
 typedef _CircleStat = ({Circle circle, int count, int avg});
@@ -290,7 +291,9 @@ class _CircleCard extends StatelessWidget {
           onTap: user == null
               ? null
               : () => Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => CircleWorkspacePage(circle: c, user: user!),
+                    builder: (_) => c.canManage(user)
+                        ? CircleWorkspacePage(circle: c, user: user!)
+                        : StudentCirclePage(circle: c, user: user!),
                   )),
           child: Padding(
             padding: const EdgeInsets.all(AppSpacing.md),
