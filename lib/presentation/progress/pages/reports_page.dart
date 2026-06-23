@@ -276,9 +276,11 @@ class _TaslimReportState extends State<_TaslimReport> {
           const SizedBox(height: AppSpacing.sm),
           Row(
             children: [
+              // Rightmost (newest side): go newer — disabled at current week.
               IconButton(
-                onPressed: _pageOlder,
-                icon: const Icon(Icons.chevron_right),
+                onPressed: canNewer ? _pageNewer : null,
+                icon: const Icon(Icons.chevron_right,
+                    textDirection: TextDirection.ltr),
                 color: AppColors.textMuted,
                 visualDensity: VisualDensity.compact,
               ),
@@ -286,9 +288,11 @@ class _TaslimReportState extends State<_TaslimReport> {
                 if (i > 0) const SizedBox(width: 8),
                 card(weeks[i]),
               ],
+              // Leftmost (oldest side): go older / previous.
               IconButton(
-                onPressed: canNewer ? _pageNewer : null,
-                icon: const Icon(Icons.chevron_left),
+                onPressed: _pageOlder,
+                icon: const Icon(Icons.chevron_left,
+                    textDirection: TextDirection.ltr),
                 color: AppColors.textMuted,
                 visualDensity: VisualDensity.compact,
               ),
