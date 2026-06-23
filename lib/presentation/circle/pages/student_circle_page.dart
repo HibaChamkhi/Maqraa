@@ -56,6 +56,12 @@ class _CircleData {
 class _StudentCirclePageState extends State<StudentCirclePage> {
   late Future<_CircleData> _future = _load();
 
+  /// Optimistic overlay for today's/this-week's ticks, so a tap updates
+  /// instantly without reloading the whole (heavy) page.
+  Set<String>? _doneOverride;
+  Set<String> _baseDone = {};
+  Set<String> get _effectiveDone => _doneOverride ?? _baseDone;
+
   HomeworkRepository get _hw =>
       HomeworkRepository(getIt<FirebaseFirestore>(), getIt<FirebaseAuth>());
 
@@ -185,6 +191,15 @@ class _StudentCirclePageState extends State<StudentCirclePage> {
   }
 
   Future<void> _toggle(String dayCode, bool currentlyDone) async {
+    // Optimistic: flip the tick immediately, write in the background, revert on
+    // failure. Avoids reloading the whole (heavy) page on every tick.
+    final next = {..._effectiveDone};
+    if (currentlyDone) {
+      next.remove(dayCode);
+    } else {
+      next.add(dayCode);
+    }
+    setState(() => _doneOverride = next);
     try {
       await _hw.setDayDone(
         circleId: widget.circle.id,
@@ -194,13 +209,20 @@ class _StudentCirclePageState extends State<StudentCirclePage> {
         studentName: widget.user.name,
       );
     } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('تعذّر حفظ التسليم، حاولي مجددًا')),
-        );
-      }
+      if (!mounted) return;
+      setState(() {
+        final revert = {..._effectiveDone};
+        if (currentlyDone) {
+          revert.add(dayCode);
+        } else {
+          revert.remove(dayCode);
+        }
+        _doneOverride = revert;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذّر حفظ التسليم، حاولي مجددًا')),
+      );
     }
-    if (mounted) setState(() => _future = _load());
   }
 
   void _open(Widget page) =>
@@ -212,7 +234,10 @@ class _StudentCirclePageState extends State<StudentCirclePage> {
       backgroundColor: AppColors.beige,
       appBar: AppBar(title: Text('حلقة ${widget.circle.name}')),
       body: RefreshIndicator(
-        onRefresh: () async => setState(() => _future = _load()),
+        onRefresh: () async => setState(() {
+          _doneOverride = null;
+          _future = _load();
+        }),
         child: FutureBuilder<_CircleData>(
           future: _future,
           builder: (context, snap) {
@@ -220,6 +245,7 @@ class _StudentCirclePageState extends State<StudentCirclePage> {
               return const Center(child: CircularProgressIndicator());
             }
             final d = snap.data!;
+            _baseDone = d.doneDays;
             return SingleChildScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(AppSpacing.md),
@@ -355,7 +381,7 @@ class _StudentCirclePageState extends State<StudentCirclePage> {
         .where((c) => !d.week.planOf(c).isEmpty)
         .toList();
     final total = planned.length;
-    final done = planned.where((c) => d.doneDays.contains(c)).length;
+    final done = planned.where((c) => _effectiveDone.contains(c)).length;
 
     return _card(
       title: 'واجبات هذا الأسبوع',
@@ -379,7 +405,7 @@ class _StudentCirclePageState extends State<StudentCirclePage> {
       {required bool last}) {
     final plan = d.week.planOf(code);
     final date = d.week.dateOf(code);
-    final isDone = d.doneDays.contains(code);
+    final isDone = _effectiveDone.contains(code);
     final isToday = code == todayCode;
     final isPast = date.isBefore(today);
     final isFuture = date.isAfter(today);
