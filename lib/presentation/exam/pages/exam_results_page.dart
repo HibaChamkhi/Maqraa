@@ -258,35 +258,33 @@ class _ResultTileState extends State<_ResultTile> {
     super.dispose();
   }
 
-  void _save() {
-    num score = 0;
+  /// Auto-save quietly: present saves the score only when valid; absent/excused
+  /// records a 0. Invalid scores aren't saved (the row shows «غير محفوظ») — no
+  /// error popups, since saving is automatic.
+  void _saveQuiet() {
     if (_attendance == ExamAttendance.present) {
-      final value = num.tryParse(_scoreController.text.trim());
-      if (value == null || value < 0 || value > widget.totalMarks) {
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(SnackBar(
-              content: Text('أدخلي درجة بين 0 و ${widget.totalMarks}')));
-        return;
-      }
-      score = value;
+      final v = num.tryParse(_scoreController.text.trim());
+      if (v == null || v < 0 || v > widget.totalMarks) return;
+      widget.onSave(v, _attendance, _feedbackController.text.trim());
+    } else {
+      widget.onSave(0, _attendance, _feedbackController.text.trim());
     }
-    FocusScope.of(context).unfocus();
-    widget.onSave(score, _attendance, _feedbackController.text.trim());
   }
 
-  /// Save immediately when attendance changes — absent/excused records a 0,
-  /// present records the current score only if it's valid (otherwise waits
-  /// until a score is entered).
-  void _autoSaveAttendance() {
-    if (_attendance != ExamAttendance.present) {
-      widget.onSave(0, _attendance, _feedbackController.text.trim());
-      return;
+  /// Whether current edits differ from the last saved result.
+  bool get _dirty {
+    final r = widget.result;
+    final present = _attendance == ExamAttendance.present;
+    final txt = _scoreController.text.trim();
+    final fb = _feedbackController.text.trim();
+    if (r == null) return present ? txt.isNotEmpty : true;
+    if (_attendance != r.attendance) return true;
+    if (fb != r.feedback) return true;
+    if (present) {
+      final v = num.tryParse(txt);
+      return v == null || v != r.score;
     }
-    final v = num.tryParse(_scoreController.text.trim());
-    if (v != null && v >= 0 && v <= widget.totalMarks) {
-      widget.onSave(v, _attendance, _feedbackController.text.trim());
-    }
+    return false;
   }
 
   @override
@@ -328,7 +326,8 @@ class _ResultTileState extends State<_ResultTile> {
                     textAlign: TextAlign.center,
                     textInputAction: TextInputAction.done,
                     onChanged: (_) => setState(() {}),
-                    onSubmitted: (_) => _save(),
+                    onSubmitted: (_) => _saveQuiet(),
+                    onTapOutside: (_) => _saveQuiet(),
                     decoration: InputDecoration(
                       labelText: 'الدرجة',
                       helperText: 'من ${widget.totalMarks}',
@@ -336,11 +335,26 @@ class _ResultTileState extends State<_ResultTile> {
                     ),
                   ),
                 ),
-                IconButton(
-                  icon:
-                      const Icon(Icons.save_outlined, color: AppColors.primary),
-                  onPressed: _save,
-                ),
+                const SizedBox(width: AppSpacing.sm),
+                _dirty
+                    ? const Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.fiber_manual_record,
+                            size: 10, color: AppColors.warning),
+                        SizedBox(width: 4),
+                        Text('غير محفوظ',
+                            style: TextStyle(
+                                fontSize: 11, color: AppColors.warning)),
+                      ])
+                    : (widget.result != null
+                        ? const Row(mainAxisSize: MainAxisSize.min, children: [
+                            Icon(Icons.check_circle,
+                                size: 14, color: AppColors.success),
+                            SizedBox(width: 4),
+                            Text('محُفظ',
+                                style: TextStyle(
+                                    fontSize: 11, color: AppColors.success)),
+                          ])
+                        : const SizedBox.shrink()),
               ],
             ),
             const SizedBox(height: AppSpacing.sm),
@@ -352,7 +366,7 @@ class _ResultTileState extends State<_ResultTile> {
                         selected: _attendance == a,
                         onSelected: (_) {
                           setState(() => _attendance = a);
-                          _autoSaveAttendance();
+                          _saveQuiet();
                         },
                       ))
                   .toList(),
@@ -387,6 +401,8 @@ class _ResultTileState extends State<_ResultTile> {
               minLines: 1,
               maxLines: 3,
               style: theme.textTheme.bodySmall,
+              onChanged: (_) => setState(() {}),
+              onTapOutside: (_) => _saveQuiet(),
               decoration: const InputDecoration(
                 labelText: 'ملاحظة للطالبة (اختياري)',
                 isDense: true,
