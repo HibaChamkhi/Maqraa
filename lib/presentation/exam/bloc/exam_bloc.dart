@@ -108,6 +108,12 @@ class ExamBloc extends Bloc<ExamEvent, ExamState> {
       );
       await _syncReminder(
           examId: event.examId, title: event.title, date: event.date);
+      await notifyCircleStudents(
+        circleId: event.circleId,
+        title: 'تحديث اختبار',
+        body: 'تم تعديل تفاصيل اختبار «${event.title}» — تفقّدي قسم الاختبارات',
+        type: NotificationType.exam,
+      );
       final exams = await examRepository.getExams(event.circleId);
       emit(state.copyWith(
         status: UIStatus.success,
@@ -129,6 +135,12 @@ class ExamBloc extends Bloc<ExamEvent, ExamState> {
         examId: event.examId,
       );
       await _cancelReminder(event.examId);
+      await notifyCircleStudents(
+        circleId: event.circleId,
+        title: 'إلغاء اختبار',
+        body: 'أُلغي أحد الاختبارات في حلقتك',
+        type: NotificationType.exam,
+      );
       final exams = await examRepository.getExams(event.circleId);
       emit(state.copyWith(
         status: UIStatus.success,
