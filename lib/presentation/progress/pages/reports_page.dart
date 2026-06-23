@@ -14,6 +14,8 @@ import '../../../domain/circle/models/circle.dart';
 import '../../../domain/circle/repositories/circle_repository.dart';
 import '../../../domain/exam/models/exam.dart';
 import '../../../domain/exam/repositories/exam_repository.dart';
+import '../../../domain/session/models/session.dart';
+import '../../../domain/session/repositories/session_repository.dart';
 import '../../exam/pages/exam_analysis_page.dart';
 
 /// التقارير — per-circle reports with three sections:
@@ -48,7 +50,7 @@ class ReportsPage extends StatelessWidget {
         body: TabBarView(
           children: [
             _TaslimReport(circleId: circleId),
-            const _ComingSoon(label: 'تقرير الحضور'),
+            _HudurReport(circleId: circleId),
             _ExamsReport(circleId: circleId, user: user),
           ],
         ),
@@ -83,51 +85,23 @@ class _ComingSoon extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-//  التسليم الأسبوعي report (homework)
+//  Shared «سجل الأسابيع» strip: 5 two-line week cards + paging + date picker.
 // ---------------------------------------------------------------------------
 
-class _TaslimData {
-  final List<CircleMember> students;
-  final WeeklyHomework week;
-  final Map<String, HomeworkCompletion> byUid;
-  _TaslimData(this.students, this.week, this.byUid);
-}
-
-class _TaslimReport extends StatefulWidget {
-  final String circleId;
-  const _TaslimReport({required this.circleId});
+class _WeeksStrip extends StatefulWidget {
+  final DateTime selected;
+  final ValueChanged<DateTime> onSelect;
+  const _WeeksStrip({required this.selected, required this.onSelect});
 
   @override
-  State<_TaslimReport> createState() => _TaslimReportState();
+  State<_WeeksStrip> createState() => _WeeksStripState();
 }
 
-class _TaslimReportState extends State<_TaslimReport> {
-  late final DateTime _thisWeek = WeeklyHomework.weekStartOf(DateTime.now());
-  late DateTime _selected = _thisWeek; // week whose detail is shown
-  late DateTime _anchor = _thisWeek; // newest week shown in the strip window
-  List<CircleMember>? _students; // loaded once
-
-  late Future<_TaslimData> _future = _load(_selected);
+class _WeeksStripState extends State<_WeeksStrip> {
+  final DateTime _thisWeek = WeeklyHomework.weekStartOf(DateTime.now());
+  late DateTime _anchor = WeeklyHomework.weekStartOf(widget.selected);
 
   String _id(DateTime w) => DateFormat('yyyy-MM-dd').format(w);
-
-  Future<_TaslimData> _load(DateTime week) async {
-    _students ??= (await getIt<CircleRepository>().getMembers(widget.circleId))
-        .where((m) =>
-            m.role == UserRole.student && m.status == MemberStatus.active)
-        .toList();
-    final repo =
-        HomeworkRepository(getIt<FirebaseFirestore>(), getIt<FirebaseAuth>());
-    final weekId = _id(week);
-    final wk = await repo.weekStream(widget.circleId, weekId, week).first;
-    final comps = await repo.completionsStream(widget.circleId, weekId).first;
-    return _TaslimData(_students!, wk, {for (final c in comps) c.uid: c});
-  }
-
-  void _select(DateTime week) => setState(() {
-        _selected = week;
-        _future = _load(week);
-      });
 
   void _pageOlder() =>
       setState(() => _anchor = _anchor.subtract(const Duration(days: 7)));
@@ -140,50 +114,18 @@ class _TaslimReportState extends State<_TaslimReport> {
   Future<void> _pickWeek() async {
     final picked = await showDatePicker(
       context: context,
-      initialDate: _selected,
+      initialDate: widget.selected,
       firstDate: DateTime(2020),
       lastDate: _thisWeek.add(const Duration(days: 6)),
     );
     if (picked == null) return;
     final wk = WeeklyHomework.weekStartOf(picked);
     setState(() => _anchor = wk.isAfter(_thisWeek) ? _thisWeek : wk);
-    _select(wk);
+    widget.onSelect(wk);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Expanded(
-          child: FutureBuilder<_TaslimData>(
-            future: _future,
-            builder: (context, snap) {
-              if (snap.hasError) {
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Text('تعذّر تحميل التقرير:\n${snap.error}',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                            color: AppColors.error, fontSize: 12)),
-                  ),
-                );
-              }
-              if (!snap.hasData) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              return _detail(snap.data!);
-            },
-          ),
-        ),
-        const Divider(height: 1),
-        _weeksStrip(),
-      ],
-    );
-  }
-
-  /// Window of 5 two-line week cards + paging chevrons + date picker.
-  Widget _weeksStrip() {
     final monthYF = DateFormat('MMMM y', 'ar');
     final monthF = DateFormat('MMMM', 'ar');
     final dF = DateFormat('d', 'ar');
@@ -207,11 +149,11 @@ class _TaslimReportState extends State<_TaslimReport> {
     }
 
     Widget card(DateTime w) {
-      final selected = _id(w) == _id(_selected);
+      final selected = _id(w) == _id(widget.selected);
       return Expanded(
         child: InkWell(
           borderRadius: BorderRadius.circular(AppRadius.lg),
-          onTap: () => _select(w),
+          onTap: () => widget.onSelect(w),
           child: Container(
             height: 56,
             alignment: Alignment.center,
@@ -302,6 +244,85 @@ class _TaslimReportState extends State<_TaslimReport> {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+//  التسليم الأسبوعي report (homework)
+// ---------------------------------------------------------------------------
+
+class _TaslimData {
+  final List<CircleMember> students;
+  final WeeklyHomework week;
+  final Map<String, HomeworkCompletion> byUid;
+  _TaslimData(this.students, this.week, this.byUid);
+}
+
+class _TaslimReport extends StatefulWidget {
+  final String circleId;
+  const _TaslimReport({required this.circleId});
+
+  @override
+  State<_TaslimReport> createState() => _TaslimReportState();
+}
+
+class _TaslimReportState extends State<_TaslimReport> {
+  late final DateTime _thisWeek = WeeklyHomework.weekStartOf(DateTime.now());
+  late DateTime _selected = _thisWeek; // week whose detail is shown
+  List<CircleMember>? _students; // loaded once
+
+  late Future<_TaslimData> _future = _load(_selected);
+
+  String _id(DateTime w) => DateFormat('yyyy-MM-dd').format(w);
+
+  Future<_TaslimData> _load(DateTime week) async {
+    _students ??= (await getIt<CircleRepository>().getMembers(widget.circleId))
+        .where((m) =>
+            m.role == UserRole.student && m.status == MemberStatus.active)
+        .toList();
+    final repo =
+        HomeworkRepository(getIt<FirebaseFirestore>(), getIt<FirebaseAuth>());
+    final weekId = _id(week);
+    final wk = await repo.weekStream(widget.circleId, weekId, week).first;
+    final comps = await repo.completionsStream(widget.circleId, weekId).first;
+    return _TaslimData(_students!, wk, {for (final c in comps) c.uid: c});
+  }
+
+  void _select(DateTime week) => setState(() {
+        _selected = week;
+        _future = _load(week);
+      });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Expanded(
+          child: FutureBuilder<_TaslimData>(
+            future: _future,
+            builder: (context, snap) {
+              if (snap.hasError) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text('تعذّر تحميل التقرير:\n${snap.error}',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                            color: AppColors.error, fontSize: 12)),
+                  ),
+                );
+              }
+              if (!snap.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              return _detail(snap.data!);
+            },
+          ),
+        ),
+        const Divider(height: 1),
+        _WeeksStrip(selected: _selected, onSelect: _select),
+      ],
     );
   }
 
@@ -588,6 +609,362 @@ class _TaslimReportState extends State<_TaslimReport> {
 // ---------------------------------------------------------------------------
 //  الاختبارات report
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+//  الحضور report (live sessions)
+// ---------------------------------------------------------------------------
+
+class _HudurData {
+  final List<CircleMember> students;
+  final List<Session> sessions; // in the selected week, sorted by time
+  final Map<String, Set<String>> presentBySession; // sessionId -> present uids
+  _HudurData(this.students, this.sessions, this.presentBySession);
+
+  bool isPresent(String sessionId, String uid) =>
+      presentBySession[sessionId]?.contains(uid) ?? false;
+}
+
+class _HudurReport extends StatefulWidget {
+  final String circleId;
+  const _HudurReport({required this.circleId});
+
+  @override
+  State<_HudurReport> createState() => _HudurReportState();
+}
+
+class _HudurReportState extends State<_HudurReport> {
+  late final DateTime _thisWeek = WeeklyHomework.weekStartOf(DateTime.now());
+  late DateTime _selected = _thisWeek;
+  List<CircleMember>? _students;
+  List<Session>? _allSessions;
+
+  late Future<_HudurData> _future = _load(_selected);
+
+  Future<_HudurData> _load(DateTime week) async {
+    _students ??= (await getIt<CircleRepository>().getMembers(widget.circleId))
+        .where((m) =>
+            m.role == UserRole.student && m.status == MemberStatus.active)
+        .toList();
+    final repo = getIt<SessionRepository>();
+    _allSessions ??= await repo.getSessions(widget.circleId);
+    final end = week.add(const Duration(days: 7));
+    final wk = _allSessions!
+        .where((s) =>
+            !s.scheduledAt.isBefore(week) && s.scheduledAt.isBefore(end))
+        .toList()
+      ..sort((a, b) => a.scheduledAt.compareTo(b.scheduledAt));
+    final present = <String, Set<String>>{};
+    for (final s in wk) {
+      final att =
+          await repo.getAttendance(circleId: widget.circleId, sessionId: s.id);
+      present[s.id] = att.where((a) => a.present).map((a) => a.uid).toSet();
+    }
+    return _HudurData(_students!, wk, present);
+  }
+
+  void _select(DateTime week) => setState(() {
+        _selected = week;
+        _future = _load(week);
+      });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Expanded(
+          child: FutureBuilder<_HudurData>(
+            future: _future,
+            builder: (context, snap) {
+              if (snap.hasError) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text('تعذّر تحميل التقرير:\n${snap.error}',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                            color: AppColors.error, fontSize: 12)),
+                  ),
+                );
+              }
+              if (!snap.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              return _detail(snap.data!);
+            },
+          ),
+        ),
+        const Divider(height: 1),
+        _WeeksStrip(selected: _selected, onSelect: _select),
+      ],
+    );
+  }
+
+  String _sessionLabel(Session s) {
+    final day = DateFormat('EEE', 'ar').format(s.scheduledAt);
+    final time = DateFormat('h:mm', 'ar').format(s.scheduledAt);
+    return '$day\n$time';
+  }
+
+  Widget _detail(_HudurData d) {
+    if (d.sessions.isEmpty) {
+      return const _ComingSoon(label: 'لا جلسات في هذا الأسبوع');
+    }
+    if (d.students.isEmpty) {
+      return Center(
+        child: Text('لا توجد طالبات في الحلقة',
+            style: Theme.of(context).textTheme.bodyMedium),
+      );
+    }
+    final cells = d.students.length * d.sessions.length;
+    var present = 0;
+    for (final s in d.sessions) {
+      for (final m in d.students) {
+        if (d.isPresent(s.id, m.uid)) present++;
+      }
+    }
+    final pct = cells == 0 ? 0 : (present / cells * 100).round();
+    final absent = cells - present;
+
+    return ListView(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      children: [
+        Row(children: [
+          _kpi('${d.sessions.length}', 'الجلسات', filled: true),
+          const SizedBox(width: AppSpacing.sm),
+          _kpi('$pct٪', 'نسبة الحضور'),
+          const SizedBox(width: AppSpacing.sm),
+          _kpi('$absent', 'مرات الغياب', danger: true),
+        ]),
+        const SizedBox(height: AppSpacing.md),
+        _chart(d),
+        const SizedBox(height: AppSpacing.md),
+        _grid(d),
+        const SizedBox(height: AppSpacing.sm),
+        _legend(),
+      ],
+    );
+  }
+
+  Widget _kpi(String v, String l, {bool filled = false, bool danger = false}) {
+    final bg = danger
+        ? const Color(0xFFFCEBEB)
+        : (filled ? AppColors.sky : AppColors.surface);
+    final fg = danger
+        ? const Color(0xFFA32D2D)
+        : (filled ? AppColors.primaryDark : AppColors.ink);
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border:
+              (filled || danger) ? null : Border.all(color: AppColors.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(v,
+                style: TextStyle(
+                    fontSize: 20, fontWeight: FontWeight.w700, color: fg)),
+            const SizedBox(height: 2),
+            Text(l,
+                style: TextStyle(
+                    fontSize: 11,
+                    color:
+                        danger ? const Color(0xFFA32D2D) : AppColors.textMuted)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _chart(_HudurData d) {
+    final total = d.students.length;
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('الحضور لكل جلسة',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 96,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                for (final s in d.sessions)
+                  Expanded(
+                    child: _bar(
+                        d.presentBySession[s.id]?.length ?? 0, total, s),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _bar(int count, int total, Session s) {
+    final ratio = total == 0 ? 0.0 : count / total;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          Text('$count/$total',
+              style: const TextStyle(fontSize: 9, color: AppColors.textMuted)),
+          const SizedBox(height: 2),
+          Container(
+            height: (60 * ratio).clamp(2, 60).toDouble(),
+            decoration: BoxDecoration(
+              color: AppColors.primary,
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(6)),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(DateFormat('EEE', 'ar').format(s.scheduledAt),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 9, color: AppColors.textMuted)),
+        ],
+      ),
+    );
+  }
+
+  Widget _grid(_HudurData d) {
+    Widget head(String t, int flex, {bool center = false}) => Expanded(
+          flex: flex,
+          child: Text(t,
+              textAlign: center ? TextAlign.center : TextAlign.start,
+              maxLines: 2,
+              style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textMuted)),
+        );
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.border),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          Container(
+            color: AppColors.gray,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            child: Row(
+              children: [
+                head('الطالبة', 3),
+                for (final s in d.sessions) head(_sessionLabel(s), 2, center: true),
+                head('النسبة', 2, center: true),
+              ],
+            ),
+          ),
+          for (final m in d.students) _row(d, m),
+        ],
+      ),
+    );
+  }
+
+  Widget _row(_HudurData d, CircleMember m) {
+    var present = 0;
+    final cells = <Widget>[];
+    for (final s in d.sessions) {
+      final p = d.isPresent(s.id, m.uid);
+      if (p) present++;
+      cells.add(Expanded(flex: 2, child: Center(child: _mark(p))));
+    }
+    final pct = d.sessions.isEmpty
+        ? null
+        : (present / d.sessions.length * 100).round();
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: AppColors.border, width: .5)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 3,
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 13,
+                  backgroundColor: AppColors.sky,
+                  child: Text(
+                      m.name.isNotEmpty ? m.name.characters.first : '؟',
+                      style: const TextStyle(
+                          color: AppColors.primary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700)),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(m.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w700)),
+                ),
+              ],
+            ),
+          ),
+          ...cells,
+          Expanded(
+            flex: 2,
+            child: Center(
+              child: Text(pct == null ? '—' : '$pct٪',
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: pct == null
+                          ? AppColors.textMuted
+                          : (pct >= 50 ? AppColors.success : AppColors.error))),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _mark(bool present) => Icon(
+        present ? Icons.check_circle : Icons.cancel,
+        size: 18,
+        color: present ? AppColors.success : const Color(0xFFD8DCE2),
+      );
+
+  Widget _legend() {
+    Widget item(IconData ic, Color c, String t) => Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(ic, size: 14, color: c),
+            const SizedBox(width: 4),
+            Text(t,
+                style:
+                    const TextStyle(fontSize: 11, color: AppColors.textMuted)),
+          ],
+        );
+    return Wrap(
+      spacing: 16,
+      runSpacing: 6,
+      children: [
+        item(Icons.check_circle, AppColors.success, 'حاضرة'),
+        item(Icons.cancel, const Color(0xFFD8DCE2), 'غائبة'),
+      ],
+    );
+  }
+}
 
 class _RepData {
   final List<CircleMember> students; // sorted lowest-average first
