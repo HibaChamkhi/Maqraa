@@ -148,83 +148,100 @@ class _TaslimReportState extends State<_TaslimReport> {
     }
   }
 
-  Widget _weeksStrip() {
-    final fmt = DateFormat('d MMM', 'ar');
-    return SizedBox(
-      height: 96,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(
-            AppSpacing.md, AppSpacing.sm, AppSpacing.md, AppSpacing.sm),
-        itemCount: _weeks.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (context, i) {
-          final w = _weeks[i];
-          final id = _id(w);
-          final selected = id == _id(_selected);
-          final pct = _summary[id];
-          final noHw = pct == null || pct < 0;
-          final end = w.add(const Duration(days: 6));
-          final relative = i == 0
-              ? 'الأسبوع الحالي'
-              : i == 1
-                  ? 'الأسبوع السابق'
-                  : i == 2
-                      ? 'قبل أسبوعين'
-                      : null;
-          final range = '${fmt.format(w)} – ${fmt.format(end)}';
-          Color pctColor;
-          if (noHw) {
-            pctColor = AppColors.textMuted;
-          } else if (pct >= 75) {
-            pctColor = AppColors.success;
-          } else if (pct >= 50) {
-            pctColor = AppColors.warning;
-          } else {
-            pctColor = AppColors.error;
-          }
-          return InkWell(
-            borderRadius: BorderRadius.circular(AppRadius.lg),
-            onTap: () => setState(() => _selected = w),
-            child: Container(
-              width: 124,
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: selected ? AppColors.primary : AppColors.surface,
-                borderRadius: BorderRadius.circular(AppRadius.lg),
-                border: selected ? null : Border.all(color: AppColors.border),
-              ),
-              child: Column(
-                children: [
-                  Text(relative ?? range,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: 11,
+  Widget _weeksHistory() {
+    final dayF = DateFormat('d', 'ar');
+    final monthYF = DateFormat('MMMM y', 'ar');
+    return Container(
+      margin: const EdgeInsets.fromLTRB(
+          AppSpacing.md, AppSpacing.sm, AppSpacing.md, AppSpacing.md),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('سجل الأسابيع',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+          const SizedBox(height: AppSpacing.sm),
+          SizedBox(
+            height: 76,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: _weeks.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              itemBuilder: (context, i) {
+                final w = _weeks[i];
+                final id = _id(w);
+                final selected = id == _id(_selected);
+                final pct = _summary[id];
+                final noHw = pct == null || pct < 0;
+                final end = w.add(const Duration(days: 6));
+                final top = i == 0
+                    ? 'الأسبوع الحالي'
+                    : i == 1
+                        ? 'الأسبوع السابق'
+                        : i == 2
+                            ? 'قبل أسبوعين'
+                            : monthYF.format(w);
+                final range =
+                    '${dayF.format(w)} - ${dayF.format(end)} ${monthYF.format(end)}';
+                final pctColor = noHw
+                    ? AppColors.textMuted
+                    : pct >= 75
+                        ? AppColors.success
+                        : pct >= 50
+                            ? AppColors.warning
+                            : AppColors.error;
+                return InkWell(
+                  borderRadius: BorderRadius.circular(AppRadius.lg),
+                  onTap: () => setState(() => _selected = w),
+                  child: Container(
+                    width: 150,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: selected ? AppColors.sky : AppColors.surface,
+                      borderRadius: BorderRadius.circular(AppRadius.lg),
+                      border: Border.all(
                           color: selected
-                              ? const Color(0xFFE3F0EC)
-                              : AppColors.textMuted)),
-                  if (relative != null) ...[
-                    const SizedBox(height: 2),
-                    Text(range,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: selected ? Colors.white : AppColors.ink)),
-                  ],
-                  const Spacer(),
-                  Text(noHw ? 'لا واجب' : '$pct٪',
-                      style: TextStyle(
-                          fontSize: noHw ? 12 : 18,
-                          fontWeight: FontWeight.w700,
-                          color: selected ? Colors.white : pctColor)),
-                ],
-              ),
+                              ? AppColors.primary
+                              : AppColors.border),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(top,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: selected
+                                    ? AppColors.primaryDark
+                                    : AppColors.ink)),
+                        const SizedBox(height: 3),
+                        Text(range,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 10, color: AppColors.textMuted)),
+                        const SizedBox(height: 4),
+                        Text(noHw ? 'لا واجب' : 'الإنجاز $pct٪',
+                            style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: pctColor)),
+                      ],
+                    ),
+                  ),
+                );
+              },
             ),
-          );
-        },
+          ),
+        ],
       ),
     );
   }
@@ -247,12 +264,11 @@ class _TaslimReportState extends State<_TaslimReport> {
         final sel = _data[_id(_selected)];
         return Column(
           children: [
-            _weeksStrip(),
-            const Divider(height: 1),
             Expanded(
-              child:
-                  sel == null ? const SizedBox.shrink() : _detail(sel),
+              child: sel == null ? const SizedBox.shrink() : _detail(sel),
             ),
+            const Divider(height: 1),
+            _weeksHistory(),
           ],
         );
       },
