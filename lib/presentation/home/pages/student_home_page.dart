@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart' hide Badge;
 import 'package:hijri/hijri_calendar.dart';
 import 'package:intl/intl.dart';
@@ -5,10 +7,12 @@ import 'package:intl/intl.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/ui/styles/theme.dart';
 import '../../../core/ui/widgets/werd_widgets.dart';
+import '../../../data/homework/homework_repository.dart';
 import '../../../domain/achievement/models/achievement.dart';
 import '../../../domain/achievement/repositories/achievement_repository.dart';
 import '../../../domain/auth/models/app_user.dart';
 import '../../../domain/circle/models/circle.dart';
+import '../../../domain/homework/models/weekly_homework.dart';
 import '../../../domain/progress/models/progress_info.dart';
 import '../../../domain/progress/repositories/progress_repository.dart';
 import '../../../domain/schedule/repositories/schedule_repository.dart';
@@ -36,6 +40,8 @@ typedef _HomeData = ({
   List<Session> upcoming,
   List<Session> todaySessions,
   Achievement achievement,
+  bool wajibHasToday,
+  bool wajibDone,
 });
 
 class StudentHomeTab extends StatefulWidget {
@@ -49,6 +55,12 @@ class StudentHomeTab extends StatefulWidget {
 
 class StudentHomeTabState extends State<StudentHomeTab> {
   late Future<_HomeData> _future;
+
+  /// Optimistic overlay for today's واجب tick (instant, background write).
+  bool? _wajibOverride;
+
+  HomeworkRepository get _hw =>
+      HomeworkRepository(getIt<FirebaseFirestore>(), getIt<FirebaseAuth>());
 
   @override
   void initState() {
@@ -99,6 +111,21 @@ class StudentHomeTabState extends State<StudentHomeTab> {
       ach = await getIt<AchievementRepository>().getAchievement();
     } catch (_) {/* achievements optional */}
 
+    // Today's واجب (homework) + my completion — same source the teacher's
+    // تسليم report reads, so a tick here shows up for the teacher.
+    var wajibHasToday = false;
+    var wajibDone = false;
+    try {
+      final ws = WeeklyHomework.weekStartOf(now);
+      final wk = await _hw.weekStream(id, _ymd(ws), ws).first;
+      final code = _todayCode();
+      if (!wk.planOf(code).isEmpty) {
+        wajibHasToday = true;
+        final comp = await _hw.myCompletion(id, _ymd(ws));
+        wajibDone = comp.isDone(code);
+      }
+    } catch (_) {/* homework optional */}
+
     return (
       progress: progress,
       todayRange: range,
@@ -107,6 +134,38 @@ class StudentHomeTabState extends State<StudentHomeTab> {
       upcoming: upcoming,
       todaySessions: todaySessions,
       achievement: ach,
+      wajibHasToday: wajibHasToday,
+      wajibDone: wajibDone,
+    );
+  }
+
+  Future<void> _toggleWajib(_HomeData d) async {
+    final cur = _wajibOverride ?? d.wajibDone;
+    setState(() => _wajibOverride = !cur);
+    var ok = true;
+    try {
+      await _hw.setDayDone(
+        circleId: widget.circle.id,
+        weekId: _ymd(WeeklyHomework.weekStartOf(DateTime.now())),
+        dayCode: _todayCode(),
+        done: !cur,
+        studentName: widget.user.name,
+      );
+    } catch (_) {
+      ok = false;
+      if (mounted) setState(() => _wajibOverride = cur);
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 2),
+        backgroundColor: ok
+            ? (!cur ? AppColors.success : AppColors.textMuted)
+            : AppColors.error,
+        content: Text(ok
+            ? (!cur ? 'تم تسجيل التسليم — ستراه المعلّمة' : 'أُلغي التسليم')
+            : 'تعذّر حفظ التسليم، حاولي مجددًا'),
+      ),
     );
   }
 
@@ -116,7 +175,10 @@ class StudentHomeTabState extends State<StudentHomeTab> {
   @override
   Widget build(BuildContext context) {
     return RefreshIndicator(
-      onRefresh: () async => setState(() => _future = _load()),
+      onRefresh: () async => setState(() {
+        _wajibOverride = null;
+        _future = _load();
+      }),
       child: FutureBuilder<_HomeData>(
         future: _future,
         builder: (context, snap) {
@@ -278,14 +340,27 @@ class StudentHomeTabState extends State<StudentHomeTab> {
                       const TextStyle(fontSize: 11.5, color: AppColors.textMuted),
                 ),
                 const SizedBox(height: 12),
-                _pillButton(
-                  label: d.taskDone ? 'تم الحفظ' : 'سجّلي الحفظ',
-                  icon: d.taskDone
-                      ? Icons.check_circle
-                      : Icons.menu_book_rounded,
-                  onTap: () => _open(
-                      TodayTaskPage(circleId: widget.circle.id, user: widget.user)),
-                ),
+                if (d.wajibHasToday)
+                  Builder(builder: (context) {
+                    final done = _wajibOverride ?? d.wajibDone;
+                    return _pillButton(
+                      label: done ? 'تم التسليم ✓' : 'وضع كمنجز',
+                      icon: done
+                          ? Icons.check_circle
+                          : Icons.radio_button_unchecked,
+                      filled: done,
+                      onTap: () => _toggleWajib(d),
+                    );
+                  })
+                else
+                  _pillButton(
+                    label: d.taskDone ? 'تم الحفظ' : 'سجّلي الحفظ',
+                    icon: d.taskDone
+                        ? Icons.check_circle
+                        : Icons.menu_book_rounded,
+                    onTap: () => _open(TodayTaskPage(
+                        circleId: widget.circle.id, user: widget.user)),
+                  ),
               ],
             ),
           ),
@@ -696,9 +771,10 @@ class StudentHomeTabState extends State<StudentHomeTab> {
     required String label,
     required IconData icon,
     required VoidCallback onTap,
+    bool filled = false,
   }) {
     return Material(
-      color: _green,
+      color: filled ? AppColors.success : _green,
       borderRadius: BorderRadius.circular(AppRadius.pill),
       child: InkWell(
         borderRadius: BorderRadius.circular(AppRadius.pill),
