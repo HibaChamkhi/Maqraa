@@ -13,7 +13,7 @@ import '../../../presentation/exam/pages/teacher_exams_page.dart';
 import '../../../presentation/help/help_page.dart';
 import '../../../presentation/profile/pages/profile_page.dart';
 import '../../../presentation/profile/pages/settings_page.dart';
-import '../../../presentation/progress/pages/teacher_tracking_page.dart';
+import '../../../presentation/progress/pages/reports_page.dart';
 import '../styles/theme.dart';
 
 /// The green «ورْد» side navigation drawer (the sidebar in the reference).
@@ -206,7 +206,7 @@ class WardDrawer extends StatelessWidget {
         push(SectionCirclePickerPage(
           title: 'التقارير',
           icon: Icons.bar_chart_outlined,
-          pageBuilder: (c) => TeacherTrackingPage(circleId: c.id),
+          pageBuilder: (c) => ReportsPage(circleId: c.id),
         ));
         break;
       case 'الإشعارات':
