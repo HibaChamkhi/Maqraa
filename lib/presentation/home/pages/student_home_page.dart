@@ -173,23 +173,35 @@ class StudentHomeTabState extends State<StudentHomeTab> {
   }
 
   Future<void> _toggleWajib(_HalaqaToday h) async {
+    final markDone = !h.done;
+    var ok = true;
     try {
       await _hw.setDayDone(
         circleId: h.circle.id,
         weekId: _weekId,
         dayCode: _todayCode(),
-        done: !h.done,
+        done: markDone,
         studentName: widget.user.name,
         partnerName: h.partner.isEmpty ? null : h.partner,
       );
     } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('تعذّر حفظ التسليم، حاولي مجددًا')),
-        );
-      }
+      ok = false;
     }
-    if (mounted) setState(() => _future = _load());
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 2),
+        backgroundColor: ok
+            ? (markDone ? AppColors.success : AppColors.textMuted)
+            : AppColors.error,
+        content: Text(ok
+            ? (markDone
+                ? 'تم تسجيل التسليم — ستراه المعلّمة'
+                : 'أُلغي التسليم')
+            : 'تعذّر حفظ التسليم، حاولي مجددًا'),
+      ),
+    );
+    setState(() => _future = _load());
   }
 
   void _open(Widget page) =>
