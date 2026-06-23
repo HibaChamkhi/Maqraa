@@ -379,14 +379,17 @@ class _Matrix extends StatelessWidget {
     final fmt = DateFormat('d MMM', 'ar');
     const examW = 86.0, avgW = 70.0, baseNameW = 140.0;
     return LayoutBuilder(builder: (context, c) {
-      final fixed = baseNameW + examW * data.exams.length + avgW;
-      final nameW =
-          fixed < c.maxWidth ? baseNameW + (c.maxWidth - fixed) : baseNameW;
-      final totalW = nameW + examW * data.exams.length + avgW;
+      final content = examW * data.exams.length + avgW;
+      // boxW = the bordered container's outer width; its inner content area is
+      // boxW - 2 (1px border each side), so the columns must sum to boxW - 2.
+      final boxW = (baseNameW + content + 2) < c.maxWidth
+          ? c.maxWidth
+          : baseNameW + content + 2;
+      final nameW = boxW - 2 - content;
       return SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: SizedBox(
-          width: totalW,
+          width: boxW,
           child: Container(
             decoration: BoxDecoration(
               color: AppColors.surface,
