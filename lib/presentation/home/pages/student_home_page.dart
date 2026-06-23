@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/di/injection.dart';
@@ -12,344 +11,12 @@ import '../../../domain/progress/repositories/progress_repository.dart';
 import '../../../domain/schedule/repositories/schedule_repository.dart';
 import '../../../domain/session/models/session.dart';
 import '../../../domain/session/repositories/session_repository.dart';
-import '../../announcement/pages/announcements_page.dart';
-import '../../auth/bloc/auth_bloc.dart';
-import '../../exam/pages/student_exams_page.dart';
 import '../../notification/pages/notifications_page.dart';
-import '../../partner/pages/my_partner_page.dart';
 import '../../profile/pages/profile_page.dart';
 import '../../progress/pages/my_progress_page.dart';
 import '../../reminder/pages/reminder_settings_page.dart';
 import '../../schedule/pages/weekly_schedule_page.dart';
 import '../../task/pages/today_task_page.dart';
-
-/// Student experience matching the «وِرد» mobile mockups: a quick daily
-/// overview with a bottom navigation bar.
-class StudentHomePage extends StatefulWidget {
-  final AppUser user;
-  final Circle circle;
-  final Widget more;
-
-  const StudentHomePage({
-    super.key,
-    required this.user,
-    required this.circle,
-    required this.more,
-  });
-
-  @override
-  State<StudentHomePage> createState() => _StudentHomePageState();
-}
-
-/// Student sections shown in the web side-rail.
-class _Section {
-  final String label;
-  final IconData icon;
-  const _Section(this.label, this.icon);
-}
-
-class _StudentHomePageState extends State<StudentHomePage> {
-  int _tab = 0; // mobile bottom-nav index
-  String _section = 'الرئيسية'; // web rail selection
-  final GlobalKey<NavigatorState> _contentNav = GlobalKey<NavigatorState>();
-
-  static const _railSections = [
-    _Section('الرئيسية', Icons.home_outlined),
-    _Section('واجبي', Icons.menu_book_outlined),
-    _Section('الجدول', Icons.calendar_view_week_outlined),
-    _Section('تقدّمي', Icons.insert_chart_outlined),
-    _Section('اختباراتي', Icons.assignment_turned_in_outlined),
-    _Section('رفيقتي', Icons.handshake_outlined),
-    _Section('الإعلانات', Icons.campaign_outlined),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, c) {
-      return c.maxWidth >= 900 ? _webShell() : _mobile();
-    });
-  }
-
-  // ---------------------------------------------------------------- mobile
-  Widget _mobile() {
-    final id = widget.circle.id;
-    final pages = [
-      _HomeTab(user: widget.user, circle: widget.circle, showHeader: true),
-      TodayTaskPage(circleId: id, user: widget.user),
-      const MyProgressPage(),
-      widget.more,
-    ];
-    return Scaffold(
-      body: SafeArea(child: pages[_tab]),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _tab,
-        onDestinationSelected: (i) => setState(() => _tab = i),
-        destinations: const [
-          NavigationDestination(
-              icon: Icon(Icons.home_outlined),
-              selectedIcon: Icon(Icons.home_rounded),
-              label: 'الرئيسية'),
-          NavigationDestination(
-              icon: Icon(Icons.menu_book_outlined),
-              selectedIcon: Icon(Icons.menu_book_rounded),
-              label: 'واجبي'),
-          NavigationDestination(
-              icon: Icon(Icons.insert_chart_outlined),
-              selectedIcon: Icon(Icons.insert_chart_rounded),
-              label: 'تقدّمي'),
-          NavigationDestination(
-              icon: Icon(Icons.more_horiz), label: 'المزيد'),
-        ],
-      ),
-    );
-  }
-
-  // ------------------------------------------------------------------- web
-  Widget _webShell() {
-    return Scaffold(
-      backgroundColor: AppColors.beige,
-      body: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            child: Column(
-              children: [
-                _WebTopBar(user: widget.user, circle: widget.circle),
-                Expanded(
-                  child: Navigator(
-                    key: _contentNav,
-                    onGenerateRoute: (_) => MaterialPageRoute(
-                      builder: (_) => _HomeTab(
-                          user: widget.user,
-                          circle: widget.circle,
-                          showHeader: false),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          _StudentRail(
-            sections: _railSections,
-            current: _section,
-            onSelect: _goSection,
-            onProfile: () => _push(const ProfilePage()),
-            onLogout: () =>
-                context.read<AuthBloc>().add(const AuthLogoutRequested()),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _push(Widget page) => Navigator.of(context)
-      .push(MaterialPageRoute(builder: (_) => page));
-
-  void _goSection(String label) {
-    setState(() => _section = label);
-    final nav = _contentNav.currentState!;
-    nav.popUntil((r) => r.isFirst);
-    final id = widget.circle.id;
-    void push(Widget page) =>
-        nav.push(MaterialPageRoute(builder: (_) => page));
-    switch (label) {
-      case 'الرئيسية':
-        break; // dashboard is the root route
-      case 'واجبي':
-        push(TodayTaskPage(circleId: id, user: widget.user));
-        break;
-      case 'الجدول':
-        push(WeeklySchedulePage(circleId: id));
-        break;
-      case 'تقدّمي':
-        push(const MyProgressPage());
-        break;
-      case 'اختباراتي':
-        push(StudentExamsPage(circleId: id, user: widget.user));
-        break;
-      case 'رفيقتي':
-        push(MyPartnerPage(circleId: id, user: widget.user));
-        break;
-      case 'الإعلانات':
-        push(AnnouncementsPage(circleId: id, user: widget.user));
-        break;
-    }
-  }
-}
-
-/// The green side rail for the student web layout (mirrors the teacher rail).
-class _StudentRail extends StatelessWidget {
-  final List<_Section> sections;
-  final String current;
-  final ValueChanged<String> onSelect;
-  final VoidCallback onProfile;
-  final VoidCallback onLogout;
-  const _StudentRail({
-    required this.sections,
-    required this.current,
-    required this.onSelect,
-    required this.onProfile,
-    required this.onLogout,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 248,
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFF0F6B5B), Color(0xFF09463A)],
-        ),
-      ),
-      child: SafeArea(
-        child: Column(
-          children: [
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text('وِصَال',
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleLarge
-                        ?.copyWith(color: Colors.white)),
-                const SizedBox(width: 8),
-                const Icon(Icons.spa_outlined, color: Colors.white, size: 22),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Expanded(
-              child: ListView(
-                padding: EdgeInsets.zero,
-                children: [
-                  for (final s in sections)
-                    _RailItem(
-                      label: s.label,
-                      icon: s.icon,
-                      active: s.label == current,
-                      onTap: () => onSelect(s.label),
-                    ),
-                ],
-              ),
-            ),
-            const Divider(color: Colors.white24, height: 1),
-            _RailItem(
-                label: 'الملف الشخصي',
-                icon: Icons.person_outline,
-                onTap: onProfile),
-            _RailItem(label: 'تسجيل الخروج', icon: Icons.logout, onTap: onLogout),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _RailItem extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final bool active;
-  final VoidCallback onTap;
-  const _RailItem({
-    required this.label,
-    required this.icon,
-    this.active = false,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-      child: Material(
-        color: active ? Colors.white : Colors.transparent,
-        borderRadius: BorderRadius.circular(14),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(14),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-            child: Row(
-              children: [
-                Icon(icon,
-                    size: 19,
-                    color: active ? AppColors.primary : Colors.white),
-                const SizedBox(width: 10),
-                Text(label,
-                    style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: active ? AppColors.primary : Colors.white)),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Top bar for the student web layout: avatar + greeting on the right,
-/// bell + circle/teacher line on the left.
-class _WebTopBar extends StatelessWidget {
-  final AppUser user;
-  final Circle circle;
-  const _WebTopBar({required this.user, required this.circle});
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      child: Container(
-        height: 60,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        decoration:
-            const BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.border))),
-        child: Row(
-          children: [
-            CircleAvatar(
-              radius: 17,
-              backgroundColor: AppColors.sky,
-              backgroundImage:
-                  user.photoUrl != null ? NetworkImage(user.photoUrl!) : null,
-              child: user.photoUrl == null
-                  ? const Icon(Icons.person, size: 18, color: AppColors.primary)
-                  : null,
-            ),
-            const SizedBox(width: 10),
-            Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('السلام عليكم',
-                    style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
-                Text(user.name,
-                    style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.ink)),
-              ],
-            ),
-            const Spacer(),
-            Text('حلقة ${circle.name}',
-                style:
-                    const TextStyle(fontSize: 12, color: AppColors.textMuted)),
-            const SizedBox(width: 12),
-            IconButton(
-              icon: const Icon(Icons.notifications_outlined,
-                  color: AppColors.textMuted),
-              onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const NotificationsPage())),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 /// Holds the fetched-once data for the home tab.
 typedef _HomeData = ({
@@ -358,21 +25,16 @@ typedef _HomeData = ({
   Session? nextSession,
 });
 
-class _HomeTab extends StatefulWidget {
+class StudentHomeTab extends StatefulWidget {
   final AppUser user;
   final Circle circle;
-
-  /// On mobile we show the in-page header (bell + avatar). On web the shell's
-  /// top bar already shows them, so it's hidden.
-  final bool showHeader;
-  const _HomeTab(
-      {required this.user, required this.circle, this.showHeader = true});
+  const StudentHomeTab({required this.user, required this.circle});
 
   @override
-  State<_HomeTab> createState() => _HomeTabState();
+  State<StudentHomeTab> createState() => StudentHomeTabState();
 }
 
-class _HomeTabState extends State<_HomeTab> {
+class StudentHomeTabState extends State<StudentHomeTab> {
   late Future<_HomeData> _future;
 
   @override
@@ -447,12 +109,8 @@ class _HomeTabState extends State<_HomeTab> {
               child: ListView(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
             children: [
-              if (widget.showHeader) ...[
-                _Header(
-                    user: widget.user,
-                    onProfile: () => _open(const ProfilePage())),
-                const SizedBox(height: AppSpacing.lg),
-              ],
+              _Header(user: widget.user, onProfile: () => _open(const ProfilePage())),
+              const SizedBox(height: AppSpacing.lg),
 
               // واجب اليوم
               _TodayTaskCard(
@@ -632,8 +290,8 @@ class _TodayTaskCard extends StatelessWidget {
               Align(
                 alignment: AlignmentDirectional.centerStart,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(20),
