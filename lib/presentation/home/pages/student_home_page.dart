@@ -130,10 +130,7 @@ class StudentHomeTabState extends State<StudentHomeTab> {
               return SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
                 physics: const AlwaysScrollableScrollPhysics(),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1180),
-                  child: wide ? _wide(d) : _narrow(d),
-                ),
+                child: wide ? _wide(d) : _narrow(d),
               );
             },
           );
