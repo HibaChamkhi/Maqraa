@@ -79,7 +79,9 @@ class _ExamResultsViewState extends State<_ExamResultsView> {
     return Scaffold(
       appBar: AppBar(title: Text('درجات ${exam.title}')),
       body: BlocConsumer<ExamBloc, ExamState>(
-        listenWhen: (prev, curr) => curr.message.isNotEmpty && curr.actionDone,
+        listenWhen: (prev, curr) =>
+            curr.message.isNotEmpty &&
+            (curr.actionDone || curr.status == UIStatus.error),
         listener: (context, state) {
           ScaffoldMessenger.of(context)
             ..hideCurrentSnackBar()
@@ -272,6 +274,20 @@ class _ResultTileState extends State<_ResultTile> {
     widget.onSave(score, _attendance, _feedbackController.text.trim());
   }
 
+  /// Save immediately when attendance changes — absent/excused records a 0,
+  /// present records the current score only if it's valid (otherwise waits
+  /// until a score is entered).
+  void _autoSaveAttendance() {
+    if (_attendance != ExamAttendance.present) {
+      widget.onSave(0, _attendance, _feedbackController.text.trim());
+      return;
+    }
+    final v = num.tryParse(_scoreController.text.trim());
+    if (v != null && v >= 0 && v <= widget.totalMarks) {
+      widget.onSave(v, _attendance, _feedbackController.text.trim());
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -309,7 +325,9 @@ class _ResultTileState extends State<_ResultTile> {
                     keyboardType:
                         const TextInputType.numberWithOptions(decimal: true),
                     textAlign: TextAlign.center,
+                    textInputAction: TextInputAction.done,
                     onChanged: (_) => setState(() {}),
+                    onSubmitted: (_) => _save(),
                     decoration: InputDecoration(
                       labelText: 'الدرجة',
                       helperText: 'من ${widget.totalMarks}',
@@ -331,7 +349,10 @@ class _ResultTileState extends State<_ResultTile> {
                   .map((a) => ChoiceChip(
                         label: Text(a.arabicLabel),
                         selected: _attendance == a,
-                        onSelected: (_) => setState(() => _attendance = a),
+                        onSelected: (_) {
+                          setState(() => _attendance = a);
+                          _autoSaveAttendance();
+                        },
                       ))
                   .toList(),
             ),
