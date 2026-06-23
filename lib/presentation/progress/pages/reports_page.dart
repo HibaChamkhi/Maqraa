@@ -699,6 +699,12 @@ class _HudurReportState extends State<_HudurReport> {
     );
   }
 
+  /// A session "happened" if it's live, ended, or its start time has passed.
+  bool _happened(Session s) =>
+      s.status == SessionStatus.ended ||
+      s.status == SessionStatus.live ||
+      s.scheduledAt.isBefore(DateTime.now());
+
   String _sessionLabel(Session s) {
     final day = DateFormat('EEE', 'ar').format(s.scheduledAt);
     final time = DateFormat('h:mm', 'ar').format(s.scheduledAt);
@@ -715,25 +721,26 @@ class _HudurReportState extends State<_HudurReport> {
             style: Theme.of(context).textTheme.bodyMedium),
       );
     }
-    final cells = d.students.length * d.sessions.length;
+    // Only sessions that already took place count toward attendance numbers.
+    final held = d.sessions.where(_happened).toList();
+    final cells = d.students.length * held.length;
     var present = 0;
-    for (final s in d.sessions) {
+    for (final s in held) {
       for (final m in d.students) {
         if (d.isPresent(s.id, m.uid)) present++;
       }
     }
     final pct = cells == 0 ? 0 : (present / cells * 100).round();
-    // Students who missed at least one session this week (need follow-up).
+    // Students who missed at least one *held* session this week.
     final missing = d.students
-        .where((m) =>
-            d.sessions.any((s) => !d.isPresent(s.id, m.uid)))
+        .where((m) => held.any((s) => !d.isPresent(s.id, m.uid)))
         .length;
 
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.md),
       children: [
         Row(children: [
-          _kpi('${d.sessions.length}', 'الجلسات', filled: true),
+          _kpi('${held.length}', 'الجلسات', filled: true),
           const SizedBox(width: AppSpacing.sm),
           _kpi('$pct٪', 'نسبة الحضور'),
           const SizedBox(width: AppSpacing.sm),
@@ -805,8 +812,8 @@ class _HudurReportState extends State<_HudurReport> {
               children: [
                 for (final s in d.sessions)
                   Expanded(
-                    child: _bar(
-                        d.presentBySession[s.id]?.length ?? 0, total, s),
+                    child: _bar(d.presentBySession[s.id]?.length ?? 0, total, s,
+                        _happened(s)),
                   ),
               ],
             ),
@@ -816,20 +823,20 @@ class _HudurReportState extends State<_HudurReport> {
     );
   }
 
-  Widget _bar(int count, int total, Session s) {
+  Widget _bar(int count, int total, Session s, bool held) {
     final ratio = total == 0 ? 0.0 : count / total;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          Text('$count/$total',
+          Text(held ? '$count/$total' : '—',
               style: const TextStyle(fontSize: 9, color: AppColors.textMuted)),
           const SizedBox(height: 2),
           Container(
-            height: (60 * ratio).clamp(2, 60).toDouble(),
+            height: held ? (60 * ratio).clamp(2, 60).toDouble() : 4,
             decoration: BoxDecoration(
-              color: AppColors.primary,
+              color: held ? AppColors.primary : const Color(0xFFE3E6EB),
               borderRadius:
                   const BorderRadius.vertical(top: Radius.circular(6)),
             ),
@@ -883,15 +890,28 @@ class _HudurReportState extends State<_HudurReport> {
 
   Widget _row(_HudurData d, CircleMember m) {
     var present = 0;
+    var held = 0;
     final cells = <Widget>[];
     for (final s in d.sessions) {
+      if (!_happened(s)) {
+        cells.add(const Expanded(
+          flex: 2,
+          child: Center(
+            child: Text('-',
+                style: TextStyle(
+                    fontSize: 14,
+                    color: AppColors.textMuted,
+                    fontWeight: FontWeight.w700)),
+          ),
+        ));
+        continue;
+      }
+      held++;
       final p = d.isPresent(s.id, m.uid);
       if (p) present++;
       cells.add(Expanded(flex: 2, child: Center(child: _mark(p))));
     }
-    final pct = d.sessions.isEmpty
-        ? null
-        : (present / d.sessions.length * 100).round();
+    final pct = held == 0 ? null : (present / held * 100).round();
     return Container(
       decoration: const BoxDecoration(
         border: Border(top: BorderSide(color: AppColors.border, width: .5)),
