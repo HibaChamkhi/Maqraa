@@ -68,6 +68,12 @@ class _CirclesListPageState extends State<CirclesListPage> {
     _reload();
   }
 
+  Future<void> _joinCircle(AppUser user) async {
+    await Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => JoinCirclePage(user: user)));
+    _reload();
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = context.select<AuthBloc, AppUser?>((b) => b.state.user);
@@ -125,6 +131,8 @@ class _CirclesListPageState extends State<CirclesListPage> {
                           : _StudentCircleCard(
                               circle: s.circle, count: s.count, user: user!),
                     if (isTeacher) _AddCircleTile(onTap: _createCircle),
+                    if (!isManager && user != null)
+                      _JoinCircleTile(onTap: () => _joinCircle(user)),
                   ];
                   return Wrap(
                     spacing: gap,
@@ -654,6 +662,43 @@ class _AddCircleTile extends StatelessWidget {
                   size: 30, color: AppColors.primary),
               const SizedBox(height: AppSpacing.sm),
               Text('إنشاء حلقة جديدة',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                      color: AppColors.primary, fontWeight: FontWeight.w700)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Dashed-style "join a circle by code" tile (student only).
+class _JoinCircleTile extends StatelessWidget {
+  final VoidCallback onTap;
+  const _JoinCircleTile({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Material(
+      color: AppColors.sky.withValues(alpha: 0.5),
+      borderRadius: BorderRadius.circular(AppRadius.lg),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        onTap: onTap,
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 150),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            border: Border.all(color: AppColors.primary, width: 1.4),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.vpn_key_outlined,
+                  size: 30, color: AppColors.primary),
+              const SizedBox(height: AppSpacing.sm),
+              Text('الانضمام برمز دعوة',
                   style: theme.textTheme.titleSmall?.copyWith(
                       color: AppColors.primary, fontWeight: FontWeight.w700)),
             ],
