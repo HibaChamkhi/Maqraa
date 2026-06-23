@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -280,7 +282,7 @@ class _TaslimReportState extends State<_TaslimReport> {
               IconButton(
                 onPressed: canNewer ? _pageNewer : null,
                 icon: const Icon(Icons.chevron_right,
-                    textDirection: TextDirection.ltr),
+                    textDirection: ui.TextDirection.ltr),
                 color: AppColors.textMuted,
                 visualDensity: VisualDensity.compact,
               ),
@@ -292,7 +294,7 @@ class _TaslimReportState extends State<_TaslimReport> {
               IconButton(
                 onPressed: _pageOlder,
                 icon: const Icon(Icons.chevron_left,
-                    textDirection: TextDirection.ltr),
+                    textDirection: ui.TextDirection.ltr),
                 color: AppColors.textMuted,
                 visualDensity: VisualDensity.compact,
               ),
