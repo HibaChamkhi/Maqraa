@@ -2,10 +2,12 @@ import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
 import 'package:injectable/injectable.dart';
 
+import '../../../core/di/injection.dart';
 import '../../../core/error/error_utils.dart';
 import '../../../core/model /ui_state.dart';
 import '../../../domain/exam/models/exam.dart';
 import '../../../domain/exam/repositories/exam_repository.dart';
+import '../../../domain/reminder/repositories/reminder_repository.dart';
 
 part 'exam_event.dart';
 part 'exam_state.dart';
@@ -25,6 +27,25 @@ class ExamBloc extends Bloc<ExamEvent, ExamState> {
     on<ExamMyResultRequested>(_onMyResult);
   }
 
+  /// Schedule (or reschedule) a local reminder for an exam. Best-effort — a
+  /// missing notification permission must never fail the exam write.
+  Future<void> _syncReminder({
+    required String examId,
+    required String title,
+    required DateTime date,
+  }) async {
+    try {
+      await getIt<ReminderRepository>().scheduleExamReminder(
+          examId: examId, examTitle: title, examTime: date);
+    } catch (_) {/* ignore */}
+  }
+
+  Future<void> _cancelReminder(String examId) async {
+    try {
+      await getIt<ReminderRepository>().cancelExamReminder(examId);
+    } catch (_) {/* ignore */}
+  }
+
   Future<void> _onLoad(ExamsRequested event, Emitter<ExamState> emit) async {
     emit(state.copyWith(status: UIStatus.loading, message: '', actionDone: false));
     try {
@@ -40,7 +61,7 @@ class ExamBloc extends Bloc<ExamEvent, ExamState> {
       ExamScheduled event, Emitter<ExamState> emit) async {
     emit(state.copyWith(status: UIStatus.loading, message: '', actionDone: false));
     try {
-      await examRepository.scheduleExam(
+      final exam = await examRepository.scheduleExam(
         circleId: event.circleId,
         title: event.title,
         range: event.range,
@@ -49,6 +70,8 @@ class ExamBloc extends Bloc<ExamEvent, ExamState> {
         totalMarks: event.totalMarks,
         passMark: event.passMark,
       );
+      await _syncReminder(
+          examId: exam.id, title: exam.title, date: exam.date);
       final exams = await examRepository.getExams(event.circleId);
       emit(state.copyWith(
         status: UIStatus.success,
@@ -75,6 +98,8 @@ class ExamBloc extends Bloc<ExamEvent, ExamState> {
         totalMarks: event.totalMarks,
         passMark: event.passMark,
       );
+      await _syncReminder(
+          examId: event.examId, title: event.title, date: event.date);
       final exams = await examRepository.getExams(event.circleId);
       emit(state.copyWith(
         status: UIStatus.success,
@@ -95,6 +120,7 @@ class ExamBloc extends Bloc<ExamEvent, ExamState> {
         circleId: event.circleId,
         examId: event.examId,
       );
+      await _cancelReminder(event.examId);
       final exams = await examRepository.getExams(event.circleId);
       emit(state.copyWith(
         status: UIStatus.success,
@@ -155,6 +181,9 @@ class ExamBloc extends Bloc<ExamEvent, ExamState> {
         score: event.score,
         attendance: event.attendance,
         feedback: event.feedback,
+        hifz: event.hifz,
+        tajweed: event.tajweed,
+        fluency: event.fluency,
       );
       final results = await examRepository.getResults(
         circleId: event.circleId,

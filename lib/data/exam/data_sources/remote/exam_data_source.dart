@@ -146,13 +146,16 @@ class ExamRemoteDataSource {
     required num score,
     ExamAttendance attendance = ExamAttendance.present,
     String feedback = '',
+    num? hifz,
+    num? tajweed,
+    num? fluency,
   }) async {
     if (score < 0) {
       throw BadRequestException(message: 'الدرجة غير صالحة');
     }
+    final present = attendance == ExamAttendance.present;
     // Absent/excused students keep a zero score regardless of input.
-    final effectiveScore =
-        attendance == ExamAttendance.present ? score : 0;
+    final effectiveScore = present ? score : 0;
     await _results(circleId, examId).doc(uid).set(
           ExamResultDto.toMap(
             ExamResult(
@@ -161,6 +164,9 @@ class ExamRemoteDataSource {
               score: effectiveScore,
               attendance: attendance,
               feedback: feedback.trim(),
+              hifz: present ? hifz : null,
+              tajweed: present ? tajweed : null,
+              fluency: present ? fluency : null,
             ),
           ),
         );

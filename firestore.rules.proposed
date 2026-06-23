@@ -1,0 +1,88 @@
+// ============================================================================
+//  PROPOSED tightened Firestore rules (#6 enforce + #13).
+//  ----------------------------------------------------------------------------
+//  These scope access to circle MEMBERSHIP + ROLE instead of "any signed-in
+//  user can read/write any circle". They are NOT yet live — the working
+//  firestore.rules stays in place until this is tested.
+//
+//  BEFORE replacing firestore.rules with this, TEST these flows in the
+//  Firebase Console "Rules Playground" or a debug build:
+//    1. Student: join by invite code / send join request (creates own member).
+//    2. Student: view schedule, published exams, announcements.
+//    3. Student: submit today's task / confirm recitation (writes a doc).
+//    4. Teacher: add/edit/remove a student, mark attendance, record exam.
+//    5. Teacher: change privacy; Supervisor: privacy hidden/denied.
+//    6. Owner: promote/demote a supervisor, transfer ownership.
+//  If any student write is denied, loosen the affected subcollection's `write`
+//  rule (see the note at the catch-all match below).
+// ============================================================================
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function me() { return request.auth.uid; }
+    function circle(cid) {
+      return get(/databases/$(database)/documents/circles/$(cid)).data;
+    }
+    function isOwner(cid) {
+      return signedIn() && circle(cid).teacherId == me();
+    }
+    function isSupervisor(cid) {
+      return signedIn() && (me() in circle(cid).get('supervisorIds', []));
+    }
+    function isManager(cid) { return isOwner(cid) || isSupervisor(cid); }
+    function isMember(cid) {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/circles/$(cid)/members/$(me()));
+    }
+
+    // --- User profiles ---
+    match /users/{uid} {
+      // Readable by any signed-in user (teacher looks up a student by email).
+      allow read: if signedIn();
+      allow create, update, delete: if signedIn() && me() == uid;
+
+      match /dailyStats/{dateId} {
+        allow read, write: if signedIn() && me() == uid;
+      }
+      match /notifications/{notifId} {
+        allow read, update, delete: if signedIn() && me() == uid;
+        allow create: if signedIn(); // teachers fan-out to members
+      }
+    }
+
+    // --- Circles ---
+    match /circles/{cid} {
+      // Reads stay open to signed-in users (discovery of public circles).
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.teacherId == me();
+      // Owner: full edit. Supervisor: may edit circle details but NOT the
+      // owner-only fields (ownership, supervisors, privacy).
+      allow update: if isOwner(cid)
+        || (isSupervisor(cid)
+            && !request.resource.data.diff(resource.data).affectedKeys()
+                 .hasAny(['teacherId', 'supervisorIds', 'privacy']));
+      allow delete: if isOwner(cid);
+
+      // Enrollment: a student creates her OWN member doc (join request);
+      // managers add / edit / remove members.
+      match /members/{mid} {
+        allow read: if isMember(cid) || isManager(cid);
+        allow create: if isManager(cid) || (signedIn() && mid == me());
+        allow update, delete: if isManager(cid);
+      }
+
+      // All other circle data (attendance, sessions, schedules, tasks,
+      // announcements, exams, results, ...).
+      // NOTE: write is members+managers for now so student submissions don't
+      // break. To make data manager-only, change `write` to `if isManager(cid)`
+      // and add narrow per-collection rules for the docs students must write.
+      match /{document=**} {
+        allow read: if isMember(cid) || isManager(cid);
+        allow write: if isMember(cid) || isManager(cid);
+      }
+    }
+  }
+}

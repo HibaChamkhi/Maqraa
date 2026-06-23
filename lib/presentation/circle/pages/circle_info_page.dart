@@ -70,6 +70,8 @@ class _CircleInfoView extends StatelessWidget {
             return const Center(child: CircularProgressIndicator());
           }
           final canManage = _canManage(circle);
+          // Owner-only powers (US: supervisor can't change privacy / own circle).
+          final isOwner = circle.isOwner(user);
           return SingleChildScrollView(
             padding: const EdgeInsets.all(AppSpacing.lg),
             child: CenteredContent(
@@ -83,7 +85,7 @@ class _CircleInfoView extends StatelessWidget {
                   const SizedBox(height: AppSpacing.lg),
                   _QrCard(inviteCode: circle.inviteCode),
                   const SizedBox(height: AppSpacing.lg),
-                  if (canManage) ...[
+                  if (isOwner) ...[
                     _PrivacyCard(circle: circle, circleId: circleId),
                     const SizedBox(height: AppSpacing.lg),
                   ],

@@ -3375,6 +3375,27 @@ class _WeeklyAttendanceState extends State<_WeeklyAttendance> {
     return Column(
       children: [
         _weekNavBar(theme),
+        const Divider(height: 1),
+        if (widget.circle.days.isEmpty)
+          Container(
+            width: double.infinity,
+            color: AppColors.warning.withValues(alpha: 0.12),
+            padding: const EdgeInsets.symmetric(
+                horizontal: 12, vertical: 8),
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline,
+                    size: 16, color: AppColors.warning),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'لم تُحدّد أيام الحلقة بعد — حدّديها من «معلومات الحلقة» لعرض أيام الحضور فقط.',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
+              ],
+            ),
+          ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
           child: Align(

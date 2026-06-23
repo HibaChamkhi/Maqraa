@@ -139,13 +139,26 @@ class ExamResult {
   /// Optional teacher feedback note shown to the student after publishing.
   final String feedback;
 
+  // --- multi-criteria rubric (optional) ---
+  /// Separate marks for الحفظ / التجويد / الطلاقة. When any is set the [score]
+  /// is their sum; left null for legacy single-score results.
+  final num? hifz;
+  final num? tajweed;
+  final num? fluency;
+
   const ExamResult({
     required this.uid,
     required this.name,
     required this.score,
     this.attendance = ExamAttendance.present,
     this.feedback = '',
+    this.hifz,
+    this.tajweed,
+    this.fluency,
   });
+
+  /// True when this result was graded with the rubric breakdown.
+  bool get hasRubric => hifz != null || tajweed != null || fluency != null;
 
   /// Whether this result counts as a pass, given the exam's [passMark].
   bool passed(num passMark) =>
@@ -156,6 +169,9 @@ class ExamResult {
     num? score,
     ExamAttendance? attendance,
     String? feedback,
+    num? hifz,
+    num? tajweed,
+    num? fluency,
   }) {
     return ExamResult(
       uid: uid,
@@ -163,6 +179,9 @@ class ExamResult {
       score: score ?? this.score,
       attendance: attendance ?? this.attendance,
       feedback: feedback ?? this.feedback,
+      hifz: hifz ?? this.hifz,
+      tajweed: tajweed ?? this.tajweed,
+      fluency: fluency ?? this.fluency,
     );
   }
 }

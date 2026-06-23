@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/di/injection.dart';
 import '../../../core/ui/styles/theme.dart';
@@ -8,6 +9,8 @@ import '../../../domain/circle/models/circle.dart';
 import '../../../domain/progress/models/progress_info.dart';
 import '../../../domain/progress/repositories/progress_repository.dart';
 import '../../../domain/schedule/repositories/schedule_repository.dart';
+import '../../../domain/session/models/session.dart';
+import '../../../domain/session/repositories/session_repository.dart';
 import '../../notification/pages/notifications_page.dart';
 import '../../profile/pages/profile_page.dart';
 import '../../progress/pages/my_progress_page.dart';
@@ -72,7 +75,11 @@ class _StudentHomePageState extends State<StudentHomePage> {
 }
 
 /// Holds the fetched-once data for the home tab.
-typedef _HomeData = ({ProgressInfo progress, String todayRange});
+typedef _HomeData = ({
+  ProgressInfo progress,
+  String todayRange,
+  Session? nextSession,
+});
 
 class _HomeTab extends StatefulWidget {
   final AppUser user;
@@ -104,7 +111,22 @@ class _HomeTabState extends State<_HomeTab> {
           .getSchedule(circleId: widget.circle.id, weekId: weekId);
       range = schedule?.days[_todayCode()] ?? '';
     } catch (_) {/* schedule optional */}
-    return (progress: progress, todayRange: range);
+
+    // Next upcoming session — read live so teacher edits show immediately.
+    Session? next;
+    try {
+      final sessions =
+          await getIt<SessionRepository>().getSessions(widget.circle.id);
+      final now = DateTime.now();
+      final upcoming = sessions
+          .where((s) =>
+              s.scheduledAt.isAfter(now) && s.status != SessionStatus.ended)
+          .toList()
+        ..sort((a, b) => a.scheduledAt.compareTo(b.scheduledAt));
+      next = upcoming.isEmpty ? null : upcoming.first;
+    } catch (_) {/* sessions optional */}
+
+    return (progress: progress, todayRange: range, nextSession: next);
   }
 
   String _todayCode() {
@@ -135,6 +157,8 @@ class _HomeTabState extends State<_HomeTab> {
         builder: (context, snap) {
           final progress = snap.data?.progress;
           final todayRange = snap.data?.todayRange ?? '';
+          final nextSession = snap.data?.nextSession;
+          final loadingSession = !snap.hasData;
           return ListView(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
             children: [
@@ -174,8 +198,14 @@ class _HomeTabState extends State<_HomeTab> {
               const SizedBox(height: AppSpacing.sm),
               _InfoTile(
                 icon: Icons.event_available_outlined,
-                title: 'حلقة ${widget.circle.name}',
-                subtitle: 'غدًا • 4:30 م',
+                title: nextSession != null && nextSession.title.trim().isNotEmpty
+                    ? nextSession.title.trim()
+                    : 'حلقة ${widget.circle.name}',
+                subtitle: loadingSession
+                    ? '...'
+                    : nextSession == null
+                        ? 'لا توجد جلسة قادمة'
+                        : '${DateFormat('EEEE d MMM', 'ar').format(nextSession.scheduledAt)} • ${DateFormat('h:mm a', 'ar').format(nextSession.scheduledAt)}',
                 accent: AppColors.primaryLight,
               ),
               const SizedBox(height: AppSpacing.lg),
