@@ -192,6 +192,7 @@ class _TaslimReportState extends State<_TaslimReport> {
                 color: selected ? AppColors.primary : AppColors.border),
           ),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(label(w),
@@ -241,27 +242,41 @@ class _TaslimReportState extends State<_TaslimReport> {
             ],
           ),
           const SizedBox(height: AppSpacing.sm),
-          Row(
-            children: [
-              IconButton(
-                onPressed: canNewer ? _pageNewer : null,
-                icon: const Icon(Icons.chevron_right),
-                color: AppColors.textMuted,
-              ),
-              Expanded(
-                child: Wrap(
-                  alignment: WrapAlignment.center,
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [for (final w in windowWeeks) card(w)],
+          SizedBox(
+            height: 66,
+            child: Row(
+              children: [
+                IconButton(
+                  onPressed: canNewer ? _pageNewer : null,
+                  icon: const Icon(Icons.chevron_right),
+                  color: AppColors.textMuted,
                 ),
-              ),
-              IconButton(
-                onPressed: _pageOlder,
-                icon: const Icon(Icons.chevron_left),
-                color: AppColors.textMuted,
-              ),
-            ],
+                Expanded(
+                  child: LayoutBuilder(builder: (ctx, c) {
+                    final row = Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (var i = 0; i < windowWeeks.length; i++) ...[
+                          if (i > 0) const SizedBox(width: 8),
+                          card(windowWeeks[i]),
+                        ],
+                      ],
+                    );
+                    final totalW = windowWeeks.length * 150.0 +
+                        (windowWeeks.length - 1) * 8;
+                    return totalW <= c.maxWidth
+                        ? Center(child: row)
+                        : SingleChildScrollView(
+                            scrollDirection: Axis.horizontal, child: row);
+                  }),
+                ),
+                IconButton(
+                  onPressed: _pageOlder,
+                  icon: const Icon(Icons.chevron_left),
+                  color: AppColors.textMuted,
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -848,10 +863,11 @@ class _Matrix extends StatelessWidget {
     const examW = 86.0, avgW = 70.0, baseNameW = 140.0;
     return LayoutBuilder(builder: (context, c) {
       final content = examW * data.exams.length + avgW;
+      final avail = c.maxWidth.isFinite ? c.maxWidth : 640.0;
       // boxW = the bordered container's outer width; its inner content area is
       // boxW - 2 (1px border each side), so the columns must sum to boxW - 2.
-      final boxW = (baseNameW + content + 2) < c.maxWidth
-          ? c.maxWidth
+      final boxW = (baseNameW + content + 2) < avail
+          ? avail
           : baseNameW + content + 2;
       final nameW = boxW - 2 - content;
       return SingleChildScrollView(
