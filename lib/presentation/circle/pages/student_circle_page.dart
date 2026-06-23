@@ -223,24 +223,19 @@ class _StudentCirclePageState extends State<StudentCirclePage> {
             return SingleChildScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(AppSpacing.md),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 720),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _headerCard(d),
-                      const SizedBox(height: AppSpacing.md),
-                      _weekCard(d),
-                      const SizedBox(height: AppSpacing.md),
-                      _statsGrid(d),
-                      const SizedBox(height: AppSpacing.md),
-                      _partnerAndAnnouncement(d),
-                      const SizedBox(height: AppSpacing.md),
-                      _roster(d),
-                    ],
-                  ),
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _headerCard(d),
+                  const SizedBox(height: AppSpacing.md),
+                  _weekCard(d),
+                  const SizedBox(height: AppSpacing.md),
+                  _statsGrid(d),
+                  const SizedBox(height: AppSpacing.md),
+                  _partnerAndAnnouncement(d),
+                  const SizedBox(height: AppSpacing.md),
+                  _roster(d),
+                ],
               ),
             );
           },
@@ -498,7 +493,7 @@ class _StudentCirclePageState extends State<StudentCirclePage> {
       crossAxisCount: 4,
       mainAxisSpacing: AppSpacing.sm,
       crossAxisSpacing: AppSpacing.sm,
-      childAspectRatio: 1.7,
+      childAspectRatio: 2.8,
       children: [
         _stat(d.attendancePct == null ? '—' : '${d.attendancePct}٪', 'حضوري',
             AppColors.success),
