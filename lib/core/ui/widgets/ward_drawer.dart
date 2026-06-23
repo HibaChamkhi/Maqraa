@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../domain/auth/models/app_user.dart';
 import '../../../presentation/auth/bloc/auth_bloc.dart';
+import '../../../presentation/calendar/pages/all_circles_calendar_page.dart';
 import '../../../presentation/calendar/pages/week_schedule_page.dart';
 import '../../../presentation/circle/pages/all_students_page.dart';
 import '../../../presentation/circle/pages/circles_list_page.dart';
@@ -81,6 +82,7 @@ class WardDrawer extends StatelessWidget {
             ('الرئيسية', Icons.home_outlined),
             ('حلقتي', Icons.groups_2_outlined),
             ('واجب اليوم', Icons.today_outlined),
+            ('الجدول', Icons.calendar_month_outlined),
             ('تقدّمي', Icons.timeline_outlined),
             ('الإشعارات', Icons.notifications_outlined),
             ('الإعدادات', Icons.settings_outlined),
@@ -194,7 +196,9 @@ class WardDrawer extends StatelessWidget {
         push(AllStudentsPage(user: user));
         break;
       case 'الجدول':
-        push(WeekSchedulePage(user: user));
+        push(_isTeacher
+            ? WeekSchedulePage(user: user)
+            : AllCirclesCalendarPage(user: user));
         break;
       case 'الاختبارات':
         push(SectionCirclePickerPage(
