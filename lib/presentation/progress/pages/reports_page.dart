@@ -161,6 +161,22 @@ class _ExamsReportState extends State<_ExamsReport> {
           children: [
             _kpis(context, d),
             const SizedBox(height: AppSpacing.md),
+            const Padding(
+              padding: EdgeInsets.only(bottom: AppSpacing.sm),
+              child: Row(
+                children: [
+                  Icon(Icons.touch_app_outlined,
+                      size: 14, color: AppColors.textMuted),
+                  SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                        'اضغطي على عنوان الاختبار لعرض تحليله، وعلى اسم الطالبة لسجلّها',
+                        style: TextStyle(
+                            fontSize: 11, color: AppColors.textMuted)),
+                  ),
+                ],
+              ),
+            ),
             _Matrix(
               data: d,
               onStudent: (m) => _showStudent(context, d, m),
@@ -389,11 +405,16 @@ class _Matrix extends StatelessWidget {
                                     style: const TextStyle(
                                         fontSize: 11,
                                         fontWeight: FontWeight.w700,
-                                        color: AppColors.ink)),
+                                        color: AppColors.primary,
+                                        decoration: TextDecoration.underline,
+                                        decorationColor: AppColors.primary)),
                                 Text('${fmt.format(e.date)} · ${e.totalMarks}',
                                     style: const TextStyle(
                                         fontSize: 9,
                                         color: AppColors.textMuted)),
+                                const SizedBox(height: 2),
+                                const Icon(Icons.insights_outlined,
+                                    size: 12, color: AppColors.primary),
                               ],
                             ),
                           ),
@@ -482,6 +503,8 @@ class _RowTile extends StatelessWidget {
                           style: const TextStyle(
                               fontSize: 13, fontWeight: FontWeight.w700)),
                     ),
+                    const Icon(Icons.chevron_left,
+                        size: 16, color: AppColors.textMuted),
                   ],
                 ),
               ),
