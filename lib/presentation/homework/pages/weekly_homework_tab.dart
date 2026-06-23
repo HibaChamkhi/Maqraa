@@ -88,7 +88,6 @@ class _WeeklyHomeworkTabState extends State<WeeklyHomeworkTab> {
   }
 
   Widget _grid(WeeklyHomework week, {required Set<String> myDone}) {
-    final theme = Theme.of(context);
     Widget head(String t, int flex) => Expanded(
         flex: flex,
         child: Text(t,

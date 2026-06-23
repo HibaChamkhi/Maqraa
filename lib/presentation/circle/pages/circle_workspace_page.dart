@@ -1760,7 +1760,7 @@ class _FixedScheduleEditor extends StatefulWidget {
 }
 
 class _FixedScheduleEditorState extends State<_FixedScheduleEditor> {
-  late Set<String> _days = {...widget.initialDays};
+  late final Set<String> _days = {...widget.initialDays};
   late TimeOfDay _time = widget.initialTime;
   late int _duration = widget.initialDuration;
 
@@ -2097,7 +2097,7 @@ class _SessionFormState extends State<_SessionForm> {
                   dense: true,
                   title: const Text('تكرار أسبوعي'),
                   value: _repeat,
-                  activeColor: AppColors.primary,
+                  activeThumbColor: AppColors.primary,
                   onChanged: (v) => setState(() => _repeat = v),
                 ),
                 if (_repeat) ...[

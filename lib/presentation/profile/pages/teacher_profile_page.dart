@@ -300,6 +300,7 @@ class _StatsRow extends StatelessWidget {
 
 class StatCircle extends StatelessWidget {
   const StatCircle({
+    super.key,
     required this.icon,
     required this.value,
     required this.label,

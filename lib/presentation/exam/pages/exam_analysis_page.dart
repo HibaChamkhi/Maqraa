@@ -104,7 +104,7 @@ class _ExamAnalysisPageState extends State<ExamAnalysisPage> {
           }
           final d = snap.data!;
           final present = <num>[];
-          var passed = 0, absent = 0, excused = 0;
+          var passed = 0;
           final dist = <String, int>{
             'ممتاز': 0,
             'جيد جدًا': 0,
@@ -120,10 +120,6 @@ class _ExamAnalysisPageState extends State<ExamAnalysisPage> {
               if (r.score >= _exam.passMark) passed++;
               final g = examGradeLabel(r.score, _exam.totalMarks);
               if (dist.containsKey(g)) dist[g] = dist[g]! + 1;
-            } else if (r.attendance == ExamAttendance.absent) {
-              absent++;
-            } else {
-              excused++;
             }
           }
           final hasScores = present.isNotEmpty;

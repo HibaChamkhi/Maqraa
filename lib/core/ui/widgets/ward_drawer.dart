@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../domain/auth/models/app_user.dart';
-import '../../../presentation/announcement/pages/announcements_page.dart';
 import '../../../presentation/auth/bloc/auth_bloc.dart';
 import '../../../presentation/calendar/pages/week_schedule_page.dart';
 import '../../../presentation/circle/pages/all_students_page.dart';
