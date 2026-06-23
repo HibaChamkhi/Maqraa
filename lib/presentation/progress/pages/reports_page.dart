@@ -8,7 +8,7 @@ import '../../../domain/circle/models/circle.dart';
 import '../../../domain/circle/repositories/circle_repository.dart';
 import '../../../domain/exam/models/exam.dart';
 import '../../../domain/exam/repositories/exam_repository.dart';
-import '../../exam/pages/exam_results_page.dart';
+import '../../exam/pages/exam_analysis_page.dart';
 
 /// التقارير — per-circle reports with three sections:
 /// التسليم الأسبوعي (homework) · الحضور (sessions) · الاختبارات (exams).
@@ -316,10 +316,10 @@ class _ExamsReportState extends State<_ExamsReport> {
     );
   }
 
-  /// Tap an exam header → open its grading screen to edit results; reload after.
+  /// Tap an exam header → open its analysis (with edit/publish actions inside).
   Future<void> _editExam(Exam e) async {
     await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => ExamResultsPage(
+      builder: (_) => ExamAnalysisPage(
           circleId: widget.circleId, exam: e, user: widget.user),
     ));
     if (mounted) setState(() => _future = _load());
