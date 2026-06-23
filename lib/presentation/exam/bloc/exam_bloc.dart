@@ -74,6 +74,12 @@ class ExamBloc extends Bloc<ExamEvent, ExamState> {
       );
       await _syncReminder(
           examId: exam.id, title: exam.title, date: exam.date);
+      await notifyCircleStudents(
+        circleId: event.circleId,
+        title: 'اختبار جديد قادم',
+        body: 'حُدِّد اختبار «${exam.title}» — تفقّدي قسم الاختبارات',
+        type: NotificationType.exam,
+      );
       final exams = await examRepository.getExams(event.circleId);
       emit(state.copyWith(
         status: UIStatus.success,

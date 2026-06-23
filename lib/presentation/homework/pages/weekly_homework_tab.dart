@@ -5,10 +5,12 @@ import 'package:intl/intl.dart' hide TextDirection;
 
 import '../../../core/di/injection.dart';
 import '../../../core/ui/styles/theme.dart';
+import '../../../core/util/notify.dart';
 import '../../../data/homework/homework_repository.dart';
 import '../../../domain/auth/models/app_user.dart';
 import '../../../domain/circle/models/circle.dart';
 import '../../../domain/homework/models/weekly_homework.dart';
+import '../../../domain/notification/models/app_notification.dart';
 
 /// «الجدول الأسبوعي» — a weekly plan grid (3 columns): day+date, الواجب, ملاحظات.
 /// The teacher fills it; the student taps her row to confirm «تمّ» (the
@@ -186,6 +188,15 @@ class _WeeklyHomeworkTabState extends State<WeeklyHomeworkTab> {
         wajib: wajib.text,
         notes: notes.text,
       );
+      if (wajib.text.trim().isNotEmpty) {
+        await notifyCircleStudents(
+          circleId: widget.circle.id,
+          title: 'واجب جديد',
+          body:
+              'أضافت المعلّمة واجب ${WeeklyHomework.dayLabels[code] ?? ''} في حلقة ${widget.circle.name} — تفقّدي واجباتك',
+          type: NotificationType.homework,
+        );
+      }
     }
   }
 

@@ -1,5 +1,7 @@
 import 'package:injectable/injectable.dart';
 
+import '../../../core/util/notify.dart';
+import '../../../domain/notification/models/app_notification.dart';
 import '../../../domain/session/models/session.dart';
 import '../../../domain/session/repositories/session_repository.dart';
 import '../data_sources/remote/session_data_source.dart';
@@ -22,8 +24,20 @@ class SessionRepositoryImpl implements SessionRepository {
   Future<Session> startSession({
     required String circleId,
     required String sessionId,
-  }) =>
-      remoteDataSource.startSession(circleId: circleId, sessionId: sessionId);
+  }) async {
+    final session = await remoteDataSource.startSession(
+        circleId: circleId, sessionId: sessionId);
+    // Best-effort: tell the circle's students the session is live.
+    await notifyCircleStudents(
+      circleId: circleId,
+      title: 'جلسة بدأت الآن',
+      body: session.title.trim().isNotEmpty
+          ? 'بدأت جلسة «${session.title.trim()}» — انضمّي الآن'
+          : 'بدأت جلسة في حلقتك — انضمّي الآن',
+      type: NotificationType.circleUpcoming,
+    );
+    return session;
+  }
 
   @override
   Future<Session> endSession({
