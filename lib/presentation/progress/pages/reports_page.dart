@@ -723,7 +723,11 @@ class _HudurReportState extends State<_HudurReport> {
       }
     }
     final pct = cells == 0 ? 0 : (present / cells * 100).round();
-    final absent = cells - present;
+    // Students who missed at least one session this week (need follow-up).
+    final missing = d.students
+        .where((m) =>
+            d.sessions.any((s) => !d.isPresent(s.id, m.uid)))
+        .length;
 
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.md),
@@ -733,7 +737,7 @@ class _HudurReportState extends State<_HudurReport> {
           const SizedBox(width: AppSpacing.sm),
           _kpi('$pct٪', 'نسبة الحضور'),
           const SizedBox(width: AppSpacing.sm),
-          _kpi('$absent', 'مرات الغياب', danger: true),
+          _kpi('$missing', 'طالبات متغيبات', danger: true),
         ]),
         const SizedBox(height: AppSpacing.md),
         _chart(d),
