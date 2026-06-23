@@ -230,9 +230,8 @@ class WardDrawer extends StatelessWidget {
             .push(MaterialPageRoute(builder: (_) => const HelpPage()));
         break;
       case 'واجب اليوم':
-        // Aggregated واجبات across all her halaqat (no picker).
-        Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => TodayWajibPage(user: user)));
+        // Aggregated واجبات across all her halaqat (no picker) — keep the rail.
+        push(TodayWajibPage(user: user));
         break;
       case 'تقدّمي':
         Navigator.of(context)
