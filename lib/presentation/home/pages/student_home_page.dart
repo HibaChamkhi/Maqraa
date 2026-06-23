@@ -5,7 +5,6 @@ import 'package:intl/intl.dart';
 
 import '../../../core/di/injection.dart';
 import '../../../core/ui/styles/theme.dart';
-import '../../../core/ui/widgets/werd_widgets.dart';
 import '../../../data/homework/homework_repository.dart';
 import '../../../domain/auth/models/app_user.dart';
 import '../../../domain/circle/models/circle.dart';
@@ -219,63 +218,58 @@ class StudentHomeTabState extends State<StudentHomeTab> {
           }
           final d = snap.data!;
           return LayoutBuilder(builder: (context, c) {
-            final twoCol = c.maxWidth >= 1000;
+            final wide = c.maxWidth >= 900;
 
-            final side = <Widget>[
-              if (d.sessions.isNotEmpty) ...[
-                _sessionsSection(d),
-                const SizedBox(height: AppSpacing.lg),
-              ],
-              if (d.exams.isNotEmpty) ...[
-                _examsSection(d),
-                const SizedBox(height: AppSpacing.lg),
-              ],
-              _ProgressSnap(
-                  progress: d.progress,
-                  onTap: () => _open(const MyProgressPage())),
-            ];
+            final wajibCard = _cardShell(
+              title: 'واجبات اليوم',
+              icon: Icons.menu_book_rounded,
+              trailing: d.wajibTotal > 0 ? _donePill(d) : null,
+              child: _wajibContent(d),
+            );
+            final sessionsCard = _cardShell(
+              title: 'جلساتك القادمة',
+              icon: Icons.event_available_outlined,
+              child: _sessionsContent(d),
+            );
+            final examsCard = _cardShell(
+              title: 'اختبارات قريبة',
+              icon: Icons.assignment_turned_in_outlined,
+              child: _examsContent(d),
+            );
 
-            final Widget body = twoCol
-                ? Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        flex: 3,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [_wajibSection(d)],
-                        ),
-                      ),
-                      const SizedBox(width: 20),
-                      Expanded(
-                        flex: 2,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: side,
-                        ),
-                      ),
-                    ],
+            final Widget body = wide
+                ? IntrinsicHeight(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(flex: 2, child: wajibCard),
+                        const SizedBox(width: AppSpacing.md),
+                        Expanded(child: sessionsCard),
+                        const SizedBox(width: AppSpacing.md),
+                        Expanded(child: examsCard),
+                      ],
+                    ),
                   )
                 : Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _wajibSection(d),
-                      const SizedBox(height: AppSpacing.lg),
-                      ...side,
+                      wajibCard,
+                      const SizedBox(height: AppSpacing.md),
+                      sessionsCard,
+                      const SizedBox(height: AppSpacing.md),
+                      examsCard,
                     ],
                   );
 
             return ListView(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 28),
+              padding: const EdgeInsets.all(AppSpacing.md),
               children: [
                 _Header(
                     user: widget.user,
                     circleCount: d.halaqat.length,
                     onProfile: () => _open(const ProfilePage())),
-                const SizedBox(height: AppSpacing.lg),
+                const SizedBox(height: AppSpacing.md),
+                _statsRow(d, wide),
+                const SizedBox(height: AppSpacing.md),
                 body,
               ],
             );
@@ -285,42 +279,111 @@ class StudentHomeTabState extends State<StudentHomeTab> {
     );
   }
 
+  // ------------------------------------------------------------- stats row
+  Widget _statsRow(_HomeAgg d, bool wide) {
+    final liveOrSoon = d.sessions.length;
+    final examsCount = d.exams.where((e) => e.upcoming).length;
+    return GridView.count(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisCount: wide ? 4 : 2,
+      mainAxisSpacing: AppSpacing.md,
+      crossAxisSpacing: AppSpacing.md,
+      childAspectRatio: wide ? 2.5 : 2.3,
+      children: [
+        _StatTile(
+          value: '${d.progress?.percent ?? 0}٪',
+          label: 'تقدّمي العام',
+          icon: Icons.trending_up_rounded,
+          tint: AppColors.primary,
+          onTap: () => _open(const MyProgressPage()),
+        ),
+        _StatTile(
+          value: '${d.wajibDone}/${d.wajibTotal}',
+          label: 'واجبات اليوم',
+          icon: Icons.menu_book_rounded,
+          tint: AppColors.success,
+        ),
+        _StatTile(
+          value: '$liveOrSoon',
+          label: 'جلسات قادمة',
+          icon: Icons.event_available_outlined,
+          tint: AppColors.primaryDark,
+        ),
+        _StatTile(
+          value: '$examsCount',
+          label: 'اختبارات قريبة',
+          icon: Icons.assignment_turned_in_outlined,
+          tint: AppColors.warning,
+        ),
+      ],
+    );
+  }
+
+  Widget _donePill(_HomeAgg d) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+        decoration: BoxDecoration(
+          color: AppColors.primary,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text('${d.wajibDone} / ${d.wajibTotal} مكتمل',
+            style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w700)),
+      );
+
+  Widget _cardShell({
+    required String title,
+    required IconData icon,
+    required Widget child,
+    Widget? trailing,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.border),
+      ),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Flexible(
+                child: Row(children: [
+                  Icon(icon, size: 18, color: AppColors.primary),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleMedium),
+                  ),
+                ]),
+              ),
+              if (trailing != null) trailing,
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          child,
+        ],
+      ),
+    );
+  }
+
   // ----------------------------------------------------------- واجبات اليوم
-  Widget _wajibSection(_HomeAgg d) {
+  Widget _wajibContent(_HomeAgg d) {
     final withWajib = d.halaqat.where((h) => h.plan != null).toList();
     final without = d.halaqat.where((h) => h.plan == null).toList();
+    if (withWajib.isEmpty && without.isEmpty) {
+      return const _EmptyHint(text: 'لست مشتركة في أي حلقة بعد');
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(children: [
-              const Icon(Icons.menu_book_rounded,
-                  size: 18, color: AppColors.primary),
-              const SizedBox(width: 6),
-              Text('واجبات اليوم',
-                  style: Theme.of(context).textTheme.titleMedium),
-            ]),
-            if (d.wajibTotal > 0)
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                decoration: BoxDecoration(
-                  color: AppColors.primary,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text('${d.wajibDone} / ${d.wajibTotal} مكتمل',
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700)),
-              ),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        if (withWajib.isEmpty && without.isEmpty)
-          const _EmptyHint(text: 'لست مشتركة في أي حلقة بعد'),
         for (final h in withWajib) ...[
           _WajibCard(
             h: h,
@@ -339,18 +402,13 @@ class StudentHomeTabState extends State<StudentHomeTab> {
   }
 
   // -------------------------------------------------------- جلساتك القادمة
-  Widget _sessionsSection(_HomeAgg d) {
+  Widget _sessionsContent(_HomeAgg d) {
+    if (d.sessions.isEmpty) {
+      return const _EmptyHint(text: 'لا جلسات قادمة حاليًا');
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(children: [
-          const Icon(Icons.event_available_outlined,
-              size: 18, color: AppColors.primary),
-          const SizedBox(width: 6),
-          Text('جلساتك القادمة',
-              style: Theme.of(context).textTheme.titleMedium),
-        ]),
-        const SizedBox(height: AppSpacing.sm),
         for (final s in d.sessions) ...[
           _SessionRow(
             item: s,
@@ -364,18 +422,13 @@ class StudentHomeTabState extends State<StudentHomeTab> {
   }
 
   // -------------------------------------------------------- اختبارات قريبة
-  Widget _examsSection(_HomeAgg d) {
+  Widget _examsContent(_HomeAgg d) {
+    if (d.exams.isEmpty) {
+      return const _EmptyHint(text: 'لا اختبارات قريبة');
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(children: [
-          const Icon(Icons.assignment_turned_in_outlined,
-              size: 18, color: AppColors.primary),
-          const SizedBox(width: 6),
-          Text('اختبارات قريبة',
-              style: Theme.of(context).textTheme.titleMedium),
-        ]),
-        const SizedBox(height: AppSpacing.sm),
         for (final e in d.exams) ...[
           _ExamRow(
             item: e,
@@ -773,14 +826,22 @@ class _ExamRow extends StatelessWidget {
       );
 }
 
-class _ProgressSnap extends StatelessWidget {
-  final ProgressInfo? progress;
-  final VoidCallback onTap;
-  const _ProgressSnap({required this.progress, required this.onTap});
+class _StatTile extends StatelessWidget {
+  final String value;
+  final String label;
+  final IconData icon;
+  final Color tint;
+  final VoidCallback? onTap;
+  const _StatTile({
+    required this.value,
+    required this.label,
+    required this.icon,
+    required this.tint,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final p = progress;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(AppRadius.lg),
@@ -791,35 +852,34 @@ class _ProgressSnap extends StatelessWidget {
           border: Border.all(color: AppColors.border),
         ),
         padding: const EdgeInsets.all(AppSpacing.md),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            ProgressRing(
-              value: p?.ratio ?? 0,
-              size: 60,
-              stroke: 8,
-              center: Text('${p?.percent ?? 0}%',
-                  style: const TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w700)),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: tint.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(icon, size: 16, color: tint),
+                ),
+                const Spacer(),
+                Text(value,
+                    style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: tint)),
+              ],
             ),
-            const SizedBox(width: AppSpacing.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('تقدّمي العام',
-                      style: TextStyle(
-                          fontSize: 14, fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 3),
-                  Text(
-                      p == null
-                          ? 'سيظهر تقدّمك بعد تسجيل الحفظ'
-                          : '${p.pagesDone} من ${p.totalPages} صفحة محفوظة',
-                      style: const TextStyle(
-                          fontSize: 11, color: AppColors.textMuted)),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_left, color: AppColors.textMuted),
+            const SizedBox(height: 6),
+            Text(label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style:
+                    const TextStyle(fontSize: 11, color: AppColors.textMuted)),
           ],
         ),
       ),
