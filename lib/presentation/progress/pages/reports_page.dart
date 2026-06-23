@@ -102,6 +102,7 @@ class _TaslimReport extends StatefulWidget {
 class _TaslimReportState extends State<_TaslimReport> {
   late final DateTime _thisWeek = WeeklyHomework.weekStartOf(DateTime.now());
   late DateTime _selected = _thisWeek; // week whose detail is shown
+  late DateTime _anchor = _thisWeek; // newest week shown in the strip window
   List<CircleMember>? _students; // loaded once
 
   late Future<_TaslimData> _future = _load(_selected);
@@ -126,6 +127,14 @@ class _TaslimReportState extends State<_TaslimReport> {
         _future = _load(week);
       });
 
+  void _pageOlder() =>
+      setState(() => _anchor = _anchor.subtract(const Duration(days: 7)));
+
+  void _pageNewer() {
+    final next = _anchor.add(const Duration(days: 7));
+    if (!next.isAfter(_thisWeek)) setState(() => _anchor = next);
+  }
+
   Future<void> _pickWeek() async {
     final picked = await showDatePicker(
       context: context,
@@ -133,7 +142,10 @@ class _TaslimReportState extends State<_TaslimReport> {
       firstDate: DateTime(2020),
       lastDate: _thisWeek.add(const Duration(days: 6)),
     );
-    if (picked != null) _select(WeeklyHomework.weekStartOf(picked));
+    if (picked == null) return;
+    final wk = WeeklyHomework.weekStartOf(picked);
+    setState(() => _anchor = wk.isAfter(_thisWeek) ? _thisWeek : wk);
+    _select(wk);
   }
 
   @override
@@ -168,17 +180,80 @@ class _TaslimReportState extends State<_TaslimReport> {
     );
   }
 
-  /// Horizontal strip of the last weeks + a date picker for any older week.
+  /// Window of 5 two-line week cards + paging chevrons + date picker.
   Widget _weeksStrip() {
-    final df = DateFormat('d MMM', 'ar');
+    final monthYF = DateFormat('MMMM y', 'ar');
+    final monthF = DateFormat('MMMM', 'ar');
+    final dF = DateFormat('d', 'ar');
     final weeks =
-        List.generate(8, (i) => _thisWeek.subtract(Duration(days: 7 * i)));
+        List.generate(5, (i) => _anchor.subtract(Duration(days: 7 * i)));
+    final canNewer = _anchor.isBefore(_thisWeek);
+
+    String title(DateTime w) {
+      final ago = (_thisWeek.difference(w).inDays / 7).round();
+      if (ago == 0) return 'الأسبوع الحالي';
+      if (ago == 1) return 'الأسبوع السابق';
+      if (ago == 2) return 'قبل أسبوعين';
+      return monthYF.format(w);
+    }
+
+    String range(DateTime w) {
+      final end = w.add(const Duration(days: 6));
+      return w.month == end.month
+          ? '${dF.format(w)} - ${dF.format(end)} ${monthYF.format(end)}'
+          : '${dF.format(w)} ${monthF.format(w)} - ${dF.format(end)} ${monthYF.format(end)}';
+    }
+
+    Widget card(DateTime w) {
+      final selected = _id(w) == _id(_selected);
+      return Expanded(
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          onTap: () => _select(w),
+          child: Container(
+            height: 56,
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            decoration: BoxDecoration(
+              color: selected ? AppColors.sky : AppColors.surface,
+              borderRadius: BorderRadius.circular(AppRadius.lg),
+              border: Border.all(
+                  color: selected ? AppColors.primary : AppColors.border,
+                  width: selected ? 1.5 : 1),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(title(w),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color:
+                            selected ? AppColors.primaryDark : AppColors.ink)),
+                const SizedBox(height: 2),
+                Text(range(w),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 10, color: AppColors.textMuted)),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Container(
-      padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.md, vertical: AppSpacing.sm),
-      decoration: const BoxDecoration(
+      margin: const EdgeInsets.fromLTRB(
+          AppSpacing.md, AppSpacing.sm, AppSpacing.md, AppSpacing.md),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
         color: AppColors.surface,
-        border: Border(top: BorderSide(color: AppColors.border)),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.border),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -198,50 +273,26 @@ class _TaslimReportState extends State<_TaslimReport> {
               ),
             ],
           ),
-          const SizedBox(height: AppSpacing.xs),
-          SizedBox(
-            height: 54,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: weeks.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
-              itemBuilder: (_, i) {
-                final w = weeks[i];
-                final end = w.add(const Duration(days: 6));
-                final selected = _id(w) == _id(_selected);
-                final label = i == 0
-                    ? 'هذا الأسبوع'
-                    : i == 1
-                        ? 'الأسبوع السابق'
-                        : '${df.format(w)} - ${df.format(end)}';
-                return InkWell(
-                  borderRadius: BorderRadius.circular(AppRadius.lg),
-                  onTap: () => _select(w),
-                  child: Container(
-                    width: 140,
-                    alignment: Alignment.center,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    decoration: BoxDecoration(
-                      color: selected ? AppColors.sky : AppColors.surface,
-                      borderRadius: BorderRadius.circular(AppRadius.lg),
-                      border: Border.all(
-                          color:
-                              selected ? AppColors.primary : AppColors.border),
-                    ),
-                    child: Text(label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: selected
-                                ? AppColors.primaryDark
-                                : AppColors.ink)),
-                  ),
-                );
-              },
-            ),
+          const SizedBox(height: AppSpacing.sm),
+          Row(
+            children: [
+              IconButton(
+                onPressed: canNewer ? _pageNewer : null,
+                icon: const Icon(Icons.chevron_right),
+                color: AppColors.textMuted,
+                visualDensity: VisualDensity.compact,
+              ),
+              for (var i = 0; i < weeks.length; i++) ...[
+                if (i > 0) const SizedBox(width: 8),
+                card(weeks[i]),
+              ],
+              IconButton(
+                onPressed: _pageOlder,
+                icon: const Icon(Icons.chevron_left),
+                color: AppColors.textMuted,
+                visualDensity: VisualDensity.compact,
+              ),
+            ],
           ),
         ],
       ),
