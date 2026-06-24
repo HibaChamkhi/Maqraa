@@ -351,6 +351,18 @@ class _WeekSchedulePageState extends State<WeekSchedulePage> {
               .toList()
             ..sort((a, b) => a.start.compareTo(b.start));
 
+          // Grid hours must cover the actual sessions (e.g. evening 20:00 or
+          // early 06:00), otherwise blocks get clamped off-screen.
+          var gridStart = _startHour;
+          var gridEnd = _endHour;
+          for (final e in weekEvents) {
+            if (e.start.hour < gridStart) gridStart = e.start.hour;
+            final endH = e.end.hour + (e.end.minute > 0 ? 1 : 0);
+            if (endH > gridEnd) gridEnd = endH;
+          }
+          gridStart = gridStart.clamp(0, 23);
+          gridEnd = gridEnd.clamp(gridStart + 1, 24);
+
           return LayoutBuilder(builder: (context, c) {
             final wide = c.maxWidth >= 900;
             final main = Column(
@@ -381,8 +393,8 @@ class _WeekSchedulePageState extends State<WeekSchedulePage> {
                       : _WeekGrid(
                           days: days,
                           events: weekEvents,
-                          startHour: _startHour,
-                          endHour: _endHour,
+                          startHour: gridStart,
+                          endHour: gridEnd,
                           rowH: _rowH,
                           sameDay: _sameDay,
                           onTapEvent: (e) => _openSessionSheet(context, e),
@@ -777,6 +789,7 @@ class _DayColumn extends StatelessWidget {
                           '${fmt.format(e.start)} - ${fmt.format(e.end)}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
+                          textDirection: TextDirection.ltr,
                           style: TextStyle(fontSize: 9, color: fg)),
                     ),
                     Icon(Icons.videocam_outlined, size: 12, color: fg),
