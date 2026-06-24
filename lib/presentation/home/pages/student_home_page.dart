@@ -23,8 +23,8 @@ import '../../../domain/session/repositories/session_repository.dart';
 import '../../../domain/task/models/daily_task.dart';
 import '../../../domain/task/repositories/task_repository.dart';
 import '../../achievement/pages/achievement_page.dart';
-import '../../circle/pages/circles_list_page.dart';
 import '../../progress/pages/my_progress_page.dart';
+import '../../session/pages/student_session_page.dart';
 import '../../reminder/pages/reminder_settings_page.dart';
 import '../../task/pages/today_task_page.dart';
 
@@ -558,15 +558,17 @@ class StudentHomeTabState extends State<StudentHomeTab> {
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
-            child: OutlinedButton(
-              onPressed: () => _open(const CirclesListPage()),
+            child: OutlinedButton.icon(
+              onPressed: () => _open(StudentSessionPage(
+                  circleId: widget.circle.id, user: widget.user)),
+              icon: const Icon(Icons.videocam_outlined, size: 18),
               style: OutlinedButton.styleFrom(
                 foregroundColor: _green,
                 side: BorderSide(color: _green.withValues(alpha: 0.5)),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),
               ),
-              child: const Text('عرض الحلقة',
+              label: const Text('انضمام للجلسة',
                   style: TextStyle(fontWeight: FontWeight.w700)),
             ),
           ),

@@ -18,6 +18,7 @@ import '../../../domain/homework/models/weekly_homework.dart';
 import '../../../domain/session/models/session.dart';
 import '../../../domain/session/repositories/session_repository.dart';
 import '../../announcement/pages/announcements_page.dart';
+import '../../session/pages/student_session_page.dart';
 
 /// Read-only student view of ONE حلقة: circle info, the programmed week's
 /// واجبات (tickable), her own stats, her رفيقة, and a names-only roster.
@@ -259,6 +260,22 @@ class _StudentCirclePageState extends State<StudentCirclePage> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   _headerCard(d),
+                  const SizedBox(height: AppSpacing.md),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => StudentSessionPage(
+                              circleId: widget.circle.id, user: widget.user),
+                        ),
+                      ),
+                      style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.primary),
+                      icon: const Icon(Icons.videocam_outlined, size: 18),
+                      label: const Text('انضمام لجلسة الحلقة'),
+                    ),
+                  ),
                   const SizedBox(height: AppSpacing.md),
                   _weekCard(d),
                   const SizedBox(height: AppSpacing.md),
