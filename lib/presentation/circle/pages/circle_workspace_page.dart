@@ -3541,9 +3541,10 @@ class _WeeklyAttendanceState extends State<_WeeklyAttendance> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           IconButton(
-            tooltip: 'الأسبوع السابق',
-            icon: const Icon(Icons.chevron_right),
-            onPressed: () => _changeWeek(-1),
+            tooltip: 'الأسبوع التالي',
+            icon: const Icon(Icons.chevron_right,
+                textDirection: TextDirection.ltr),
+            onPressed: _isCurrentWeek ? null : () => _changeWeek(1),
           ),
           const SizedBox(width: 4),
           Column(
@@ -3558,9 +3559,10 @@ class _WeeklyAttendanceState extends State<_WeeklyAttendance> {
           ),
           const SizedBox(width: 4),
           IconButton(
-            tooltip: 'الأسبوع التالي',
-            icon: const Icon(Icons.chevron_left),
-            onPressed: _isCurrentWeek ? null : () => _changeWeek(1),
+            tooltip: 'الأسبوع السابق',
+            icon: const Icon(Icons.chevron_left,
+                textDirection: TextDirection.ltr),
+            onPressed: () => _changeWeek(-1),
           ),
         ],
       ),

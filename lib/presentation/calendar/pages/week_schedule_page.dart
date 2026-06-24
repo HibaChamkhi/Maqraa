@@ -493,9 +493,14 @@ class _Toolbar extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             IconButton(
-                onPressed: onPrev, icon: const Icon(Icons.chevron_right)),
+                onPressed: onNext,
+                icon: const Icon(Icons.chevron_right,
+                    textDirection: TextDirection.ltr)),
             Text(range, style: Theme.of(context).textTheme.titleMedium),
-            IconButton(onPressed: onNext, icon: const Icon(Icons.chevron_left)),
+            IconButton(
+                onPressed: onPrev,
+                icon: const Icon(Icons.chevron_left,
+                    textDirection: TextDirection.ltr)),
           ],
         ),
         if (isTeacher)
