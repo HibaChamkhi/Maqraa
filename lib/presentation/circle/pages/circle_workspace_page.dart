@@ -3110,7 +3110,7 @@ class _StudentsTableState extends State<_StudentsTable> {
     final result = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('مقدار الحفظ لكل جلسة'),
+        title: const Text('مقدار الحفظ الأسبوعي'),
         content: TextField(
           controller: controller,
           autofocus: true,
@@ -3237,7 +3237,7 @@ class _HifzAmountBanner extends StatelessWidget {
           const Icon(Icons.menu_book_rounded,
               size: 18, color: AppColors.primary),
           const SizedBox(width: 8),
-          Text('مقدار الحفظ لكل جلسة: ',
+          Text('مقدار الحفظ الأسبوعي: ',
               style: theme.textTheme.bodySmall
                   ?.copyWith(color: AppColors.textMuted)),
           Expanded(

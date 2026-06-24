@@ -598,7 +598,7 @@ class _StudentCirclePageState extends State<StudentCirclePage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('مقدار الحفظ لكل جلسة',
+                  const Text('مقدار الحفظ الأسبوعي',
                       style: TextStyle(
                           fontSize: 11, color: AppColors.textMuted)),
                   const SizedBox(height: 2),
