@@ -1473,6 +1473,7 @@ class _GeneratedScheduleState extends State<_GeneratedSchedule> {
   List<DateTime> _past = const [];
   Map<String, Map<String, AttendanceState>> _att = const {};
   Map<String, ({String type, String? time})> _exc = const {};
+  List<DateTime> _extras = const []; // one-off sessions outside the rule
   bool _loading = true;
 
   String _id(DateTime o) => DateFormat('yyyy-MM-dd').format(o);
@@ -1495,7 +1496,9 @@ class _GeneratedScheduleState extends State<_GeneratedSchedule> {
           .getScheduleExceptions(widget.circle.id);
     } catch (_) {}
 
-    final occ = <DateTime>[];
+    // Step one: occurrences generated from the fixed rule.
+    final byDate = <String, DateTime>{};
+    final ruleIds = <String>{};
     for (var d = from; !d.isAfter(to); d = d.add(const Duration(days: 1))) {
       for (final entry in widget.circle.dayTimes.entries) {
         if (_codeToWeekday[entry.key] == d.weekday) {
@@ -1506,13 +1509,32 @@ class _GeneratedScheduleState extends State<_GeneratedSchedule> {
               ? e.time!
               : entry.value;
           final p = timeStr.split(':');
-          occ.add(DateTime(d.year, d.month, d.day,
+          byDate[dateId] = DateTime(d.year, d.month, d.day,
               int.tryParse(p.first) ?? 6,
-              int.tryParse(p.length > 1 ? p[1] : '0') ?? 0));
+              int.tryParse(p.length > 1 ? p[1] : '0') ?? 0);
+          ruleIds.add(dateId);
         }
       }
     }
-    occ.sort();
+
+    // Step two: real session docs the teacher created, one-off or materialized,
+    //    merged in so added sessions actually appear in the schedule.
+    final windowEnd = to.add(const Duration(days: 1));
+    final extras = <DateTime>[];
+    try {
+      final docs = await getIt<SessionRepository>().getSessions(widget.circle.id);
+      for (final s in docs) {
+        final d = s.scheduledAt;
+        if (d.isBefore(from) || !d.isBefore(windowEnd)) continue;
+        final dateId = DateFormat('yyyy-MM-dd').format(d);
+        if (exc[dateId]?.type == 'cancelled') continue;
+        byDate[dateId] = d; // the real session's time wins
+        if (!ruleIds.contains(dateId)) extras.add(d);
+      }
+    } catch (_) {}
+
+    final occ = byDate.values.toList()..sort();
+    extras.sort();
     final past = occ.where((o) => o.isBefore(today)).toList();
     final upcoming = occ.where((o) => !o.isBefore(today)).toList();
     final pastIds =
@@ -1528,6 +1550,7 @@ class _GeneratedScheduleState extends State<_GeneratedSchedule> {
       _upcoming = upcoming;
       _att = att;
       _exc = exc;
+      _extras = extras;
       _loading = false;
     });
   }
@@ -1630,15 +1653,21 @@ class _GeneratedScheduleState extends State<_GeneratedSchedule> {
     final now = DateTime.now();
     final from =
         DateTime(now.year, now.month, now.day).subtract(const Duration(days: 28));
-    final exc = _exc.entries
-        .map((e) => (
-              date: DateTime.tryParse(e.key) ?? from,
-              type: e.value.type,
-              time: e.value.time
-            ))
-        .where((x) => !x.date.isBefore(from))
-        .toList()
-      ..sort((a, b) => a.date.compareTo(b.date));
+    final exc = <({DateTime date, String type, String? time})>[
+      ..._exc.entries
+          .map((e) => (
+                date: DateTime.tryParse(e.key) ?? from,
+                type: e.value.type,
+                time: e.value.time,
+              ))
+          .where((x) => !x.date.isBefore(from)),
+      ..._extras.map((d) => (
+            date: d,
+            type: 'extra',
+            time:
+                '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}',
+          )),
+    ]..sort((a, b) => a.date.compareTo(b.date));
 
     final held = _past.where((o) => _att[_id(o)]?.isNotEmpty ?? false).length;
     final notHeld = _past.length - held;
@@ -1823,25 +1852,33 @@ class _GeneratedScheduleState extends State<_GeneratedSchedule> {
                       decoration: BoxDecoration(
                         color: (x.type == 'cancelled'
                                 ? AppColors.error
-                                : AppColors.warning)
+                                : x.type == 'extra'
+                                    ? AppColors.primary
+                                    : AppColors.warning)
                             .withValues(alpha: 0.14),
                         borderRadius: BorderRadius.circular(9),
                       ),
                       child: Icon(
                           x.type == 'cancelled'
                               ? Icons.event_busy_outlined
-                              : Icons.update,
+                              : x.type == 'extra'
+                                  ? Icons.event_available_outlined
+                                  : Icons.update,
                           size: 17,
                           color: x.type == 'cancelled'
                               ? AppColors.error
-                              : AppColors.warning),
+                              : x.type == 'extra'
+                                  ? AppColors.primary
+                                  : AppColors.warning),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
                         x.type == 'cancelled'
                             ? '${dF.format(x.date)} — أُلغيت'
-                            : '${dF.format(x.date)} — نُقلت إلى ${x.time ?? ''}',
+                            : x.type == 'extra'
+                                ? '${dF.format(x.date)} — جلسة إضافية ${x.time ?? ''}'
+                                : '${dF.format(x.date)} — نُقلت إلى ${x.time ?? ''}',
                         style: theme.textTheme.bodyMedium,
                       ),
                     ),
