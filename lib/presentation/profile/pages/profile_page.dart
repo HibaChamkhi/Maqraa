@@ -11,6 +11,7 @@ import '../../progress/bloc/progress_bloc.dart';
 import 'profile_theme.dart';
 import 'settings_page.dart';
 import 'teacher_profile_page.dart';
+import 'web_shell.dart';
 
 /// US-36 (view/edit profile) + US-37 (secure password change).
 /// Routes to the student or teacher profile, both using the same card layout.
@@ -67,64 +68,76 @@ class _StudentProfileViewState extends State<_StudentProfileView> {
   @override
   Widget build(BuildContext context) {
     final user = widget.user;
-    return Scaffold(
-      backgroundColor: ProfileTheme.bg,
-      body: SafeArea(
-        child: Column(
+    final content = FutureBuilder<List<Circle>>(
+      future: _circles,
+      builder: (context, snap) {
+        final circle = (snap.data ?? const []).isNotEmpty
+            ? snap.data!.first
+            : null;
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
           children: [
-            _TopBar(
-              onBack: () => Navigator.of(context).maybePop(),
-              onSettings: () => _push(SettingsPage(user: user)),
-            ),
-            Expanded(
-              child: FutureBuilder<List<Circle>>(
-                future: _circles,
-                builder: (context, snap) {
-                  final circle = (snap.data ?? const []).isNotEmpty
-                      ? snap.data!.first
-                      : null;
-                  return ListView(
-                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+            LayoutBuilder(builder: (context, c) {
+              final identity = _IdentityCard(user: user);
+              final account = _AccountCard(user: user);
+              final circleCard = _CircleCard(circle: circle);
+              if (c.maxWidth >= 820) {
+                return IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      LayoutBuilder(builder: (context, c) {
-                        final identity = _IdentityCard(user: user);
-                        final account = _AccountCard(user: user);
-                        final circleCard = _CircleCard(circle: circle);
-                        if (c.maxWidth >= 820) {
-                          return IntrinsicHeight(
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                Expanded(child: circleCard),
-                                const SizedBox(width: 16),
-                                Expanded(child: account),
-                                const SizedBox(width: 16),
-                                Expanded(child: identity),
-                              ],
-                            ),
-                          );
-                        }
-                        return Column(
-                          children: [
-                            identity,
-                            const SizedBox(height: 16),
-                            account,
-                            const SizedBox(height: 16),
-                            circleCard,
-                          ],
-                        );
-                      }),
-                      const SizedBox(height: 16),
-                      const _StudentStats(),
+                      Expanded(child: circleCard),
+                      const SizedBox(width: 16),
+                      Expanded(child: account),
+                      const SizedBox(width: 16),
+                      Expanded(child: identity),
                     ],
-                  );
-                },
-              ),
-            ),
+                  ),
+                );
+              }
+              return Column(
+                children: [
+                  identity,
+                  const SizedBox(height: 16),
+                  account,
+                  const SizedBox(height: 16),
+                  circleCard,
+                ],
+              );
+            }),
+            const SizedBox(height: 16),
+            const _StudentStats(),
           ],
-        ),
-      ),
+        );
+      },
     );
+
+    return LayoutBuilder(builder: (context, c) {
+      // Web: keep the permanent rail so navigating here doesn't make the
+      // sidebar vanish (which made page changes feel jumpy).
+      if (c.maxWidth >= 900) {
+        return WebShell(
+          user: user,
+          current: 'الملف الشخصي',
+          breadcrumb: 'الملف الشخصي',
+          child: content,
+        );
+      }
+      return Scaffold(
+        backgroundColor: ProfileTheme.bg,
+        body: SafeArea(
+          child: Column(
+            children: [
+              _TopBar(
+                onBack: () => Navigator.of(context).maybePop(),
+                onSettings: () => _push(SettingsPage(user: user)),
+              ),
+              Expanded(child: content),
+            ],
+          ),
+        ),
+      );
+    });
   }
 }
 
