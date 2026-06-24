@@ -76,6 +76,12 @@ class PartnerRemoteDataSource {
       bName: b.name,
     );
     await ref.set(PairDto.toMap(pair));
+    // Mirror onto the member docs so the students table / student pages
+    // (which read member.partnerId) reflect the pairing.
+    await _members(circleId).doc(a.uid).set(
+        {'partnerId': b.uid}, SetOptions(merge: true));
+    await _members(circleId).doc(b.uid).set(
+        {'partnerId': a.uid}, SetOptions(merge: true));
     return pair;
   }
 
@@ -93,6 +99,12 @@ class PartnerRemoteDataSource {
     final students = membersSnap.docs
         .map((d) => CircleMemberFromMap.parse(d.id, d.data()))
         .toList();
+    // Clear any previous partnerId before re-pairing.
+    for (final s in students) {
+      await _members(circleId)
+          .doc(s.uid)
+          .set({'partnerId': null}, SetOptions(merge: true));
+    }
     students.shuffle();
 
     final created = <Pair>[];
@@ -108,6 +120,12 @@ class PartnerRemoteDataSource {
         bName: b.name,
       );
       await ref.set(PairDto.toMap(pair));
+      await _members(circleId)
+          .doc(a.uid)
+          .set({'partnerId': b.uid}, SetOptions(merge: true));
+      await _members(circleId)
+          .doc(b.uid)
+          .set({'partnerId': a.uid}, SetOptions(merge: true));
       created.add(pair);
     }
     return created;
