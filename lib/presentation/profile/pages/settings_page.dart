@@ -53,17 +53,24 @@ class _SettingsViewState extends State<_SettingsView> {
       user: widget.user,
       current: 'الإعدادات',
       breadcrumb: 'الإعدادات / الأمان والبيانات الشخصية',
-      child: ListView(
-        padding: const EdgeInsets.all(24),
-        children: [
-          _TabBar(
-            tabs: _tabs,
-            current: _tab,
-            onSelect: (i) => setState(() => _tab = i),
+      // Centered, capped column to match the help & notifications pages.
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 760),
+          child: ListView(
+            padding: const EdgeInsets.all(24),
+            children: [
+              _TabBar(
+                tabs: _tabs,
+                current: _tab,
+                onSelect: (i) => setState(() => _tab = i),
+              ),
+              const SizedBox(height: 20),
+              _section(),
+            ],
           ),
-          const SizedBox(height: 20),
-          _section(),
-        ],
+        ),
       ),
     );
   }
