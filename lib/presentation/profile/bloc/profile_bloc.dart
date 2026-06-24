@@ -27,6 +27,7 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
         name: event.name,
         email: event.email,
         phone: event.phone,
+        city: event.city,
         photoUrl: event.photoUrl,
       );
       emit(state.copyWith(status: UIStatus.success, user: user));

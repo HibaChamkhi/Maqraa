@@ -40,6 +40,7 @@ class AppUser {
   final String name;
   final String email;
   final String? phone;
+  final String? city;
   final String? photoUrl;
   final UserRole? role;
   final Gender? gender;
@@ -49,6 +50,7 @@ class AppUser {
     required this.name,
     required this.email,
     this.phone,
+    this.city,
     this.photoUrl,
     this.role,
     this.gender,
@@ -60,6 +62,7 @@ class AppUser {
     String? name,
     String? email,
     String? phone,
+    String? city,
     String? photoUrl,
     UserRole? role,
     Gender? gender,
@@ -69,6 +72,7 @@ class AppUser {
       name: name ?? this.name,
       email: email ?? this.email,
       phone: phone ?? this.phone,
+      city: city ?? this.city,
       photoUrl: photoUrl ?? this.photoUrl,
       role: role ?? this.role,
       gender: gender ?? this.gender,

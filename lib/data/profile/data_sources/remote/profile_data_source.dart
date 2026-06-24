@@ -15,6 +15,7 @@ class ProfileRemoteDataSource {
     String? name,
     String? email,
     String? phone,
+    String? city,
     String? photoUrl,
   }) async {
     final doc = firestore.collection('users').doc(uid);
@@ -22,6 +23,7 @@ class ProfileRemoteDataSource {
       if (name != null) 'name': name,
       if (email != null) 'email': email,
       if (phone != null) 'phone': phone,
+      if (city != null) 'city': city,
       if (photoUrl != null) 'photoUrl': photoUrl,
     };
     if (updates.isNotEmpty) await doc.update(updates);

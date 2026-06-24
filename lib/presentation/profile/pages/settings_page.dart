@@ -301,7 +301,8 @@ class _PersonalDataCardState extends State<_PersonalDataCard> {
       TextEditingController(text: widget.user.email);
   late final TextEditingController _phone =
       TextEditingController(text: widget.user.phone ?? '');
-  final _city = TextEditingController();
+  late final TextEditingController _city =
+      TextEditingController(text: widget.user.city ?? '');
 
   @override
   void dispose() {
@@ -319,6 +320,7 @@ class _PersonalDataCardState extends State<_PersonalDataCard> {
           name: _name.text.trim(),
           email: _email.text.trim(),
           phone: _phone.text.trim().isEmpty ? null : _phone.text.trim(),
+          city: _city.text.trim().isEmpty ? null : _city.text.trim(),
         ));
   }
 

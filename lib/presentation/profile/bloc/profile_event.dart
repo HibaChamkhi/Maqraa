@@ -12,6 +12,7 @@ class ProfileUpdateRequested extends ProfileEvent {
   final String? name;
   final String? email;
   final String? phone;
+  final String? city;
   final String? photoUrl;
 
   const ProfileUpdateRequested({
@@ -19,9 +20,10 @@ class ProfileUpdateRequested extends ProfileEvent {
     this.name,
     this.email,
     this.phone,
+    this.city,
     this.photoUrl,
   });
 
   @override
-  List<Object?> get props => [uid, name, email, phone, photoUrl];
+  List<Object?> get props => [uid, name, email, phone, city, photoUrl];
 }

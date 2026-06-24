@@ -16,6 +16,7 @@ class ProfileRepositoryImpl implements ProfileRepository {
     String? name,
     String? email,
     String? phone,
+    String? city,
     String? photoUrl,
   }) {
     return remoteDataSource.updateProfile(
@@ -23,6 +24,7 @@ class ProfileRepositoryImpl implements ProfileRepository {
       name: name,
       email: email,
       phone: phone,
+      city: city,
       photoUrl: photoUrl,
     );
   }
