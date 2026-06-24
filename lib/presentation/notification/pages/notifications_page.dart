@@ -144,52 +144,47 @@ class _NotificationsViewState extends State<_NotificationsView> {
       user: widget.user,
       current: 'الإشعارات',
       breadcrumb: 'الإشعارات',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: ListView(
+        padding: const EdgeInsets.all(24),
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
-            child: Row(
-              children: [
-                Text('الإشعارات', style: ProfileTheme.sectionTitle),
-                const Spacer(),
-                SizedBox(
-                  width: 260,
-                  child: TextField(
-                    onChanged: (v) => setState(() => _query = v),
-                    decoration: ProfileTheme.field('ابحث في الإشعارات...',
-                        prefix: const Icon(Icons.search,
-                            size: 20, color: ProfileTheme.muted)),
-                  ),
+          Row(
+            children: [
+              Text('الإشعارات', style: ProfileTheme.sectionTitle),
+              const SizedBox(width: 16),
+              Expanded(
+                child: TextField(
+                  onChanged: (v) => setState(() => _query = v),
+                  decoration: ProfileTheme.field('ابحث في الإشعارات...',
+                      prefix: const Icon(Icons.search,
+                          size: 20, color: ProfileTheme.muted)),
                 ),
-                const SizedBox(width: 12),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: ProfileTheme.green,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                  ),
-                  onPressed: () => _markAll(context),
-                  child: const Text('تحديد الكل كمقروء'),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: const Icon(Icons.settings_outlined,
-                      color: ProfileTheme.muted),
-                  onPressed: _openSettings,
-                ),
-              ],
+              ),
+              const SizedBox(width: 12),
+              IconButton(
+                icon: const Icon(Icons.settings_outlined,
+                    color: ProfileTheme.muted),
+                onPressed: _openSettings,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: TextButton.icon(
+              onPressed: () => _markAll(context),
+              icon: const Icon(Icons.done_all, size: 18),
+              label: const Text('تحديد الكل كمقروء'),
+              style: TextButton.styleFrom(foregroundColor: ProfileTheme.green),
             ),
           ),
+          const SizedBox(height: 8),
           _Tabs(
             tabs: _tabs.map((e) => e.$1).toList(),
             current: _tab,
             onSelect: (i) => setState(() => _tab = i),
           ),
           const SizedBox(height: 8),
-          Expanded(child: _list(context)),
+          _list(context, shrinkWrap: true),
         ],
       ),
     );
