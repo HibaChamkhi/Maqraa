@@ -100,7 +100,7 @@ class _HelpPageState extends State<HelpPage> {
                   size: 20, color: ProfileTheme.muted)),
         ),
         const SizedBox(height: 22),
-        Text('الموضوعات الشائعة', style: ProfileTheme.sectionTitle),
+        Text('الأسئلة الشائعة', style: ProfileTheme.sectionTitle),
         const SizedBox(height: 12),
         for (final a in topics)
           _TopicRow(title: a.question, onTap: () => _openArticle(a)),
@@ -116,13 +116,6 @@ class _HelpPageState extends State<HelpPage> {
           title: 'راسل الدعم الفني',
           subtitle: 'نرد عليك في أقرب وقت ممكن',
           onTap: _openContact,
-        ),
-        const SizedBox(height: 10),
-        _ContactCard(
-          icon: Icons.live_help_outlined,
-          title: 'الأسئلة الشائعة',
-          subtitle: 'إجابات على أكثر الأسئلة شيوعاً',
-          onTap: () => _openArticle(HelpContent.popular.first),
         ),
       ],
     );
