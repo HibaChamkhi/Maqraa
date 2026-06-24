@@ -9,6 +9,7 @@ import '../../../domain/auth/models/app_user.dart';
 import '../../../domain/circle/repositories/circle_repository.dart';
 import '../../../domain/session/models/session.dart';
 import '../../../domain/session/repositories/session_repository.dart';
+import '../../profile/pages/web_shell.dart';
 
 /// A read-only calendar that merges the sessions of ALL the student's حلقات —
 /// expanded from each حلقة's fixed rule (+ exceptions) and any real session
@@ -76,7 +77,9 @@ class _AllCirclesCalendarPageState extends State<AllCirclesCalendarPage> {
     final timeF = DateFormat('h:mm a', 'ar');
     return Scaffold(
       backgroundColor: AppColors.beige,
-      appBar: AppBar(title: const Text('تقويم جلساتي')),
+      appBar: AppBar(
+          automaticallyImplyLeading: !ShellScope.of(context),
+          title: const Text('تقويم جلساتي')),
       body: RefreshIndicator(
         onRefresh: () async => setState(() => _future = _load()),
         child: FutureBuilder<List<_CalItem>>(

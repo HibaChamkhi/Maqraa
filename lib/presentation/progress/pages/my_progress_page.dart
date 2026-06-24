@@ -5,6 +5,7 @@ import '../../../core/di/injection.dart';
 import '../../../core/model /ui_state.dart';
 import '../../../core/ui/styles/theme.dart';
 import '../../../core/ui/widgets/werd_widgets.dart';
+import '../../profile/pages/web_shell.dart';
 import '../bloc/progress_bloc.dart';
 
 /// US-11: student progress — memorization ring, streak, badges and quick log.
@@ -16,7 +17,9 @@ class MyProgressPage extends StatelessWidget {
     return BlocProvider(
       create: (_) => getIt<ProgressBloc>()..add(const LoadMyProgress()),
       child: Scaffold(
-        appBar: AppBar(title: const Text('تقدّمي')),
+        appBar: AppBar(
+            automaticallyImplyLeading: !ShellScope.of(context),
+            title: const Text('تقدّمي')),
         body: BlocConsumer<ProgressBloc, ProgressState>(
           listenWhen: (p, c) => c.status == UIStatus.error,
           listener: (context, state) => ScaffoldMessenger.of(context)

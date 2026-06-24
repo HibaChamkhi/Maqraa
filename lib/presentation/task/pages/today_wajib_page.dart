@@ -9,6 +9,7 @@ import '../../../data/homework/homework_repository.dart';
 import '../../../domain/auth/models/app_user.dart';
 import '../../../domain/circle/repositories/circle_repository.dart';
 import '../../../domain/homework/models/weekly_homework.dart';
+import '../../profile/pages/web_shell.dart';
 
 /// «واجب اليوم» for a student: today's واجبات across ALL her حلقات (from the
 /// homework plan), each tickable — no حلقة picker, the cards show directly.
@@ -105,7 +106,9 @@ class _TodayWajibPageState extends State<TodayWajibPage> {
     final dateLine = DateFormat('EEEE d MMMM yyyy', 'ar').format(DateTime.now());
     return Scaffold(
       backgroundColor: AppColors.beige,
-      appBar: AppBar(title: const Text('واجب اليوم')),
+      appBar: AppBar(
+          automaticallyImplyLeading: !ShellScope.of(context),
+          title: const Text('واجب اليوم')),
       body: RefreshIndicator(
         onRefresh: () async => setState(() {
           _override.clear();
