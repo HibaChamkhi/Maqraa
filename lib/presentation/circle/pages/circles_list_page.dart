@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/di/injection.dart';
 import '../../../core/ui/styles/theme.dart';
+import '../../../core/util/session_occurrences.dart';
 import '../../../data/homework/homework_repository.dart';
 import '../../../domain/auth/models/app_user.dart';
 import '../../../domain/circle/models/circle.dart';
@@ -440,17 +441,23 @@ class _StudentCircleCard extends StatelessWidget {
   const _StudentCircleCard(
       {required this.circle, required this.count, required this.user});
 
-  Future<({Session? next, int wajib})> _load() async {
-    Session? next;
+  Future<({DateTime? next, int wajib})> _load() async {
+    DateTime? next;
     try {
       final ss = await getIt<SessionRepository>().getSessions(circle.id);
+      Map<String, ({String type, String? time})> exc = const {};
+      try {
+        exc = await getIt<CircleRepository>().getScheduleExceptions(circle.id);
+      } catch (_) {}
       final now = DateTime.now();
-      final up = ss
-          .where((s) =>
-              s.scheduledAt.isAfter(now) && s.status != SessionStatus.ended)
-          .toList()
-        ..sort((a, b) => a.scheduledAt.compareTo(b.scheduledAt));
-      next = up.isEmpty ? null : up.first;
+      final occ = buildSessionOccurrences(
+        circle: circle,
+        from: now,
+        to: now.add(const Duration(days: 60)),
+        exceptions: exc,
+        docs: ss,
+      ).where((o) => o.at.isAfter(now)).toList();
+      next = occ.isEmpty ? null : occ.first.at;
     } catch (_) {/* sessions optional */}
 
     var wajib = 0; // 0 = none today · 1 = done · 2 = pending
@@ -552,7 +559,7 @@ class _StudentCircleCard extends StatelessWidget {
                 const SizedBox(height: AppSpacing.md),
                 _infoRow(Icons.people_outline, '$count طالبات'),
                 const SizedBox(height: 8),
-                FutureBuilder<({Session? next, int wajib})>(
+                FutureBuilder<({DateTime? next, int wajib})>(
                   future: _load(),
                   builder: (context, snap) {
                     final data = snap.data;
@@ -562,7 +569,7 @@ class _StudentCircleCard extends StatelessWidget {
                         ? '…'
                         : next == null
                             ? 'لا توجد جلسة قادمة'
-                            : '${DateFormat('EEEE', 'ar').format(next.scheduledAt)} • ${DateFormat('h:mm a', 'ar').format(next.scheduledAt)}';
+                            : '${DateFormat('EEEE', 'ar').format(next)} • ${DateFormat('h:mm a', 'ar').format(next)}';
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [

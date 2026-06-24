@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/ui/styles/theme.dart';
 import '../../../core/ui/widgets/werd_widgets.dart';
+import '../../../core/util/session_occurrences.dart';
 import '../../../data/homework/homework_repository.dart';
 import '../../../domain/achievement/models/achievement.dart';
 import '../../../domain/achievement/repositories/achievement_repository.dart';
@@ -37,9 +38,9 @@ typedef _HomeData = ({
   ProgressInfo progress,
   String todayRange,
   bool taskDone,
-  Session? nextSession,
-  List<Session> upcoming,
-  List<Session> todaySessions,
+  SessionOccurrence? nextSession,
+  List<SessionOccurrence> upcoming,
+  List<SessionOccurrence> todaySessions,
   Achievement achievement,
   List<_WajibItem> wajibToday,
 });
@@ -105,15 +106,19 @@ class StudentHomeTabState extends State<StudentHomeTab> {
     try {
       sessions = await getIt<SessionRepository>().getSessions(id);
     } catch (_) {/* sessions optional */}
-    final upcoming = sessions
-        .where((s) =>
-            s.scheduledAt.isAfter(now) && s.status != SessionStatus.ended)
-        .toList()
-      ..sort((a, b) => a.scheduledAt.compareTo(b.scheduledAt));
-    final todaySessions = sessions
-        .where((s) => _sameDay(s.scheduledAt, now))
-        .toList()
-      ..sort((a, b) => a.scheduledAt.compareTo(b.scheduledAt));
+    Map<String, ({String type, String? time})> exc = const {};
+    try {
+      exc = await getIt<CircleRepository>().getScheduleExceptions(id);
+    } catch (_) {}
+    final occ = buildSessionOccurrences(
+      circle: widget.circle,
+      from: DateTime(now.year, now.month, now.day),
+      to: now.add(const Duration(days: 30)),
+      exceptions: exc,
+      docs: sessions,
+    );
+    final upcoming = occ.where((o) => o.at.isAfter(now)).toList();
+    final todaySessions = occ.where((o) => _sameDay(o.at, now)).toList();
 
     Achievement ach = const Achievement();
     try {
@@ -536,7 +541,7 @@ class StudentHomeTabState extends State<StudentHomeTab> {
 
   // ── الجلسة القادمة ─────────────────────────────────────────
 
-  Widget _nextSessionCard(Session? s) {
+  Widget _nextSessionCard(SessionOccurrence? s) {
     return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -553,8 +558,8 @@ class StudentHomeTabState extends State<StudentHomeTab> {
           ),
           const SizedBox(height: 12),
           Text(
-            s != null && s.title.trim().isNotEmpty
-                ? s.title.trim()
+            s != null && (s.title?.trim().isNotEmpty ?? false)
+                ? s.title!.trim()
                 : 'حلقة ${widget.circle.name}',
             style: const TextStyle(
                 fontSize: 15,
@@ -565,7 +570,7 @@ class StudentHomeTabState extends State<StudentHomeTab> {
           Text(
             s == null
                 ? 'لا توجد جلسة قادمة'
-                : '${_dayLabel(s.scheduledAt)} • ${DateFormat('h:mm a', 'ar').format(s.scheduledAt)}',
+                : '${_dayLabel(s.at)} • ${DateFormat('h:mm a', 'ar').format(s.at)}',
             style: const TextStyle(fontSize: 12.5, color: AppColors.textMuted),
           ),
           const SizedBox(height: 12),
@@ -590,7 +595,7 @@ class StudentHomeTabState extends State<StudentHomeTab> {
 
   // ── جدول الأسبوع ───────────────────────────────────────────
 
-  Widget _weekCard(List<Session> todaySessions) {
+  Widget _weekCard(List<SessionOccurrence> todaySessions) {
     final now = DateTime.now();
     final saturday = now.subtract(Duration(days: now.weekday % 7));
     final days = List.generate(7, (i) => saturday.add(Duration(days: i)));
@@ -653,7 +658,8 @@ class StudentHomeTabState extends State<StudentHomeTab> {
     );
   }
 
-  Widget _scheduleRow(Session s) {
+  Widget _scheduleRow(SessionOccurrence s) {
+    final title = s.title?.trim() ?? '';
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
@@ -665,10 +671,10 @@ class StudentHomeTabState extends State<StudentHomeTab> {
                   color: _green, shape: BoxShape.circle)),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(s.title.trim().isEmpty ? 'جلسة' : s.title.trim(),
+            child: Text(title.isEmpty ? 'جلسة' : title,
                 style: const TextStyle(fontSize: 13.5, color: AppColors.ink)),
           ),
-          Text(DateFormat('h:mm a', 'ar').format(s.scheduledAt),
+          Text(DateFormat('h:mm a', 'ar').format(s.at),
               style:
                   const TextStyle(fontSize: 12.5, color: AppColors.textMuted)),
         ],
@@ -678,7 +684,7 @@ class StudentHomeTabState extends State<StudentHomeTab> {
 
   // ── التذكيرات ──────────────────────────────────────────────
 
-  Widget _remindersCard(List<Session> upcoming) {
+  Widget _remindersCard(List<SessionOccurrence> upcoming) {
     final items = upcoming.take(3).toList();
     return _card(
       child: Column(
@@ -718,7 +724,7 @@ class StudentHomeTabState extends State<StudentHomeTab> {
     );
   }
 
-  Widget _reminderRow(Session s) {
+  Widget _reminderRow(SessionOccurrence s) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
@@ -738,13 +744,13 @@ class StudentHomeTabState extends State<StudentHomeTab> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(s.title.trim().isEmpty ? 'جلسة' : s.title.trim(),
+                Text((s.title?.trim().isEmpty ?? true) ? 'جلسة' : s.title!.trim(),
                     style: const TextStyle(
                         fontSize: 13.5,
                         fontWeight: FontWeight.w700,
                         color: AppColors.ink)),
                 Text(
-                  '${_dayLabel(s.scheduledAt)} • ${DateFormat('h:mm a', 'ar').format(s.scheduledAt)}',
+                  '${_dayLabel(s.at)} • ${DateFormat('h:mm a', 'ar').format(s.at)}',
                   style: const TextStyle(
                       fontSize: 11.5, color: AppColors.textMuted),
                 ),
