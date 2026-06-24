@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../domain/auth/models/app_user.dart';
+import '../auth/bloc/auth_bloc.dart';
 import '../profile/pages/profile_theme.dart';
+import '../profile/pages/web_shell.dart';
 import 'help_data.dart';
 
 /// مقال المساعدة — a single help article (steps + tip + helpful vote).
@@ -17,10 +21,32 @@ class HelpArticlePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: ProfileTheme.bg,
-      body: SafeArea(
-        child: Column(
+    final user = context.select<AuthBloc, AppUser?>((b) => b.state.user);
+    return LayoutBuilder(builder: (context, c) {
+      if (c.maxWidth >= 900 && user != null) {
+        // Web: keep the same rail shell as the rest of the app.
+        return WebShell(
+          user: user,
+          current: 'المساعدة',
+          breadcrumb: 'مقال المساعدة',
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 760),
+              child: _body(context),
+            ),
+          ),
+        );
+      }
+      return Scaffold(
+        backgroundColor: ProfileTheme.bg,
+        body: SafeArea(child: _body(context)),
+      );
+    });
+  }
+
+  Widget _body(BuildContext context) {
+    return Column(
           children: [
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -132,9 +158,7 @@ class HelpArticlePage extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
+        );
   }
 }
 
