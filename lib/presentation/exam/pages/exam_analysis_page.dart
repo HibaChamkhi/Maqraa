@@ -3,11 +3,13 @@ import 'package:intl/intl.dart';
 
 import '../../../core/di/injection.dart';
 import '../../../core/ui/styles/theme.dart';
+import '../../../core/util/notify.dart';
 import '../../../domain/auth/models/app_user.dart';
 import '../../../domain/circle/models/circle.dart';
 import '../../../domain/circle/repositories/circle_repository.dart';
 import '../../../domain/exam/models/exam.dart';
 import '../../../domain/exam/repositories/exam_repository.dart';
+import '../../../domain/notification/models/app_notification.dart';
 import 'exam_results_page.dart';
 
 /// Read-only analysis of one exam: KPIs, grade distribution, per-student
@@ -76,6 +78,14 @@ class _ExamAnalysisPageState extends State<ExamAnalysisPage> {
     try {
       await getIt<ExamRepository>().setResultsPublished(
           circleId: widget.circleId, examId: _exam.id, published: next);
+      if (next) {
+        await notifyCircleStudents(
+          circleId: widget.circleId,
+          title: 'نتيجة اختبار جاهزة',
+          body: 'ظهرت نتيجتك في اختبار «${_exam.title}» — تفقّدي قسم الاختبارات',
+          type: NotificationType.exam,
+        );
+      }
       if (mounted) {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
@@ -104,7 +114,7 @@ class _ExamAnalysisPageState extends State<ExamAnalysisPage> {
           }
           final d = snap.data!;
           final present = <num>[];
-          var passed = 0, absent = 0, excused = 0;
+          var passed = 0;
           final dist = <String, int>{
             'ممتاز': 0,
             'جيد جدًا': 0,
@@ -120,10 +130,6 @@ class _ExamAnalysisPageState extends State<ExamAnalysisPage> {
               if (r.score >= _exam.passMark) passed++;
               final g = examGradeLabel(r.score, _exam.totalMarks);
               if (dist.containsKey(g)) dist[g] = dist[g]! + 1;
-            } else if (r.attendance == ExamAttendance.absent) {
-              absent++;
-            } else {
-              excused++;
             }
           }
           final hasScores = present.isNotEmpty;

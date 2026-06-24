@@ -4,8 +4,10 @@ import 'package:injectable/injectable.dart';
 
 import '../../../core/error/error_utils.dart';
 import '../../../core/model /ui_state.dart';
+import '../../../core/util/notify.dart';
 import '../../../domain/announcement/models/announcement.dart';
 import '../../../domain/announcement/repositories/announcement_repository.dart';
+import '../../../domain/notification/models/app_notification.dart';
 
 part 'announcement_event.dart';
 part 'announcement_state.dart';
@@ -39,6 +41,14 @@ class AnnouncementBloc extends Bloc<AnnouncementEvent, AnnouncementState> {
       await announcementRepository.postAnnouncement(
         circleId: event.circleId,
         text: event.text,
+      );
+      await notifyCircleStudents(
+        circleId: event.circleId,
+        title: 'إعلان جديد',
+        body: event.text.length > 90
+            ? '${event.text.substring(0, 90)}…'
+            : event.text,
+        type: NotificationType.adminMessage,
       );
       final items =
           await announcementRepository.getAnnouncements(event.circleId);

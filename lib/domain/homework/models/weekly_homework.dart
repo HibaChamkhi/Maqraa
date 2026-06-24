@@ -1,6 +1,7 @@
 /// Weekly homework («الواجب الأسبوعي») for ONE حلقة.
 /// Stored at `circles/{circleId}/homework/{weekId}` where weekId is the
 /// yyyy-MM-dd of the week's Saturday.
+library;
 
 /// One day's plan: the assignment (الواجب), its type, and notes (ملاحظات).
 class DayPlan {

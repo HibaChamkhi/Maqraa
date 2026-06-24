@@ -5,8 +5,10 @@ import 'package:injectable/injectable.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/error/error_utils.dart';
 import '../../../core/model /ui_state.dart';
+import '../../../core/util/notify.dart';
 import '../../../domain/exam/models/exam.dart';
 import '../../../domain/exam/repositories/exam_repository.dart';
+import '../../../domain/notification/models/app_notification.dart';
 import '../../../domain/reminder/repositories/reminder_repository.dart';
 
 part 'exam_event.dart';
@@ -72,6 +74,12 @@ class ExamBloc extends Bloc<ExamEvent, ExamState> {
       );
       await _syncReminder(
           examId: exam.id, title: exam.title, date: exam.date);
+      await notifyCircleStudents(
+        circleId: event.circleId,
+        title: 'اختبار جديد قادم',
+        body: 'حُدِّد اختبار «${exam.title}» — تفقّدي قسم الاختبارات',
+        type: NotificationType.exam,
+      );
       final exams = await examRepository.getExams(event.circleId);
       emit(state.copyWith(
         status: UIStatus.success,
@@ -100,6 +108,12 @@ class ExamBloc extends Bloc<ExamEvent, ExamState> {
       );
       await _syncReminder(
           examId: event.examId, title: event.title, date: event.date);
+      await notifyCircleStudents(
+        circleId: event.circleId,
+        title: 'تحديث اختبار',
+        body: 'تم تعديل تفاصيل اختبار «${event.title}» — تفقّدي قسم الاختبارات',
+        type: NotificationType.exam,
+      );
       final exams = await examRepository.getExams(event.circleId);
       emit(state.copyWith(
         status: UIStatus.success,
@@ -121,6 +135,12 @@ class ExamBloc extends Bloc<ExamEvent, ExamState> {
         examId: event.examId,
       );
       await _cancelReminder(event.examId);
+      await notifyCircleStudents(
+        circleId: event.circleId,
+        title: 'إلغاء اختبار',
+        body: 'أُلغي أحد الاختبارات في حلقتك',
+        type: NotificationType.exam,
+      );
       final exams = await examRepository.getExams(event.circleId);
       emit(state.copyWith(
         status: UIStatus.success,
@@ -143,6 +163,14 @@ class ExamBloc extends Bloc<ExamEvent, ExamState> {
         examId: event.examId,
         published: event.published,
       );
+      if (event.published) {
+        await notifyCircleStudents(
+          circleId: event.circleId,
+          title: 'نتيجة اختبار جاهزة',
+          body: 'ظهرت نتيجة اختبار جديد — تفقّدي قسم الاختبارات',
+          type: NotificationType.exam,
+        );
+      }
       emit(state.copyWith(
         status: UIStatus.success,
         message: event.published ? 'تم نشر النتائج' : 'تم إخفاء النتائج',

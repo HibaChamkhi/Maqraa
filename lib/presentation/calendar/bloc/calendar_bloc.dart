@@ -4,7 +4,9 @@ import 'package:injectable/injectable.dart';
 
 import '../../../core/error/error_utils.dart';
 import '../../../core/model /ui_state.dart';
+import '../../../core/util/notify.dart';
 import '../../../domain/calendar/repositories/calendar_repository.dart';
+import '../../../domain/notification/models/app_notification.dart';
 import '../../../domain/session/models/session.dart';
 
 part 'calendar_event.dart';
@@ -47,6 +49,12 @@ class CalendarBloc extends Bloc<CalendarEvent, CalendarState> {
         type: event.type,
         link: event.link,
       );
+      await notifyCircleStudents(
+        circleId: event.circleId,
+        title: 'جلسة جديدة',
+        body: 'أضافت المعلّمة جلسة جديدة إلى الجدول',
+        type: NotificationType.circleUpcoming,
+      );
       final sessions = await calendarRepository.getSessions(event.circleId);
       emit(state.copyWith(
         status: UIStatus.success,
@@ -72,6 +80,12 @@ class CalendarBloc extends Bloc<CalendarEvent, CalendarState> {
         durationMinutes: event.durationMinutes,
         occurrences: event.occurrences,
         link: event.link,
+      );
+      await notifyCircleStudents(
+        circleId: event.circleId,
+        title: 'جدول الجلسات',
+        body: 'حدّثت المعلّمة جدول جلسات الحلقة',
+        type: NotificationType.circleUpcoming,
       );
       final sessions = await calendarRepository.getSessions(event.circleId);
       emit(state.copyWith(
@@ -99,6 +113,12 @@ class CalendarBloc extends Bloc<CalendarEvent, CalendarState> {
         type: event.type,
         link: event.link,
       );
+      await notifyCircleStudents(
+        circleId: event.circleId,
+        title: 'تعديل جلسة',
+        body: 'تم تعديل موعد إحدى جلسات الحلقة — تفقّدي الجدول',
+        type: NotificationType.circleUpcoming,
+      );
       final sessions = await calendarRepository.getSessions(event.circleId);
       emit(state.copyWith(
         status: UIStatus.success,
@@ -119,6 +139,12 @@ class CalendarBloc extends Bloc<CalendarEvent, CalendarState> {
       await calendarRepository.deleteSession(
         circleId: event.circleId,
         sessionId: event.sessionId,
+      );
+      await notifyCircleStudents(
+        circleId: event.circleId,
+        title: 'إلغاء جلسة',
+        body: 'أُلغيت إحدى جلسات الحلقة',
+        type: NotificationType.circleUpcoming,
       );
       final sessions = await calendarRepository.getSessions(event.circleId);
       emit(state.copyWith(
@@ -141,6 +167,12 @@ class CalendarBloc extends Bloc<CalendarEvent, CalendarState> {
       await calendarRepository.deleteSeries(
         circleId: event.circleId,
         recurrenceId: event.recurrenceId,
+      );
+      await notifyCircleStudents(
+        circleId: event.circleId,
+        title: 'إلغاء جلسات',
+        body: 'أُلغيت سلسلة من جلسات الحلقة',
+        type: NotificationType.circleUpcoming,
       );
       final sessions = await calendarRepository.getSessions(event.circleId);
       emit(state.copyWith(

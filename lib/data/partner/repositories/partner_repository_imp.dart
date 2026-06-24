@@ -1,6 +1,9 @@
 import 'package:injectable/injectable.dart';
 
+import '../../../core/di/injection.dart';
 import '../../../domain/circle/models/circle.dart';
+import '../../../domain/notification/models/app_notification.dart';
+import '../../../domain/notification/repositories/notification_repository.dart';
 import '../../../domain/partner/models/partner.dart';
 import '../../../domain/partner/repositories/partner_repository.dart';
 import '../data_sources/remote/partner_data_source.dart';
@@ -11,17 +14,44 @@ class PartnerRepositoryImpl implements PartnerRepository {
 
   PartnerRepositoryImpl({required this.remoteDataSource});
 
+  /// Tell both members of a new pair who their رفيقة is. Best-effort.
+  Future<void> _notifyPair(Pair p) async {
+    try {
+      final repo = getIt<NotificationRepository>();
+      await repo.createNotification(
+        title: 'تم تحديد رفيقتك',
+        body: 'رفيقتك في التسميع: ${p.bName}',
+        type: NotificationType.circleUpcoming,
+        recipientId: p.aId,
+      );
+      await repo.createNotification(
+        title: 'تم تحديد رفيقتك',
+        body: 'رفيقتك في التسميع: ${p.aName}',
+        type: NotificationType.circleUpcoming,
+        recipientId: p.bId,
+      );
+    } catch (_) {/* best-effort */}
+  }
+
   @override
   Future<Pair> pairMembers({
     required String circleId,
     required CircleMember a,
     required CircleMember b,
-  }) =>
-      remoteDataSource.pairMembers(circleId: circleId, a: a, b: b);
+  }) async {
+    final p = await remoteDataSource.pairMembers(circleId: circleId, a: a, b: b);
+    await _notifyPair(p);
+    return p;
+  }
 
   @override
-  Future<List<Pair>> autoPairActiveStudents(String circleId) =>
-      remoteDataSource.autoPairActiveStudents(circleId);
+  Future<List<Pair>> autoPairActiveStudents(String circleId) async {
+    final pairs = await remoteDataSource.autoPairActiveStudents(circleId);
+    for (final p in pairs) {
+      await _notifyPair(p);
+    }
+    return pairs;
+  }
 
   @override
   Future<List<Pair>> getPairs(String circleId) =>

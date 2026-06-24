@@ -82,7 +82,8 @@ class _HomePageState extends State<HomePage> {
           break;
         }
       }
-      if (circle == null || !mounted) return;
+      if (circle == null) return;
+      if (!mounted) return;
       final wide = MediaQuery.of(context).size.width >= 900;
       final nav = wide
           ? _contentNav.currentState
