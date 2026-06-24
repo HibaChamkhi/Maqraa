@@ -145,18 +145,20 @@ abstract class CircleRepository {
     required List<String> dateIds,
   });
 
-  /// Mark whether a student memorized («حفظت») the day's حفظ for [dateId].
+  /// Record the teacher's weekly حفظ assessment for a student. [done] = null
+  /// clears the assessment for [weekId]; [grade] is a [PerformanceTag] name.
   Future<void> markHifz({
     required String circleId,
-    required String dateId,
+    required String weekId,
     required String uid,
-    required bool done,
+    required bool? done,
+    String grade,
   });
 
-  /// Read حفظ marks for the given day ids. Returns dateId → set of done uids.
-  Future<Map<String, Set<String>>> getHifz({
+  /// Read weekly حفظ assessments. Returns weekId → (uid → (done, grade)).
+  Future<Map<String, Map<String, ({bool done, String grade})>>> getHifzWeeks({
     required String circleId,
-    required List<String> dateIds,
+    required List<String> weekIds,
   });
 
   /// Set the حلقة's «مقدار الحفظ» (free text, the teacher's unit).

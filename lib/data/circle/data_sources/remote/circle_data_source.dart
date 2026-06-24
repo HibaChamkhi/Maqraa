@@ -545,41 +545,49 @@ class CircleRemoteDataSource {
     return result;
   }
 
-  // --- حفظ (memorization marks, per day) ---
+  // --- الحفظ الأسبوعي (weekly memorization assessment, per week) ---
 
   CollectionReference<Map<String, dynamic>> _hifz(String circleId) =>
       _circles.doc(circleId).collection('hifz');
 
-  /// Mark whether a student memorized the day's حفظ. Stored at
-  /// circles/{id}/hifz/{dateId} as { records: { uid: true } }.
+  /// Record the teacher's weekly حفظ assessment for one student. Stored at
+  /// circles/{id}/hifz/{weekId} as { records: { uid: {done, grade} } }.
+  /// Pass [done] = null to clear (un-assess) the student for that week.
   Future<void> markHifz({
     required String circleId,
-    required String dateId,
+    required String weekId,
     required String uid,
-    required bool done,
+    required bool? done,
+    String grade = '',
   }) async {
-    await _hifz(circleId).doc(dateId).set(<String, dynamic>{
-      'records': <String, dynamic>{
-        uid: done ? true : FieldValue.delete(),
-      },
+    final value = done == null
+        ? FieldValue.delete()
+        : <String, dynamic>{'done': done, 'grade': grade};
+    await _hifz(circleId).doc(weekId).set(<String, dynamic>{
+      'records': <String, dynamic>{uid: value},
     }, SetOptions(merge: true));
   }
 
-  /// Read حفظ marks for the given day ids → { dateId: set of uids done }.
-  Future<Map<String, Set<String>>> getHifz({
+  /// Read weekly حفظ assessments → { weekId: { uid: (done, grade) } }.
+  Future<Map<String, Map<String, ({bool done, String grade})>>> getHifzWeeks({
     required String circleId,
-    required List<String> dateIds,
+    required List<String> weekIds,
   }) async {
-    final result = <String, Set<String>>{};
-    for (final dateId in dateIds) {
-      final doc = await _hifz(circleId).doc(dateId).get();
+    final result = <String, Map<String, ({bool done, String grade})>>{};
+    for (final weekId in weekIds) {
+      final doc = await _hifz(circleId).doc(weekId).get();
       final records =
           (doc.data()?['records'] as Map<String, dynamic>?) ?? const {};
-      final set = <String>{};
+      final m = <String, ({bool done, String grade})>{};
       records.forEach((uid, v) {
-        if (v == true) set.add(uid);
+        if (v is Map) {
+          m[uid] = (
+            done: v['done'] == true,
+            grade: (v['grade'] ?? '').toString(),
+          );
+        }
       });
-      result[dateId] = set;
+      result[weekId] = m;
     }
     return result;
   }

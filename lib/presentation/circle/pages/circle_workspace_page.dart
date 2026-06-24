@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -13,6 +15,8 @@ import '../../../core/util/last_location_store.dart';
 import '../../../core/util/notify.dart';
 import '../../../core/util/session_occurrences.dart';
 import '../../../core/ui/styles/theme.dart';
+import '../../../data/homework/homework_repository.dart';
+import '../../../domain/homework/models/weekly_homework.dart';
 import '../../../core/ui/widgets/werd_widgets.dart';
 import '../../../domain/auth/models/app_user.dart';
 import '../../../domain/circle/models/circle.dart';
@@ -2376,7 +2380,6 @@ class _StudentsView extends StatefulWidget {
 
 class _StudentsViewState extends State<_StudentsView> {
   String _query = '';
-  bool _weekly = false;
 
   @override
   Widget build(BuildContext context) {
@@ -2407,66 +2410,44 @@ class _StudentsViewState extends State<_StudentsView> {
                 onAdd: () => _addStudent(context),
                 onExport: () => _exportCsv(students),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.md, 0, AppSpacing.md, AppSpacing.sm),
-                child: Align(
-                  alignment: AlignmentDirectional.centerStart,
-                  child: SegmentedButton<bool>(
-                    segments: const [
-                      ButtonSegment(value: false, label: Text('اليوم')),
-                      ButtonSegment(value: true, label: Text('الأسبوع')),
-                    ],
-                    selected: {_weekly},
-                    onSelectionChanged: (s) =>
-                        setState(() => _weekly = s.first),
-                  ),
-                ),
-              ),
               Expanded(
                 child: students.isEmpty
                     ? Center(
                         child: Text('لا توجد طالبات بعد',
                             style: Theme.of(context).textTheme.bodyMedium),
                       )
-                    : _weekly
-                        ? _WeeklyAttendance(
-                            circle: widget.circle,
-                            students: students,
-                            canManage: widget.canManage,
-                          )
-                        : LayoutBuilder(builder: (context, c) {
-                            final onEdit = widget.canManage
-                                ? (CircleMember m) => _editStudent(context, m)
-                                : null;
-                            if (c.maxWidth >= 720) {
-                              return _StudentsTable(
-                                  circle: widget.circle,
-                                  students: students,
-                                  onEdit: onEdit);
-                            }
-                            final names = {
-                              for (final s in students) s.uid: s.name
-                            };
-                            return ListView.builder(
-                              padding: const EdgeInsets.fromLTRB(
-                                  AppSpacing.md, 4, AppSpacing.md, 24),
-                              itemCount: students.length,
-                              itemBuilder: (context, i) {
-                                final m = students[i];
-                                return _StudentCard(
-                                  member: m,
-                                  canManage: widget.canManage,
-                                  partnerName: m.partnerId == null
-                                      ? null
-                                      : names[m.partnerId],
-                                  onTap: onEdit == null
-                                      ? null
-                                      : () => onEdit(m),
-                                );
-                              },
+                    : LayoutBuilder(builder: (context, c) {
+                        final onEdit = widget.canManage
+                            ? (CircleMember m) => _editStudent(context, m)
+                            : null;
+                        if (c.maxWidth >= 720) {
+                          return _StudentsTable(
+                              circle: widget.circle,
+                              students: students,
+                              onEdit: onEdit);
+                        }
+                        final names = {
+                          for (final s in students) s.uid: s.name
+                        };
+                        return ListView.builder(
+                          padding: const EdgeInsets.fromLTRB(
+                              AppSpacing.md, 4, AppSpacing.md, 24),
+                          itemCount: students.length,
+                          itemBuilder: (context, i) {
+                            final m = students[i];
+                            return _StudentCard(
+                              member: m,
+                              canManage: widget.canManage,
+                              partnerName: m.partnerId == null
+                                  ? null
+                                  : names[m.partnerId],
+                              onTap: onEdit == null
+                                  ? null
+                                  : () => onEdit(m),
                             );
-                          }),
+                          },
+                        );
+                      }),
               ),
             ],
           );
@@ -3010,98 +2991,227 @@ class _StudentsTable extends StatefulWidget {
   State<_StudentsTable> createState() => _StudentsTableState();
 }
 
+/// Per-student weekly rollup powering the summary table.
+class _WeekRollup {
+  final int attended; // حضرت/تأخّرت في جلسات هذا الأسبوع
+  final int held; // عدد جلسات هذا الأسبوع التي انعقدت حتى اليوم
+  final Set<String> doneDays; // أيام التسميع اليومي التي سجّلتها الطالبة
+  final ({bool done, String grade})? hifz; // تقييم الحفظ (null = لم يُسجَّل)
+  const _WeekRollup({
+    required this.attended,
+    required this.held,
+    required this.doneDays,
+    required this.hifz,
+  });
+}
+
 class _StudentsTableState extends State<_StudentsTable> {
   late String _amount = widget.circle.hifzAmount;
-  int _heldCount = 0; // عدد الجلسات المنعقدة حتى اليوم
-  Map<String, int> _doneCount = const {}; // uid → كم جلسة حفِظت فيها
-  Set<String> _doneToday = {}; // uids حفِظت اليوم
-  String _todayId = '';
-  bool _loadingHifz = true;
+
+  // --- this week ---
+  late final DateTime _weekStart; // السبت
+  late final String _weekId;
+  late final DateTime _today;
+  int _daysElapsed = 1; // الأيام المنقضية من الأسبوع (مقام التسميع اليومي)
+  List<String> _sessionCodes = const []; // أيام جلسات الحلقة هذا الأسبوع
+  List<String> _occurredDateIds = const []; // المنعقدة حتى اليوم
+
+  // --- loaded data ---
+  Map<String, Map<String, AttendanceState>> _att = {}; // dateId → uid → state
+  Map<String, ({bool done, String grade})> _hifz = {}; // uid → mark
+  Map<String, Set<String>> _doneDays = {}; // uid → أيام التسميع
+  bool _loading = true;
 
   bool get _canManage => widget.onEdit != null;
 
   @override
   void initState() {
     super.initState();
-    _loadHifz();
+    final now = DateTime.now();
+    _today = DateTime(now.year, now.month, now.day);
+    final sinceSat = (_today.weekday - DateTime.saturday) % 7;
+    _weekStart = _today.subtract(Duration(days: sinceSat));
+    _weekId = DateFormat('yyyy-MM-dd').format(_weekStart);
+    _daysElapsed = sinceSat + 1;
+    _sessionCodes = [
+      for (final c in _scheduleDayOrder)
+        if (widget.circle.days.contains(c)) c,
+    ];
+    _occurredDateIds = [
+      for (final c in _sessionCodes)
+        if (_scheduleDayOrder.indexOf(c) <= sinceSat)
+          DateFormat('yyyy-MM-dd').format(
+              _weekStart.add(Duration(days: _scheduleDayOrder.indexOf(c)))),
+    ];
+    _load();
   }
 
-  Future<void> _loadHifz() async {
+  Future<void> _load() async {
+    final id = widget.circle.id;
+    Map<String, Map<String, AttendanceState>> att = {};
     try {
-      final c = widget.circle;
-      final now = DateTime.now();
-      final today = DateTime(now.year, now.month, now.day);
-      _todayId = DateFormat('yyyy-MM-dd').format(today);
-      final from = c.createdAt ?? now.subtract(const Duration(days: 120));
-      // الجلسات المتوقّعة (القاعدة + الاستثناءات + المستندات) حتى اليوم.
-      Map<String, ({String type, String? time})> exc = const {};
-      try {
-        exc = await getIt<CircleRepository>().getScheduleExceptions(c.id);
-      } catch (_) {}
-      List<Session> docs = const [];
-      try {
-        docs = await getIt<SessionRepository>().getSessions(c.id);
-      } catch (_) {}
-      final occ = buildSessionOccurrences(
-        circle: c,
-        from: from,
-        to: today,
-        exceptions: exc,
-        docs: docs,
-      ).where((o) => !o.at.isAfter(now)).toList();
-      final dateIds = <String>{
-        for (final o in occ) DateFormat('yyyy-MM-dd').format(o.at),
-        _todayId,
-      }.toList();
-      final marks = await getIt<CircleRepository>()
-          .getHifz(circleId: c.id, dateIds: dateIds);
-      final held = <String>{
-        for (final o in occ) DateFormat('yyyy-MM-dd').format(o.at),
-      };
-      final counts = <String, int>{};
-      for (final id in held) {
-        final set = marks[id] ?? const {};
-        for (final uid in set) {
-          counts[uid] = (counts[uid] ?? 0) + 1;
-        }
+      att = await getIt<CircleRepository>()
+          .getWeekAttendance(circleId: id, dateIds: _occurredDateIds);
+    } catch (_) {}
+    Map<String, ({bool done, String grade})> hifz = {};
+    try {
+      final w = await getIt<CircleRepository>()
+          .getHifzWeeks(circleId: id, weekIds: [_weekId]);
+      hifz = w[_weekId] ?? {};
+    } catch (_) {}
+    final done = <String, Set<String>>{};
+    try {
+      final comps = await HomeworkRepository(
+              getIt<FirebaseFirestore>(), getIt<FirebaseAuth>())
+          .completionsStream(id, _weekId)
+          .first;
+      for (final c in comps) {
+        done[c.uid] = c.doneDays;
       }
-      if (!mounted) return;
-      setState(() {
-        _heldCount = held.length;
-        _doneCount = counts;
-        _doneToday = {...(marks[_todayId] ?? const {})};
-        _loadingHifz = false;
-      });
-    } catch (_) {
-      if (mounted) setState(() => _loadingHifz = false);
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() {
+      _att = att;
+      _hifz = hifz;
+      _doneDays = done;
+      _loading = false;
+    });
+  }
+
+  _WeekRollup _rollupFor(String uid) {
+    var attended = 0;
+    for (final d in _occurredDateIds) {
+      final s = _att[d]?[uid];
+      if (s == AttendanceState.present || s == AttendanceState.late_) {
+        attended++;
+      }
+    }
+    return _WeekRollup(
+      attended: attended,
+      held: _occurredDateIds.length,
+      doneDays: _doneDays[uid] ?? const {},
+      hifz: _hifz[uid],
+    );
+  }
+
+  AttendanceState? _nextAtt(AttendanceState? s) {
+    switch (s) {
+      case null:
+        return AttendanceState.present;
+      case AttendanceState.present:
+        return AttendanceState.absent;
+      case AttendanceState.absent:
+        return AttendanceState.excused;
+      default:
+        return null;
     }
   }
 
-  Future<void> _toggleToday(CircleMember m) async {
-    final wasDone = _doneToday.contains(m.uid);
+  Future<void> _cycleAtt(String uid, String dateId) async {
+    final next = _nextAtt(_att[dateId]?[uid]);
     setState(() {
-      if (wasDone) {
-        _doneToday.remove(m.uid);
+      final m = _att.putIfAbsent(dateId, () => {});
+      if (next == null) {
+        m.remove(uid);
       } else {
-        _doneToday.add(m.uid);
+        m[uid] = next;
+      }
+    });
+    try {
+      await getIt<CircleRepository>().markAttendance(
+          circleId: widget.circle.id, dateId: dateId, uid: uid, state: next);
+    } catch (_) {
+      if (mounted) _load();
+    }
+  }
+
+  Future<void> _editHifz(CircleMember m) async {
+    if (!_canManage) return;
+    final cur = _hifz[m.uid];
+    var done = cur?.done ?? true;
+    var grade = (cur != null && cur.grade.isNotEmpty)
+        ? cur.grade
+        : PerformanceTag.good.name;
+    final res = await showDialog<({bool? done, String grade})>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('الحفظ الأسبوعي'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (_amount.trim().isNotEmpty)
+                Text('المطلوب: $_amount',
+                    style: const TextStyle(
+                        fontSize: 12, color: AppColors.textMuted)),
+              const SizedBox(height: 12),
+              SegmentedButton<bool>(
+                segments: const [
+                  ButtonSegment(value: true, label: Text('أتمّت')),
+                  ButtonSegment(value: false, label: Text('لم تُكمل')),
+                ],
+                selected: {done},
+                onSelectionChanged: (s) => setLocal(() => done = s.first),
+              ),
+              if (done) ...[
+                const SizedBox(height: 14),
+                const Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: Text('التقييم', style: TextStyle(fontSize: 12))),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final t in PerformanceTag.values)
+                      ChoiceChip(
+                        label: Text(t.arabicLabel),
+                        selected: grade == t.name,
+                        onSelected: (_) => setLocal(() => grade = t.name),
+                      ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            if (cur != null)
+              TextButton(
+                onPressed: () =>
+                    Navigator.pop(ctx, (done: null, grade: '')),
+                child: const Text('مسح'),
+              ),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('إلغاء')),
+            FilledButton(
+              onPressed: () => Navigator.pop(
+                  ctx, (done: done, grade: done ? grade : '')),
+              child: const Text('حفظ'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (res == null) return;
+    setState(() {
+      if (res.done == null) {
+        _hifz.remove(m.uid);
+      } else {
+        _hifz[m.uid] = (done: res.done!, grade: res.grade);
       }
     });
     try {
       await getIt<CircleRepository>().markHifz(
         circleId: widget.circle.id,
-        dateId: _todayId,
+        weekId: _weekId,
         uid: m.uid,
-        done: !wasDone,
+        done: res.done,
+        grade: res.grade,
       );
     } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        if (wasDone) {
-          _doneToday.add(m.uid);
-        } else {
-          _doneToday.remove(m.uid);
-        }
-      });
+      if (mounted) _load();
     }
   }
 
@@ -3172,12 +3282,11 @@ class _StudentsTableState extends State<_StudentsTable> {
                     child: Row(
                       children: [
                         head('الطالبة', 3),
-                        head('تسميع اليوم', 2),
-                        head('حفظ اليوم', 2),
-                        head('تقدّم الحفظ', 3),
-                        head('التقييم', 2),
+                        head('حضور الجلسات', 2),
+                        head('التسميع اليومي', 2),
+                        head('الحفظ الأسبوعي', 3),
                         head('الشريكة', 2),
-                        head('إجراءات', 1),
+                        head('', 1),
                       ],
                     ),
                   ),
@@ -3194,12 +3303,18 @@ class _StudentsTableState extends State<_StudentsTable> {
                           onEdit: widget.onEdit,
                           partnerName:
                               m.partnerId == null ? null : names[m.partnerId],
-                          hifzHeld: _heldCount,
-                          hifzDone: _doneCount[m.uid] ?? 0,
-                          hifzLoading: _loadingHifz,
-                          hifzDoneToday: _doneToday.contains(m.uid),
-                          onToggleHifzToday:
-                              _canManage ? () => _toggleToday(m) : null,
+                          loading: _loading,
+                          rollup: _rollupFor(m.uid),
+                          daysElapsed: _daysElapsed,
+                          today: _today,
+                          weekStart: _weekStart,
+                          sessionCodes: _sessionCodes,
+                          attOf: (dateId) => _att[dateId]?[m.uid],
+                          onCycleAtt: _canManage
+                              ? (dateId) => _cycleAtt(m.uid, dateId)
+                              : null,
+                          onEditHifz:
+                              _canManage ? () => _editHifz(m) : null,
                         );
                       },
                     ),
@@ -3214,8 +3329,8 @@ class _StudentsTableState extends State<_StudentsTable> {
   }
 }
 
-/// Banner above the students table showing the حلقة's «مقدار الحفظ» with an
-/// edit affordance for managers.
+/// Banner above the students table showing the حلقة's «مقدار الحفظ الأسبوعي»
+/// with an edit affordance for managers.
 class _HifzAmountBanner extends StatelessWidget {
   final String amount;
   final VoidCallback? onEdit;
@@ -3265,64 +3380,34 @@ class _HifzAmountBanner extends StatelessWidget {
   }
 }
 
-/// A compact tappable chip the teacher uses to mark «حفظت اليوم؟» per student.
-class _HifzTodayToggle extends StatelessWidget {
-  final bool done;
-  final VoidCallback? onTap;
-  const _HifzTodayToggle({required this.done, this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final color = done ? AppColors.success : AppColors.textMuted;
-    final chip = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-      decoration: BoxDecoration(
-        color: done ? AppColors.success.withValues(alpha: .12) : AppColors.gray,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-            color: done ? AppColors.success : AppColors.border),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(done ? Icons.check_circle_rounded : Icons.circle_outlined,
-              size: 14, color: color),
-          const SizedBox(width: 4),
-          Text(done ? 'حفِظت' : 'لم تحفظ',
-              style: TextStyle(
-                  color: color, fontSize: 11, fontWeight: FontWeight.w700)),
-        ],
-      ),
-    );
-    if (onTap == null) return Opacity(opacity: .7, child: chip);
-    return InkWell(
-      borderRadius: BorderRadius.circular(999),
-      onTap: onTap,
-      child: chip,
-    );
-  }
-}
-
 class _StudentRow extends StatefulWidget {
   final Circle circle;
   final CircleMember member;
   final void Function(CircleMember)? onEdit;
   final String? partnerName;
-  final int hifzHeld;
-  final int hifzDone;
-  final bool hifzLoading;
-  final bool hifzDoneToday;
-  final VoidCallback? onToggleHifzToday;
+  final bool loading;
+  final _WeekRollup rollup;
+  final int daysElapsed;
+  final DateTime today;
+  final DateTime weekStart;
+  final List<String> sessionCodes;
+  final AttendanceState? Function(String dateId) attOf;
+  final void Function(String dateId)? onCycleAtt;
+  final VoidCallback? onEditHifz;
   const _StudentRow({
     required this.circle,
     required this.member,
     required this.onEdit,
+    required this.loading,
+    required this.rollup,
+    required this.daysElapsed,
+    required this.today,
+    required this.weekStart,
+    required this.sessionCodes,
+    required this.attOf,
+    required this.onCycleAtt,
+    required this.onEditHifz,
     this.partnerName,
-    this.hifzHeld = 0,
-    this.hifzDone = 0,
-    this.hifzLoading = false,
-    this.hifzDoneToday = false,
-    this.onToggleHifzToday,
   });
 
   @override
@@ -3332,14 +3417,97 @@ class _StudentRow extends StatefulWidget {
 class _StudentRowState extends State<_StudentRow> {
   bool _expanded = false;
 
+  Widget _hifzChip() {
+    final h = widget.rollup.hifz;
+    if (widget.loading) {
+      return Text('…',
+          style: TextStyle(color: AppColors.textMuted, fontSize: 12));
+    }
+    Widget chip;
+    if (h == null) {
+      chip = Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+              color: AppColors.border, style: BorderStyle.solid),
+        ),
+        child: const Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.add, size: 13, color: AppColors.textMuted),
+          SizedBox(width: 3),
+          Text('تسجيل الحفظ',
+              style: TextStyle(color: AppColors.textMuted, fontSize: 11.5)),
+        ]),
+      );
+    } else if (h.done) {
+      final tag = PerformanceTag.fromName(h.grade);
+      final label =
+          tag == null ? 'حفِظت' : 'حفِظت · ${tag.arabicLabel}';
+      chip = _pill(label, AppColors.success, Icons.check_circle_rounded);
+    } else {
+      chip = _pill('لم تُكمل', AppColors.warning, Icons.schedule_rounded);
+    }
+    if (widget.onEditHifz == null) return chip;
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: widget.onEditHifz,
+      child: chip,
+    );
+  }
+
+  Widget _pill(String label, Color color, IconData icon) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: .12),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: color),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 13, color: color),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    color: color, fontSize: 11.5, fontWeight: FontWeight.w700)),
+          ),
+        ]),
+      );
+
+  Widget _count(int x, int y, String unit) {
+    if (widget.loading) {
+      return Text('…',
+          style: TextStyle(color: AppColors.textMuted, fontSize: 12));
+    }
+    if (y == 0) {
+      return Text('—',
+          style: TextStyle(color: AppColors.textMuted, fontSize: 12));
+    }
+    return RichText(
+      text: TextSpan(children: [
+        TextSpan(
+            text: '$x / $y ',
+            style: const TextStyle(
+                color: AppColors.ink,
+                fontSize: 13,
+                fontWeight: FontWeight.w700)),
+        TextSpan(
+            text: unit,
+            style:
+                const TextStyle(color: AppColors.textMuted, fontSize: 11)),
+      ]),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final member = widget.member;
     final initial = member.name.isNotEmpty ? member.name.characters.first : '؟';
-    final last = member.lastRecitationAt;
     final pending = member.status == MemberStatus.pending;
     final partner = widget.partnerName;
+    final r = widget.rollup;
 
     return Column(
       children: [
@@ -3372,7 +3540,11 @@ class _StudentRowState extends State<_StudentRow> {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: theme.textTheme.titleSmall),
-                            if (member.juz != null)
+                            if (pending)
+                              const Text('بانتظار',
+                                  style: TextStyle(
+                                      color: AppColors.warning, fontSize: 11))
+                            else if (member.juz != null)
                               Text('جزء ${member.juz}',
                                   style: theme.textTheme.bodySmall
                                       ?.copyWith(color: AppColors.textMuted)),
@@ -3382,86 +3554,20 @@ class _StudentRowState extends State<_StudentRow> {
                     ],
                   ),
                 ),
-                // تسميع اليوم (الحضور + وقت آخر تسميع)
+                // حضور الجلسات
+                Expanded(
+                    flex: 2, child: _count(r.attended, r.held, 'جلسة')),
+                // التسميع اليومي
                 Expanded(
                   flex: 2,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      pending
-                          ? const StatusChip(
-                              label: 'بانتظار', color: AppColors.warning)
-                          : StatusChip(
-                              label: member.attendance?.arabicLabel ?? '—',
-                              color: attendanceColor(member.attendance),
-                            ),
-                      if (last != null) ...[
-                        const SizedBox(height: 2),
-                        Text(DateFormat('d/M h:mm', 'ar').format(last),
-                            style: theme.textTheme.bodySmall?.copyWith(
-                                color: AppColors.textMuted, fontSize: 10)),
-                      ],
-                    ],
-                  ),
+                  child: _count(r.doneDays.length, widget.daysElapsed, 'يوم'),
                 ),
-                // حفظ اليوم (زر تبديل للمعلّمة)
-                Expanded(
-                  flex: 2,
-                  child: Align(
-                    alignment: AlignmentDirectional.centerStart,
-                    child: _HifzTodayToggle(
-                      done: widget.hifzDoneToday,
-                      onTap: widget.onToggleHifzToday,
-                    ),
-                  ),
-                ),
-                // تقدّم الحفظ (حفِظت في X من Y جلسة)
+                // الحفظ الأسبوعي
                 Expanded(
                   flex: 3,
-                  child: Padding(
-                    padding: const EdgeInsets.only(left: 12),
-                    child: widget.hifzLoading
-                        ? const SizedBox(
-                            height: 14,
-                            width: 14,
-                            child: CircularProgressIndicator(strokeWidth: 2))
-                        : Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                widget.hifzHeld == 0
-                                    ? 'لا جلسات بعد'
-                                    : '${widget.hifzDone} / ${widget.hifzHeld} جلسة',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                    fontWeight: FontWeight.w700),
-                              ),
-                              const SizedBox(height: 3),
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(999),
-                                child: LinearProgressIndicator(
-                                  value: widget.hifzHeld == 0
-                                      ? 0
-                                      : (widget.hifzDone / widget.hifzHeld)
-                                          .clamp(0, 1),
-                                  minHeight: 6,
-                                  backgroundColor: AppColors.sky,
-                                  valueColor: const AlwaysStoppedAnimation(
-                                      AppColors.primary),
-                                ),
-                              ),
-                            ],
-                          ),
-                  ),
-                ),
-                // التقييم
-                Expanded(
-                  flex: 2,
-                  child: StatusChip(
-                    label: member.performance?.arabicLabel ?? 'بلا تقييم',
-                    color: performanceColor(member.performance),
-                  ),
+                  child: Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: _hifzChip()),
                 ),
                 // الشريكة
                 Expanded(
@@ -3522,574 +3628,171 @@ class _StudentRowState extends State<_StudentRow> {
           ),
         ),
         if (_expanded)
-          _StudentDetail(
-              circle: widget.circle, member: member, partnerName: partner),
+          _StudentWeekDetail(
+            today: widget.today,
+            weekStart: widget.weekStart,
+            sessionCodes: widget.sessionCodes,
+            doneDays: r.doneDays,
+            attOf: widget.attOf,
+            onCycleAtt: widget.onCycleAtt,
+          ),
       ],
     );
   }
 }
 
-/// Expandable per-student detail panel under a table row.
-/// Shows the fields available today; weekly attendance, streak, exam history
-/// and contact will plug in once that data is modelled.
-class _StudentDetail extends StatefulWidget {
-  final Circle circle;
-  final CircleMember member;
-  final String? partnerName;
-  const _StudentDetail(
-      {required this.circle, required this.member, required this.partnerName});
+/// Expanded panel under a table row: the day-by-day breakdown.
+/// Top strip = daily تسميع ticks (read-only, the student's own). Bottom strip
+/// = this week's session attendance (tappable by managers).
+class _StudentWeekDetail extends StatelessWidget {
+  final DateTime today;
+  final DateTime weekStart;
+  final List<String> sessionCodes;
+  final Set<String> doneDays;
+  final AttendanceState? Function(String dateId) attOf;
+  final void Function(String dateId)? onCycleAtt;
+  const _StudentWeekDetail({
+    required this.today,
+    required this.weekStart,
+    required this.sessionCodes,
+    required this.doneDays,
+    required this.attOf,
+    required this.onCycleAtt,
+  });
 
-  @override
-  State<_StudentDetail> createState() => _StudentDetailState();
-}
-
-class _StudentDetailState extends State<_StudentDetail> {
-  int? _pct;
-  bool _loadingPct = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadAttendancePercent();
-  }
-
-  /// Attendance % over the last 4 weeks of the circle's meeting days.
-  Future<void> _loadAttendancePercent() async {
-    try {
-      final circle = widget.circle;
-      final days = circle.days.isNotEmpty ? circle.days : _scheduleDayOrder;
-      final now = DateTime.now();
-      final today = DateTime(now.year, now.month, now.day);
-      final daysSinceSat = (today.weekday - DateTime.saturday) % 7;
-      final thisWeekStart = today.subtract(Duration(days: daysSinceSat));
-      final dateIds = <String>[];
-      for (var w = 0; w < 4; w++) {
-        final ws = thisWeekStart.subtract(Duration(days: 7 * w));
-        for (final d in days) {
-          final idx = _scheduleDayOrder.indexOf(d);
-          if (idx < 0) continue;
-          final date = ws.add(Duration(days: idx));
-          if (!date.isAfter(today)) {
-            dateIds.add(DateFormat('yyyy-MM-dd').format(date));
-          }
-        }
-      }
-      final data = await getIt<CircleRepository>()
-          .getWeekAttendance(circleId: circle.id, dateIds: dateIds);
-      var recorded = 0, present = 0;
-      for (final id in dateIds) {
-        final st = data[id]?[widget.member.uid];
-        if (st != null) {
-          recorded++;
-          if (st == AttendanceState.present || st == AttendanceState.late_) {
-            present++;
-          }
-        }
-      }
-      if (!mounted) return;
-      setState(() {
-        _pct = recorded == 0 ? null : (present / recorded * 100).round();
-        _loadingPct = false;
-      });
-    } catch (_) {
-      if (mounted) setState(() => _loadingPct = false);
-    }
-  }
+  Color _attColor(AttendanceState? s) => attendanceColor(s);
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final member = widget.member;
-    final last = member.lastRecitationAt;
-    final partner = (widget.partnerName == null || widget.partnerName!.isEmpty)
-        ? '—'
-        : widget.partnerName!;
-    final pctLabel = _loadingPct ? '…' : (_pct == null ? '—' : '$_pct%');
-    final items = <(IconData, String, String)>[
-      (Icons.menu_book_outlined, 'الجزء', member.juz?.toString() ?? '—'),
-      (
-        Icons.event_available_outlined,
-        'حالة الحضور',
-        member.attendance?.arabicLabel ?? '—'
-      ),
-      (Icons.percent_outlined, 'نسبة الحضور (٤ أسابيع)', pctLabel),
-      (
-        Icons.mic_none_outlined,
-        'آخر تسميع',
-        last == null ? 'لم تُسمّع' : DateFormat('EEEE d/M h:mm', 'ar').format(last)
-      ),
-      (
-        Icons.auto_stories_outlined,
-        'الصفحات المحفوظة',
-        '${member.memorizedPages}/${member.totalPages}'
-      ),
-      (Icons.people_alt_outlined, 'الشريكة (تلاوة متبادلة)', partner),
-      (
-        Icons.contact_phone_outlined,
-        'جهة الاتصال',
-        (member.contact == null || member.contact!.isEmpty)
-            ? '—'
-            : member.contact!
-      ),
-      (
-        Icons.sticky_note_2_outlined,
-        'ملاحظات',
-        (member.notes == null || member.notes!.isEmpty) ? '—' : member.notes!
-      ),
-    ];
     return Container(
       width: double.infinity,
       color: AppColors.beige,
       padding: const EdgeInsets.all(AppSpacing.md),
-      child: Wrap(
-        spacing: AppSpacing.lg,
-        runSpacing: AppSpacing.sm,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          for (final it in items)
-            SizedBox(
-              width: 200,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(it.$1, size: 16, color: AppColors.primary),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(it.$2,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                                color: AppColors.textMuted, fontSize: 10)),
-                        Text(it.$3,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodySmall),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-//  Weekly attendance grid (students × meeting days)
-// ---------------------------------------------------------------------------
-
-class _WeeklyAttendance extends StatefulWidget {
-  final Circle circle;
-  final List<CircleMember> students;
-  final bool canManage;
-  const _WeeklyAttendance({
-    required this.circle,
-    required this.students,
-    required this.canManage,
-  });
-
-  @override
-  State<_WeeklyAttendance> createState() => _WeeklyAttendanceState();
-}
-
-class _WeeklyAttendanceState extends State<_WeeklyAttendance> {
-  late DateTime _thisWeekStart; // Saturday of the current week
-  late DateTime _weekStart; // Saturday of the displayed week
-  List<String> _codes = const [];
-  List<String> _dateIds = const [];
-  Future<Map<String, Map<String, AttendanceState>>>? _future;
-
-  @override
-  void initState() {
-    super.initState();
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final daysSinceSat = (today.weekday - DateTime.saturday) % 7;
-    _thisWeekStart = today.subtract(Duration(days: daysSinceSat));
-    _weekStart = _thisWeekStart;
-    _initCodes();
-  }
-
-  /// Meeting days come from the حلقة's fixed rule (single source of truth,
-  /// same as the «أيام الحلقة» card). Falls back to deriving from sessions for
-  /// circles with no rule yet, then to the full week.
-  Future<void> _initCodes() async {
-    List<String> codes;
-    if (widget.circle.days.isNotEmpty) {
-      codes = [
-        for (final c in _scheduleDayOrder)
-          if (widget.circle.days.contains(c)) c,
-      ];
-    } else {
-      try {
-        final sessions =
-            await getIt<CalendarRepository>().getSessions(widget.circle.id);
-        final wds = sessions.map((s) => s.scheduledAt.weekday).toSet();
-        codes = [
-          for (final c in _scheduleDayOrder)
-            if (wds.contains(_codeToWeekday[c])) c,
-        ];
-      } catch (_) {
-        codes = const [];
-      }
-    }
-    if (codes.isEmpty) codes = List.of(_scheduleDayOrder);
-    if (!mounted) return;
-    setState(() {
-      _codes = codes;
-      _recompute();
-    });
-  }
-
-  /// Rebuild the visible date ids from [_weekStart] and reload the week.
-  void _recompute() {
-    _dateIds = [
-      for (final c in _codes)
-        DateFormat('yyyy-MM-dd').format(
-            _weekStart.add(Duration(days: _scheduleDayOrder.indexOf(c)))),
-    ];
-    _future = _load();
-  }
-
-  bool get _isCurrentWeek => !_weekStart.isBefore(_thisWeekStart);
-
-  /// Move by [delta] weeks (−1 = previous). Never navigate into the future.
-  void _changeWeek(int delta) {
-    final next = _weekStart.add(Duration(days: delta * 7));
-    if (next.isAfter(_thisWeekStart)) return;
-    setState(() {
-      _weekStart = next;
-      _recompute();
-    });
-  }
-
-  Future<Map<String, Map<String, AttendanceState>>> _load() =>
-      getIt<CircleRepository>()
-          .getWeekAttendance(circleId: widget.circle.id, dateIds: _dateIds);
-
-  AttendanceState? _nextState(AttendanceState? s) {
-    switch (s) {
-      case null:
-        return AttendanceState.present;
-      case AttendanceState.present:
-        return AttendanceState.absent;
-      case AttendanceState.absent:
-        return AttendanceState.excused;
-      default:
-        return null;
-    }
-  }
-
-  Future<void> _cycle(
-      String dateId, String uid, AttendanceState? current) async {
-    try {
-      await getIt<CircleRepository>().markAttendance(
-        circleId: widget.circle.id,
-        dateId: dateId,
-        uid: uid,
-        state: _nextState(current),
-      );
-      if (mounted) setState(() => _future = _load());
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(const SnackBar(
-              content: Text('تعذّر حفظ الحضور — تحقّقي من نشر قواعد Firestore')));
-      }
-    }
-  }
-
-  Widget _weekNavBar(ThemeData theme) {
-    final end = _weekStart.add(const Duration(days: 6));
-    final label =
-        '${DateFormat('d MMM', 'ar').format(_weekStart)} – ${DateFormat('d MMM', 'ar').format(end)}';
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          IconButton(
-            tooltip: 'الأسبوع التالي',
-            icon: const Icon(Icons.chevron_right,
-                textDirection: TextDirection.ltr),
-            onPressed: _isCurrentWeek ? null : () => _changeWeek(1),
-          ),
-          const SizedBox(width: 4),
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(label, style: theme.textTheme.titleSmall),
-              if (_isCurrentWeek)
-                Text('هذا الأسبوع',
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: AppColors.primary)),
-            ],
-          ),
-          const SizedBox(width: 4),
-          IconButton(
-            tooltip: 'الأسبوع السابق',
-            icon: const Icon(Icons.chevron_left,
-                textDirection: TextDirection.ltr),
-            onPressed: () => _changeWeek(-1),
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Column(
-      children: [
-        _weekNavBar(theme),
-        const Divider(height: 1),
-        if (widget.circle.days.isEmpty)
-          Container(
-            width: double.infinity,
-            color: AppColors.warning.withValues(alpha: 0.12),
-            padding: const EdgeInsets.symmetric(
-                horizontal: 12, vertical: 8),
-            child: Row(
-              children: [
-                const Icon(Icons.info_outline,
-                    size: 16, color: AppColors.warning),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'لم تُحدّد أيام الحلقة بعد — حدّديها من «معلومات الحلقة» لعرض أيام الحضور فقط.',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-          child: Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: _legend(theme),
-          ),
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        Expanded(
-          child: _future == null
-              ? const Center(child: CircularProgressIndicator())
-              : FutureBuilder<Map<String, Map<String, AttendanceState>>>(
-                  future: _future,
-                  builder: (context, snap) {
-                    if (!snap.hasData) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    final data = snap.data!;
-                    final codes = _codes;
-                    final dateIds = _dateIds;
-                    Widget head(String t, int flex, {bool center = false}) =>
-                        Expanded(
-                          flex: flex,
-                          child: Text(t,
-                              textAlign:
-                                  center ? TextAlign.center : TextAlign.start,
-                              style: theme.textTheme.bodySmall
-                                  ?.copyWith(color: AppColors.textMuted)),
-                        );
-                    return Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                          AppSpacing.md, 0, AppSpacing.md, AppSpacing.md),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: AppColors.surface,
-                          borderRadius: BorderRadius.circular(AppRadius.lg),
-                          border: Border.all(color: AppColors.border),
-                        ),
-                        clipBehavior: Clip.antiAlias,
-                        child: Column(
-                          children: [
-                            Container(
-                              color: AppColors.gray,
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 14, vertical: 10),
-                              child: Row(
-                                children: [
-                                  head('الطالبة', 3),
-                                  for (final c in codes)
-                                    head(_scheduleDayLabels[c] ?? c, 2,
-                                        center: true),
-                                  head('النسبة', 2, center: true),
-                                ],
-                              ),
-                            ),
-                            const Divider(height: 1),
-                            Expanded(
-                              child: ListView.separated(
-                                itemCount: widget.students.length,
-                                separatorBuilder: (_, __) =>
-                                    const Divider(height: 1),
-                                itemBuilder: (context, i) {
-                                  final m = widget.students[i];
-                                  var recorded = 0, attended = 0;
-                                  final cells = <Widget>[];
-                                  for (var j = 0; j < codes.length; j++) {
-                                    final dateId = dateIds[j];
-                                    final st = data[dateId]?[m.uid];
-                                    if (st != null) {
-                                      recorded++;
-                                      if (st == AttendanceState.present ||
-                                          st == AttendanceState.late_) {
-                                        attended++;
-                                      }
-                                    }
-                                    cells.add(Expanded(
-                                      flex: 2,
-                                      child: Center(
-                                        child: _AttCell(
-                                          state: st,
-                                          onTap: widget.canManage
-                                              ? () => _cycle(dateId, m.uid, st)
-                                              : null,
-                                        ),
-                                      ),
-                                    ));
-                                  }
-                                  final pct = recorded == 0
-                                      ? 0
-                                      : (attended / recorded * 100).round();
-                                  return Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 14, vertical: 10),
-                                    child: Row(
-                                      children: [
-                                        Expanded(
-                                            flex: 3,
-                                            child: _nameCell(theme, m)),
-                                        ...cells,
-                                        Expanded(
-                                            flex: 2,
-                                            child:
-                                                Center(child: _pctChip(pct))),
-                                      ],
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-        ),
-      ],
-    );
-  }
-
-  Widget _nameCell(ThemeData theme, CircleMember m) {
-    return Row(
-      children: [
-        CircleAvatar(
-          radius: 13,
-          backgroundColor: AppColors.sky,
-          child: Text(m.name.isNotEmpty ? m.name.characters.first : '؟',
-              style: const TextStyle(
-                  color: AppColors.primary,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 11)),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(m.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall),
-        ),
-      ],
-    );
-  }
-
-  Widget _pctChip(int pct) {
-    final color = pct >= 75
-        ? AppColors.success
-        : (pct >= 50 ? AppColors.warning : AppColors.error);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(AppRadius.pill),
-      ),
-      child: Text('$pct٪',
-          style:
-              TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700)),
-    );
-  }
-
-  Widget _legend(ThemeData theme) {
-    Widget item(IconData ic, Color c, String t) => Padding(
-          padding: const EdgeInsets.only(left: 14),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(ic, size: 14, color: c),
+          Row(children: [
+            const Icon(Icons.lock_outline, size: 13, color: AppColors.textMuted),
             const SizedBox(width: 4),
-            Text(t,
+            Text('التسميع اليومي مع الرفيقة',
                 style: theme.textTheme.bodySmall
                     ?.copyWith(color: AppColors.textMuted)),
           ]),
-        );
-    return Padding(
-      padding: const EdgeInsets.all(AppSpacing.sm),
-      child: Row(children: [
-        item(Icons.check_circle, AppColors.success, 'حاضرة'),
-        item(Icons.cancel, AppColors.error, 'غائبة'),
-        item(Icons.remove_circle, AppColors.warning, 'معذورة'),
-        Text('— لا جلسة',
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: AppColors.textMuted)),
-      ]),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final code in _scheduleDayOrder)
+                _dayTick(code),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(children: [
+            const Icon(Icons.event_available_outlined,
+                size: 13, color: AppColors.primary),
+            const SizedBox(width: 4),
+            Text('حضور الجلسات',
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: AppColors.primary)),
+          ]),
+          const SizedBox(height: 8),
+          if (sessionCodes.isEmpty)
+            Text('لا توجد أيام جلسات محدَّدة لهذه الحلقة',
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: AppColors.textMuted))
+          else
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final code in sessionCodes) _sessionChip(code),
+              ],
+            ),
+        ],
+      ),
     );
   }
-}
 
-class _AttCell extends StatelessWidget {
-  final AttendanceState? state;
-  final VoidCallback? onTap;
-  const _AttCell({required this.state, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    IconData? ic;
-    Color color;
-    switch (state) {
-      case AttendanceState.present:
-        ic = Icons.check_circle;
-        color = AppColors.success;
-        break;
-      case AttendanceState.absent:
-        ic = Icons.cancel;
-        color = AppColors.error;
-        break;
-      case AttendanceState.excused:
-        ic = Icons.remove_circle;
-        color = AppColors.warning;
-        break;
-      case AttendanceState.late_:
-        ic = Icons.schedule;
-        color = AppColors.warning;
-        break;
-      case null:
-        ic = null;
-        color = AppColors.textMuted;
-        break;
+  Widget _dayTick(String code) {
+    final idx = _scheduleDayOrder.indexOf(code);
+    final date = weekStart.add(Duration(days: idx));
+    final future = date.isAfter(today);
+    final done = doneDays.contains(code);
+    final Color bg, fg;
+    final IconData icon;
+    if (done) {
+      bg = AppColors.success.withValues(alpha: .14);
+      fg = AppColors.success;
+      icon = Icons.check;
+    } else if (future) {
+      bg = AppColors.gray;
+      fg = AppColors.textMuted.withValues(alpha: .5);
+      icon = Icons.remove;
+    } else {
+      bg = AppColors.gray;
+      fg = AppColors.textMuted;
+      icon = Icons.close;
     }
-    final child = ic == null
-        ? Text('—', style: TextStyle(color: color))
-        : Icon(ic, size: 20, color: color);
-    if (onTap == null) return child;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 30,
+          height: 30,
+          decoration:
+              BoxDecoration(color: bg, borderRadius: BorderRadius.circular(8)),
+          child: Icon(icon, size: 15, color: fg),
+        ),
+        const SizedBox(height: 3),
+        Text(_scheduleDayLabels[code] ?? code,
+            style: const TextStyle(fontSize: 10, color: AppColors.textMuted)),
+      ],
+    );
+  }
+
+  Widget _sessionChip(String code) {
+    final idx = _scheduleDayOrder.indexOf(code);
+    final date = weekStart.add(Duration(days: idx));
+    final dateId = DateFormat('yyyy-MM-dd').format(date);
+    final occurred = !date.isAfter(today);
+    final label = _scheduleDayLabels[code] ?? code;
+    if (!occurred) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: AppColors.gray,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text('$label · لاحقًا',
+            style: const TextStyle(
+                fontSize: 12, color: AppColors.textMuted)),
+      );
+    }
+    final state = attOf(dateId);
+    final color = _attColor(state);
+    final text = '$label · ${state?.arabicLabel ?? 'لم تُسجَّل'}';
+    final chip = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: state == null
+            ? AppColors.surface
+            : color.withValues(alpha: .12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: state == null ? AppColors.border : color),
+      ),
+      child: Text(text,
+          style: TextStyle(
+              fontSize: 12,
+              color: state == null ? AppColors.textMuted : color,
+              fontWeight: FontWeight.w600)),
+    );
+    if (onCycleAtt == null) return chip;
     return InkWell(
-      borderRadius: BorderRadius.circular(20),
-      onTap: onTap,
-      child: Padding(padding: const EdgeInsets.all(4), child: child),
+      borderRadius: BorderRadius.circular(999),
+      onTap: () => onCycleAtt!(dateId),
+      child: chip,
     );
   }
 }

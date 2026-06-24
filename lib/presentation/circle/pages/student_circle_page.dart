@@ -183,36 +183,32 @@ class _StudentCirclePageState extends State<StudentCirclePage> {
       }
     } catch (_) {/* sessions optional */}
 
-    // --- حفظ: how many held sessions did I memorize for ---
+    // --- الحفظ الأسبوعي: في كم أسبوع أتممتُ حفظي من إجمالي الأسابيع ---
     var hifzHeld = 0, hifzDone = 0;
     try {
       final today = DateTime(now.year, now.month, now.day);
-      final from =
-          widget.circle.createdAt ?? now.subtract(const Duration(days: 120));
-      Map<String, ({String type, String? time})> exc = const {};
-      try {
-        exc = await getIt<CircleRepository>().getScheduleExceptions(id);
-      } catch (_) {}
-      List<Session> docs = const [];
-      try {
-        docs = await getIt<SessionRepository>().getSessions(id);
-      } catch (_) {}
-      final occ = buildSessionOccurrences(
-        circle: widget.circle,
-        from: from,
-        to: today,
-        exceptions: exc,
-        docs: docs,
-      ).where((o) => !o.at.isAfter(now)).toList();
-      final dateIds = <String>{
-        for (final o in occ) DateFormat('yyyy-MM-dd').format(o.at),
-      }.toList();
-      hifzHeld = dateIds.length;
-      if (dateIds.isNotEmpty) {
-        final marks =
-            await getIt<CircleRepository>().getHifz(circleId: id, dateIds: dateIds);
-        for (final s in marks.values) {
-          if (s.contains(widget.user.uid)) hifzDone++;
+      DateTime satOf(DateTime d) {
+        final base = DateTime(d.year, d.month, d.day);
+        return base.subtract(
+            Duration(days: (base.weekday - DateTime.saturday) % 7));
+      }
+
+      final firstWeek = satOf(
+          widget.circle.createdAt ?? now.subtract(const Duration(days: 120)));
+      final thisWeek = satOf(today);
+      final weekIds = <String>[];
+      for (var w = firstWeek;
+          !w.isAfter(thisWeek);
+          w = w.add(const Duration(days: 7))) {
+        weekIds.add(DateFormat('yyyy-MM-dd').format(w));
+      }
+      hifzHeld = weekIds.length;
+      if (weekIds.isNotEmpty) {
+        final marks = await getIt<CircleRepository>()
+            .getHifzWeeks(circleId: id, weekIds: weekIds);
+        for (final week in marks.values) {
+          final mine = week[widget.user.uid];
+          if (mine != null && mine.done) hifzDone++;
         }
       }
     } catch (_) {/* hifz optional */}
