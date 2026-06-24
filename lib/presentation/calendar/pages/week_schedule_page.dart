@@ -4,6 +4,7 @@ import 'package:intl/intl.dart' hide TextDirection;
 import '../../../core/di/injection.dart';
 import '../../../core/ui/styles/theme.dart';
 import '../../../core/util/notify.dart';
+import '../../../core/util/session_occurrences.dart';
 import '../../../domain/auth/models/app_user.dart';
 import '../../../domain/circle/models/circle.dart';
 import '../../../domain/circle/repositories/circle_repository.dart';
@@ -94,7 +95,10 @@ class _WeekSchedulePageState extends State<WeekSchedulePage> {
     final calRepo = getIt<CalendarRepository>();
     final taskRepo = getIt<TaskRepository>();
     final circles = await circleRepo.getMyCircles();
-    final todayId = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final now = DateTime.now();
+    final todayId = DateFormat('yyyy-MM-dd').format(now);
+    final from = now.subtract(const Duration(days: 60));
+    final to = now.add(const Duration(days: 180));
 
     final colored = <_CircleColor>[];
     final oneOff = <_Ev>[];
@@ -109,18 +113,30 @@ class _WeekSchedulePageState extends State<WeekSchedulePage> {
       } catch (_) {
         sessions = const [];
       }
-      for (final s in sessions) {
+      Map<String, ({String type, String? time})> exc = const {};
+      try {
+        exc = await circleRepo.getScheduleExceptions(c.id);
+      } catch (_) {}
+      final docByDate = {
+        for (final s in sessions)
+          DateFormat('yyyy-MM-dd').format(s.scheduledAt): s
+      };
+      // Expand the fixed rule (+exceptions) and merge real docs.
+      final occ = buildSessionOccurrences(
+          circle: c, from: from, to: to, exceptions: exc, docs: sessions);
+      for (final o in occ) {
+        final doc = docByDate[DateFormat('yyyy-MM-dd').format(o.at)];
         oneOff.add(_Ev(
-          start: s.scheduledAt,
-          durationMin: s.durationMinutes,
+          start: o.at,
+          durationMin: doc?.durationMinutes ?? c.durationMinutes,
           circleName: c.name,
-          title: s.title,
+          title: o.title ?? '',
           colorIndex: color,
-          status: s.status,
-          type: s.type,
+          status: o.status ?? SessionStatus.scheduled,
+          type: doc?.type,
           circleId: c.id,
-          sessionId: s.id,
-          link: s.link,
+          sessionId: doc?.id ?? '',
+          link: doc?.link ?? '',
         ));
       }
       try {
@@ -241,8 +257,20 @@ class _WeekSchedulePageState extends State<WeekSchedulePage> {
   Future<void> _startSession(BuildContext sheetCtx, _Ev e) async {
     Navigator.pop(sheetCtx);
     try {
+      var sid = e.sessionId;
+      if (sid.isEmpty) {
+        // Rule occurrence with no doc yet → materialize it first.
+        final s = await getIt<CalendarRepository>().addSession(
+          circleId: e.circleId,
+          title: e.title.isEmpty ? 'جلسة ${e.circleName}' : e.title,
+          scheduledAt: e.start,
+          durationMinutes: e.durationMin,
+          type: e.type ?? SessionType.tasmi3,
+        );
+        sid = s.id;
+      }
       await getIt<SessionRepository>()
-          .startSession(circleId: e.circleId, sessionId: e.sessionId);
+          .startSession(circleId: e.circleId, sessionId: sid);
       if (!mounted) return;
       _reload();
       Navigator.of(context).push(MaterialPageRoute(
@@ -260,8 +288,17 @@ class _WeekSchedulePageState extends State<WeekSchedulePage> {
   Future<void> _cancelSession(BuildContext sheetCtx, _Ev e) async {
     Navigator.pop(sheetCtx);
     try {
-      await getIt<CalendarRepository>()
-          .deleteSession(circleId: e.circleId, sessionId: e.sessionId);
+      if (e.sessionId.isEmpty) {
+        // Rule occurrence → record a cancellation exception for that date.
+        await getIt<CircleRepository>().setScheduleException(
+          circleId: e.circleId,
+          dateId: DateFormat('yyyy-MM-dd').format(e.start),
+          type: 'cancelled',
+        );
+      } else {
+        await getIt<CalendarRepository>()
+            .deleteSession(circleId: e.circleId, sessionId: e.sessionId);
+      }
       final d = DateFormat('EEEE d MMMM • HH:mm', 'ar').format(e.start);
       await notifyCircleStudents(
         circleId: e.circleId,
@@ -316,6 +353,18 @@ class _WeekSchedulePageState extends State<WeekSchedulePage> {
               .toList()
             ..sort((a, b) => a.start.compareTo(b.start));
 
+          // Grid hours must cover the actual sessions (e.g. evening 20:00 or
+          // early 06:00), otherwise blocks get clamped off-screen.
+          var gridStart = _startHour;
+          var gridEnd = _endHour;
+          for (final e in weekEvents) {
+            if (e.start.hour < gridStart) gridStart = e.start.hour;
+            final endH = e.end.hour + (e.end.minute > 0 ? 1 : 0);
+            if (endH > gridEnd) gridEnd = endH;
+          }
+          gridStart = gridStart.clamp(0, 23);
+          gridEnd = gridEnd.clamp(gridStart + 1, 24);
+
           return LayoutBuilder(builder: (context, c) {
             final wide = c.maxWidth >= 900;
             final main = Column(
@@ -346,8 +395,8 @@ class _WeekSchedulePageState extends State<WeekSchedulePage> {
                       : _WeekGrid(
                           days: days,
                           events: weekEvents,
-                          startHour: _startHour,
-                          endHour: _endHour,
+                          startHour: gridStart,
+                          endHour: gridEnd,
                           rowH: _rowH,
                           sameDay: _sameDay,
                           onTapEvent: (e) => _openSessionSheet(context, e),
@@ -458,9 +507,14 @@ class _Toolbar extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             IconButton(
-                onPressed: onPrev, icon: const Icon(Icons.chevron_right)),
+                onPressed: onNext,
+                icon: const Icon(Icons.chevron_right,
+                    textDirection: TextDirection.ltr)),
             Text(range, style: Theme.of(context).textTheme.titleMedium),
-            IconButton(onPressed: onNext, icon: const Icon(Icons.chevron_left)),
+            IconButton(
+                onPressed: onPrev,
+                icon: const Icon(Icons.chevron_left,
+                    textDirection: TextDirection.ltr)),
           ],
         ),
         if (isTeacher)
@@ -526,7 +580,7 @@ class _ViewToggle extends StatelessWidget {
 }
 
 // ===================== week grid =====================
-class _WeekGrid extends StatelessWidget {
+class _WeekGrid extends StatefulWidget {
   final List<DateTime> days;
   final List<_Ev> events;
   final int startHour, endHour;
@@ -544,9 +598,45 @@ class _WeekGrid extends StatelessWidget {
   });
 
   @override
+  State<_WeekGrid> createState() => _WeekGridState();
+}
+
+class _WeekGridState extends State<_WeekGrid> {
+  final _scroll = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToEarliest());
+  }
+
+  @override
+  void didUpdateWidget(covariant _WeekGrid old) {
+    super.didUpdateWidget(old);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToEarliest());
+  }
+
+  void _scrollToEarliest() {
+    if (!_scroll.hasClients || widget.events.isEmpty) return;
+    var minHour = 24;
+    for (final e in widget.events) {
+      if (e.start.hour < minHour) minHour = e.start.hour;
+    }
+    final offset =
+        ((minHour - widget.startHour) * widget.rowH).clamp(0.0, _scroll.position.maxScrollExtent);
+    _scroll.jumpTo(offset);
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     const gutter = 48.0;
-    final slots = endHour - startHour;
+    final slots = widget.endHour - widget.startHour;
     final dayNames = DateFormat('EEEE', 'ar');
     final today = DateTime.now();
 
@@ -565,12 +655,12 @@ class _WeekGrid extends StatelessWidget {
           Row(
             children: [
               const SizedBox(width: gutter),
-              for (final dd in days)
+              for (final dd in widget.days)
                 Expanded(
                   child: _DayHeader(
                     name: dayNames.format(dd),
                     day: dd.day,
-                    isToday: sameDay(dd, today),
+                    isToday: widget.sameDay(dd, today),
                   ),
                 ),
             ],
@@ -578,8 +668,9 @@ class _WeekGrid extends StatelessWidget {
           const Divider(height: 1),
           Expanded(
             child: SingleChildScrollView(
+              controller: _scroll,
               child: SizedBox(
-                height: slots * rowH,
+                height: slots * widget.rowH,
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -587,9 +678,9 @@ class _WeekGrid extends StatelessWidget {
                       width: gutter,
                       child: Column(
                         children: [
-                          for (var h = startHour; h < endHour; h++)
+                          for (var h = widget.startHour; h < widget.endHour; h++)
                             SizedBox(
-                              height: rowH,
+                              height: widget.rowH,
                               child: Padding(
                                 padding:
                                     const EdgeInsets.only(top: 2, right: 4),
@@ -604,16 +695,16 @@ class _WeekGrid extends StatelessWidget {
                         ],
                       ),
                     ),
-                    for (final dd in days)
+                    for (final dd in widget.days)
                       Expanded(
                         child: _DayColumn(
-                          events: events
-                              .where((e) => sameDay(e.start, dd))
+                          events: widget.events
+                              .where((e) => widget.sameDay(e.start, dd))
                               .toList(),
-                          startHour: startHour,
+                          startHour: widget.startHour,
                           slots: slots,
-                          rowH: rowH,
-                          onTapEvent: onTapEvent,
+                          rowH: widget.rowH,
+                          onTapEvent: widget.onTapEvent,
                         ),
                       ),
                   ],
@@ -737,6 +828,7 @@ class _DayColumn extends StatelessWidget {
                           '${fmt.format(e.start)} - ${fmt.format(e.end)}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
+                          textDirection: TextDirection.ltr,
                           style: TextStyle(fontSize: 9, color: fg)),
                     ),
                     Icon(Icons.videocam_outlined, size: 12, color: fg),

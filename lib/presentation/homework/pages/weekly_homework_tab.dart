@@ -52,13 +52,15 @@ class _WeeklyHomeworkTabState extends State<WeeklyHomeworkTab> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               IconButton(
-                  onPressed: () => _shift(-1),
-                  icon: const Icon(Icons.chevron_right)),
+                  onPressed: () => _shift(1),
+                  icon: const Icon(Icons.chevron_right,
+                      textDirection: TextDirection.ltr)),
               Text('${fmt.format(_weekStart)} – ${fmt.format(weekEnd)}',
                   style: theme.textTheme.titleMedium),
               IconButton(
-                  onPressed: () => _shift(1),
-                  icon: const Icon(Icons.chevron_left)),
+                  onPressed: () => _shift(-1),
+                  icon: const Icon(Icons.chevron_left,
+                      textDirection: TextDirection.ltr)),
             ],
           ),
         ),

@@ -38,7 +38,14 @@ class _AuthGateState extends State<AuthGate> {
 
   @override
   Widget build(BuildContext context) {
-    return BlocBuilder<AuthBloc, AuthState>(
+    return BlocConsumer<AuthBloc, AuthState>(
+      // On logout (user went from signed-in to null) clear any pushed routes
+      // (settings, profile, workspace…) so the login screen actually shows.
+      listenWhen: (prev, curr) => prev.user != null && curr.user == null,
+      listener: (context, state) {
+        Navigator.of(context, rootNavigator: true)
+            .popUntil((r) => r.isFirst);
+      },
       builder: (context, state) {
         final checking = state.status == UIStatus.loading && state.user == null;
         // Keep the splash until BOTH the minimum time has passed and the

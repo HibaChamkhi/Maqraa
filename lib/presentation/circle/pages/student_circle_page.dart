@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/di/injection.dart';
 import '../../../core/ui/styles/theme.dart';
+import '../../../core/util/session_occurrences.dart';
 import '../../../data/homework/homework_repository.dart';
 import '../../../domain/announcement/models/announcement.dart';
 import '../../../domain/announcement/repositories/announcement_repository.dart';
@@ -143,17 +144,22 @@ class _StudentCirclePageState extends State<StudentCirclePage> {
       }
     } catch (_) {/* exams optional */}
 
-    // --- sessions: this-week count + my attendance % over held sessions ---
+    // --- sessions: this-week count (rule + docs) + attendance % over held ---
     var weekSessions = 0;
     int? attendancePct;
     try {
       final sessions = await getIt<SessionRepository>().getSessions(id);
-      final weekEnd = _weekStart.add(const Duration(days: 7));
-      weekSessions = sessions
-          .where((s) =>
-              !s.scheduledAt.isBefore(_weekStart) &&
-              s.scheduledAt.isBefore(weekEnd))
-          .length;
+      Map<String, ({String type, String? time})> exc = const {};
+      try {
+        exc = await getIt<CircleRepository>().getScheduleExceptions(id);
+      } catch (_) {}
+      weekSessions = buildSessionOccurrences(
+        circle: widget.circle,
+        from: _weekStart,
+        to: _weekStart.add(const Duration(days: 6)),
+        exceptions: exc,
+        docs: sessions,
+      ).length;
       final held = sessions.where(_happened).toList()
         ..sort((a, b) => b.scheduledAt.compareTo(a.scheduledAt));
       final considered = held.take(40).toList();
