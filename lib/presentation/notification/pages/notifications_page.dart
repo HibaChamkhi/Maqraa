@@ -140,52 +140,61 @@ class _NotificationsViewState extends State<_NotificationsView> {
   // ----------------------------- web -----------------------------
 
   Widget _web(BuildContext context) {
+    // Same container + rhythm as the help page: a centered column capped to a
+    // comfortable reading width, search on top, then filters, then the list.
     return WebShell(
       user: widget.user,
       current: 'الإشعارات',
       breadcrumb: 'الإشعارات',
-      child: ListView(
-        padding: const EdgeInsets.all(24),
-        children: [
-          Row(
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 760),
+          child: ListView(
+            padding: const EdgeInsets.all(24),
             children: [
-              Text('الإشعارات', style: ProfileTheme.sectionTitle),
-              const SizedBox(width: 16),
-              Expanded(
-                child: TextField(
-                  onChanged: (v) => setState(() => _query = v),
-                  decoration: ProfileTheme.field('ابحث في الإشعارات...',
-                      prefix: const Icon(Icons.search,
-                          size: 20, color: ProfileTheme.muted)),
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      onChanged: (v) => setState(() => _query = v),
+                      decoration: ProfileTheme.field('ابحث في الإشعارات...',
+                          prefix: const Icon(Icons.search,
+                              size: 20, color: ProfileTheme.muted)),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    icon: const Icon(Icons.settings_outlined,
+                        color: ProfileTheme.muted),
+                    onPressed: _openSettings,
+                  ),
+                ],
               ),
-              const SizedBox(width: 12),
-              IconButton(
-                icon: const Icon(Icons.settings_outlined,
-                    color: ProfileTheme.muted),
-                onPressed: _openSettings,
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: _Tabs(
+                      tabs: _tabs.map((e) => e.$1).toList(),
+                      current: _tab,
+                      onSelect: (i) => setState(() => _tab = i),
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: () => _markAll(context),
+                    icon: const Icon(Icons.done_all, size: 18),
+                    label: const Text('تحديد الكل كمقروء'),
+                    style:
+                        TextButton.styleFrom(foregroundColor: ProfileTheme.green),
+                  ),
+                ],
               ),
+              const SizedBox(height: 8),
+              _list(context, shrinkWrap: true),
             ],
           ),
-          const SizedBox(height: 12),
-          Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: TextButton.icon(
-              onPressed: () => _markAll(context),
-              icon: const Icon(Icons.done_all, size: 18),
-              label: const Text('تحديد الكل كمقروء'),
-              style: TextButton.styleFrom(foregroundColor: ProfileTheme.green),
-            ),
-          ),
-          const SizedBox(height: 8),
-          _Tabs(
-            tabs: _tabs.map((e) => e.$1).toList(),
-            current: _tab,
-            onSelect: (i) => setState(() => _tab = i),
-          ),
-          const SizedBox(height: 8),
-          _list(context, shrinkWrap: true),
-        ],
+        ),
       ),
     );
   }
