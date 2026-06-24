@@ -18,8 +18,6 @@ import '../../../domain/task/models/daily_task.dart';
 import '../../../domain/task/repositories/task_repository.dart';
 import '../../achievement/pages/achievement_page.dart';
 import '../../circle/pages/circles_list_page.dart';
-import '../../notification/pages/notifications_page.dart';
-import '../../profile/pages/profile_page.dart';
 import '../../progress/pages/my_progress_page.dart';
 import '../../reminder/pages/reminder_settings_page.dart';
 import '../../task/pages/today_task_page.dart';
@@ -148,8 +146,6 @@ class StudentHomeTabState extends State<StudentHomeTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _header(),
-        const SizedBox(height: 18),
         IntrinsicHeight(
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -183,8 +179,6 @@ class StudentHomeTabState extends State<StudentHomeTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _header(),
-        const SizedBox(height: 16),
         _todayCard(d),
         const SizedBox(height: 14),
         _progressCard(d.progress),
@@ -196,47 +190,6 @@ class StudentHomeTabState extends State<StudentHomeTab> {
         _remindersCard(d.upcoming),
         const SizedBox(height: 14),
         _achievementsCard(d.achievement),
-      ],
-    );
-  }
-
-  // ── header ─────────────────────────────────────────────────
-
-  Widget _header() {
-    final u = widget.user;
-    return Row(
-      children: [
-        GestureDetector(
-          onTap: () => _open(const ProfilePage()),
-          child: CircleAvatar(
-            radius: 24,
-            backgroundColor: AppColors.sky,
-            backgroundImage:
-                u.photoUrl != null ? NetworkImage(u.photoUrl!) : null,
-            child: u.photoUrl == null
-                ? const Icon(Icons.person, color: _green)
-                : null,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(u.name,
-                style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.ink)),
-            const Text('طالبة',
-                style: TextStyle(fontSize: 12.5, color: AppColors.textMuted)),
-          ],
-        ),
-        const Spacer(),
-        const Text('الرئيسية',
-            style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-                color: AppColors.ink)),
       ],
     );
   }
