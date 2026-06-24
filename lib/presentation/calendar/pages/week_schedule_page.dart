@@ -578,7 +578,7 @@ class _ViewToggle extends StatelessWidget {
 }
 
 // ===================== week grid =====================
-class _WeekGrid extends StatelessWidget {
+class _WeekGrid extends StatefulWidget {
   final List<DateTime> days;
   final List<_Ev> events;
   final int startHour, endHour;
@@ -596,9 +596,45 @@ class _WeekGrid extends StatelessWidget {
   });
 
   @override
+  State<_WeekGrid> createState() => _WeekGridState();
+}
+
+class _WeekGridState extends State<_WeekGrid> {
+  final _scroll = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToEarliest());
+  }
+
+  @override
+  void didUpdateWidget(covariant _WeekGrid old) {
+    super.didUpdateWidget(old);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToEarliest());
+  }
+
+  void _scrollToEarliest() {
+    if (!_scroll.hasClients || widget.events.isEmpty) return;
+    var minHour = 24;
+    for (final e in widget.events) {
+      if (e.start.hour < minHour) minHour = e.start.hour;
+    }
+    final offset =
+        ((minHour - widget.startHour) * widget.rowH).clamp(0.0, _scroll.position.maxScrollExtent);
+    _scroll.jumpTo(offset);
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     const gutter = 48.0;
-    final slots = endHour - startHour;
+    final slots = widget.endHour - widget.startHour;
     final dayNames = DateFormat('EEEE', 'ar');
     final today = DateTime.now();
 
@@ -617,12 +653,12 @@ class _WeekGrid extends StatelessWidget {
           Row(
             children: [
               const SizedBox(width: gutter),
-              for (final dd in days)
+              for (final dd in widget.days)
                 Expanded(
                   child: _DayHeader(
                     name: dayNames.format(dd),
                     day: dd.day,
-                    isToday: sameDay(dd, today),
+                    isToday: widget.sameDay(dd, today),
                   ),
                 ),
             ],
@@ -630,8 +666,9 @@ class _WeekGrid extends StatelessWidget {
           const Divider(height: 1),
           Expanded(
             child: SingleChildScrollView(
+              controller: _scroll,
               child: SizedBox(
-                height: slots * rowH,
+                height: slots * widget.rowH,
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -639,9 +676,9 @@ class _WeekGrid extends StatelessWidget {
                       width: gutter,
                       child: Column(
                         children: [
-                          for (var h = startHour; h < endHour; h++)
+                          for (var h = widget.startHour; h < widget.endHour; h++)
                             SizedBox(
-                              height: rowH,
+                              height: widget.rowH,
                               child: Padding(
                                 padding:
                                     const EdgeInsets.only(top: 2, right: 4),
@@ -656,16 +693,16 @@ class _WeekGrid extends StatelessWidget {
                         ],
                       ),
                     ),
-                    for (final dd in days)
+                    for (final dd in widget.days)
                       Expanded(
                         child: _DayColumn(
-                          events: events
-                              .where((e) => sameDay(e.start, dd))
+                          events: widget.events
+                              .where((e) => widget.sameDay(e.start, dd))
                               .toList(),
-                          startHour: startHour,
+                          startHour: widget.startHour,
                           slots: slots,
-                          rowH: rowH,
-                          onTapEvent: onTapEvent,
+                          rowH: widget.rowH,
+                          onTapEvent: widget.onTapEvent,
                         ),
                       ),
                   ],
