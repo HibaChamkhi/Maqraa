@@ -9,7 +9,6 @@ import '../../../domain/auth/models/app_user.dart';
 import '../../../domain/circle/repositories/circle_repository.dart';
 import '../../../domain/session/models/session.dart';
 import '../../../domain/session/repositories/session_repository.dart';
-import '../../session/pages/student_session_page.dart';
 
 /// A read-only calendar that merges the sessions of ALL the student's حلقات —
 /// expanded from each حلقة's fixed rule (+ exceptions) and any real session
@@ -25,8 +24,7 @@ class AllCirclesCalendarPage extends StatefulWidget {
 class _CalItem {
   final SessionOccurrence occ;
   final String circleName;
-  final String circleId;
-  const _CalItem(this.occ, this.circleName, this.circleId);
+  const _CalItem(this.occ, this.circleName);
 }
 
 class _AllCirclesCalendarPageState extends State<AllCirclesCalendarPage> {
@@ -58,7 +56,7 @@ class _AllCirclesCalendarPageState extends State<AllCirclesCalendarPage> {
           docs: docs,
         );
         for (final o in occ) {
-          out.add(_CalItem(o, c.name, c.id));
+          out.add(_CalItem(o, c.name));
         }
       }
     } catch (_) {/* circles optional */}
@@ -139,12 +137,6 @@ class _AllCirclesCalendarPageState extends State<AllCirclesCalendarPage> {
                   for (final e in day)
                     Card(
                       child: ListTile(
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => StudentSessionPage(
-                                circleId: e.circleId, user: widget.user),
-                          ),
-                        ),
                         leading: CircleAvatar(
                           backgroundColor: AppColors.sky,
                           child: Icon(
