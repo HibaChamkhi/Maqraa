@@ -109,7 +109,7 @@ class _EmbeddedHeader extends StatelessWidget {
         child: Row(
           children: [
             IconButton(
-              icon: const Icon(Icons.chevron_right, color: ProfileTheme.ink),
+              icon: const Icon(Icons.arrow_forward, color: ProfileTheme.ink),
               onPressed: () => Navigator.of(context).maybePop(),
             ),
             Expanded(
