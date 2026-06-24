@@ -18,7 +18,6 @@ import '../../../domain/homework/models/weekly_homework.dart';
 import '../../../domain/progress/models/progress_info.dart';
 import '../../../domain/progress/repositories/progress_repository.dart';
 import '../../../domain/schedule/repositories/schedule_repository.dart';
-import '../../../domain/session/models/session.dart';
 import '../../../domain/session/repositories/session_repository.dart';
 import '../../../domain/task/models/daily_task.dart';
 import '../../../domain/task/repositories/task_repository.dart';
@@ -36,8 +35,8 @@ typedef _HomeData = ({
   ProgressInfo progress,
   String todayRange,
   bool taskDone,
-  SessionOccurrence? nextSession,
-  List<SessionOccurrence> upcoming,
+  _WeekSession? nextSession,
+  List<_WeekSession> upcoming,
   List<_WeekSession> weekSessions,
   Achievement achievement,
   List<_WajibItem> wajibToday,
@@ -47,8 +46,9 @@ typedef _HomeData = ({
 /// aggregated «جدول الأسبوع» card).
 class _WeekSession {
   final SessionOccurrence occ;
+  final String circleId;
   final String circle;
-  const _WeekSession(this.occ, this.circle);
+  const _WeekSession(this.occ, this.circleId, this.circle);
 }
 
 /// One حلقة's واجب for today (from the homework plan, the teacher's source).
@@ -108,23 +108,6 @@ class StudentHomeTabState extends State<StudentHomeTab> {
       } catch (_) {/* schedule optional */}
     }
 
-    List<Session> sessions = const [];
-    try {
-      sessions = await getIt<SessionRepository>().getSessions(id);
-    } catch (_) {/* sessions optional */}
-    Map<String, ({String type, String? time})> exc = const {};
-    try {
-      exc = await getIt<CircleRepository>().getScheduleExceptions(id);
-    } catch (_) {}
-    final occ = buildSessionOccurrences(
-      circle: widget.circle,
-      from: DateTime(now.year, now.month, now.day),
-      to: now.add(const Duration(days: 30)),
-      exceptions: exc,
-      docs: sessions,
-    );
-    final upcoming = occ.where((o) => o.at.isAfter(now)).toList();
-
     Achievement ach = const Achievement();
     try {
       ach = await getIt<AchievementRepository>().getAchievement();
@@ -134,6 +117,8 @@ class StudentHomeTabState extends State<StudentHomeTab> {
     // sessions (rule + exceptions + docs), each tagged with its حلقة.
     final wajibToday = <_WajibItem>[];
     final weekSessions = <_WeekSession>[];
+    final upcoming = <_WeekSession>[]; // future sessions across ALL halaqat
+    final todayStart = DateTime(now.year, now.month, now.day);
     final ws = WeeklyHomework.weekStartOf(now);
     final weekEnd = ws.add(const Duration(days: 6));
     final wid = _ymd(ws);
@@ -155,20 +140,27 @@ class StudentHomeTabState extends State<StudentHomeTab> {
           try {
             cExc = await getIt<CircleRepository>().getScheduleExceptions(c.id);
           } catch (_) {}
-          final occs = buildSessionOccurrences(
-            circle: c,
-            from: ws,
-            to: weekEnd,
-            exceptions: cExc,
-            docs: ss,
-          );
-          for (final o in occs) {
-            weekSessions.add(_WeekSession(o, c.name));
+          // this week (for the «جدول الأسبوع» card)
+          for (final o in buildSessionOccurrences(
+              circle: c, from: ws, to: weekEnd, exceptions: cExc, docs: ss)) {
+            weekSessions.add(_WeekSession(o, c.id, c.name));
+          }
+          // upcoming horizon (for «الجلسة القادمة» + التذكيرات)
+          for (final o in buildSessionOccurrences(
+              circle: c,
+              from: todayStart,
+              to: now.add(const Duration(days: 30)),
+              exceptions: cExc,
+              docs: ss)) {
+            if (o.at.isAfter(now)) {
+              upcoming.add(_WeekSession(o, c.id, c.name));
+            }
           }
         } catch (_) {/* skip this circle */}
       }
     } catch (_) {/* circles optional */}
     weekSessions.sort((a, b) => a.occ.at.compareTo(b.occ.at));
+    upcoming.sort((a, b) => a.occ.at.compareTo(b.occ.at));
 
     return (
       progress: progress,
@@ -523,7 +515,12 @@ class StudentHomeTabState extends State<StudentHomeTab> {
 
   // ── الجلسة القادمة ─────────────────────────────────────────
 
-  Widget _nextSessionCard(SessionOccurrence? s) {
+  Widget _nextSessionCard(_WeekSession? s) {
+    final occ = s?.occ;
+    final title = (occ != null && (occ.title?.trim().isNotEmpty ?? false))
+        ? occ.title!.trim()
+        : (s != null ? 'حلقة ${s.circle}' : 'حلقة ${widget.circle.name}');
+    final joinCircleId = s?.circleId ?? widget.circle.id;
     return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -540,9 +537,7 @@ class StudentHomeTabState extends State<StudentHomeTab> {
           ),
           const SizedBox(height: 12),
           Text(
-            s != null && (s.title?.trim().isNotEmpty ?? false)
-                ? s.title!.trim()
-                : 'حلقة ${widget.circle.name}',
+            title,
             style: const TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w800,
@@ -550,9 +545,9 @@ class StudentHomeTabState extends State<StudentHomeTab> {
           ),
           const SizedBox(height: 3),
           Text(
-            s == null
+            occ == null
                 ? 'لا توجد جلسة قادمة'
-                : '${_dayLabel(s.at)} • ${DateFormat('h:mm a', 'ar').format(s.at)}',
+                : '${_dayLabel(occ.at)} • ${DateFormat('h:mm a', 'ar').format(occ.at)}',
             style: const TextStyle(fontSize: 12.5, color: AppColors.textMuted),
           ),
           const SizedBox(height: 12),
@@ -560,7 +555,7 @@ class StudentHomeTabState extends State<StudentHomeTab> {
             width: double.infinity,
             child: OutlinedButton.icon(
               onPressed: () => _open(StudentSessionPage(
-                  circleId: widget.circle.id, user: widget.user)),
+                  circleId: joinCircleId, user: widget.user)),
               icon: const Icon(Icons.videocam_outlined, size: 18),
               style: OutlinedButton.styleFrom(
                 foregroundColor: _green,
@@ -691,7 +686,7 @@ class StudentHomeTabState extends State<StudentHomeTab> {
 
   // ── التذكيرات ──────────────────────────────────────────────
 
-  Widget _remindersCard(List<SessionOccurrence> upcoming) {
+  Widget _remindersCard(List<_WeekSession> upcoming) {
     final items = upcoming.take(3).toList();
     return _card(
       child: Column(
@@ -731,7 +726,10 @@ class StudentHomeTabState extends State<StudentHomeTab> {
     );
   }
 
-  Widget _reminderRow(SessionOccurrence s) {
+  Widget _reminderRow(_WeekSession w) {
+    final s = w.occ;
+    final title =
+        (s.title?.trim().isEmpty ?? true) ? 'حلقة ${w.circle}' : s.title!.trim();
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
@@ -751,7 +749,7 @@ class StudentHomeTabState extends State<StudentHomeTab> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text((s.title?.trim().isEmpty ?? true) ? 'جلسة' : s.title!.trim(),
+                Text(title,
                     style: const TextStyle(
                         fontSize: 13.5,
                         fontWeight: FontWeight.w700,
