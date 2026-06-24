@@ -208,6 +208,34 @@ class CircleRepositoryImpl implements CircleRepository {
       );
 
   @override
+  Future<void> markHifz({
+    required String circleId,
+    required String dateId,
+    required String uid,
+    required bool done,
+  }) =>
+      remoteDataSource.markHifz(
+        circleId: circleId,
+        dateId: dateId,
+        uid: uid,
+        done: done,
+      );
+
+  @override
+  Future<Map<String, Set<String>>> getHifz({
+    required String circleId,
+    required List<String> dateIds,
+  }) =>
+      remoteDataSource.getHifz(circleId: circleId, dateIds: dateIds);
+
+  @override
+  Future<void> updateHifzAmount({
+    required String circleId,
+    required String amount,
+  }) =>
+      remoteDataSource.updateHifzAmount(circleId: circleId, amount: amount);
+
+  @override
   Future<Map<String, ({String type, String? time})>> getScheduleExceptions(
           String circleId) =>
       remoteDataSource.getScheduleExceptions(circleId);

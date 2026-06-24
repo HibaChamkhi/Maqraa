@@ -41,6 +41,9 @@ class _CircleData {
   final int? examAvg;
   final int? attendancePct;
   final int weekSessions;
+  final int hifzHeld;
+  final int hifzDone;
+  final String hifzAmount;
   final Announcement? announcement;
   const _CircleData({
     required this.students,
@@ -51,6 +54,9 @@ class _CircleData {
     required this.examAvg,
     required this.attendancePct,
     required this.weekSessions,
+    required this.hifzHeld,
+    required this.hifzDone,
+    required this.hifzAmount,
     required this.announcement,
   });
 }
@@ -177,6 +183,40 @@ class _StudentCirclePageState extends State<StudentCirclePage> {
       }
     } catch (_) {/* sessions optional */}
 
+    // --- حفظ: how many held sessions did I memorize for ---
+    var hifzHeld = 0, hifzDone = 0;
+    try {
+      final today = DateTime(now.year, now.month, now.day);
+      final from =
+          widget.circle.createdAt ?? now.subtract(const Duration(days: 120));
+      Map<String, ({String type, String? time})> exc = const {};
+      try {
+        exc = await getIt<CircleRepository>().getScheduleExceptions(id);
+      } catch (_) {}
+      List<Session> docs = const [];
+      try {
+        docs = await getIt<SessionRepository>().getSessions(id);
+      } catch (_) {}
+      final occ = buildSessionOccurrences(
+        circle: widget.circle,
+        from: from,
+        to: today,
+        exceptions: exc,
+        docs: docs,
+      ).where((o) => !o.at.isAfter(now)).toList();
+      final dateIds = <String>{
+        for (final o in occ) DateFormat('yyyy-MM-dd').format(o.at),
+      }.toList();
+      hifzHeld = dateIds.length;
+      if (dateIds.isNotEmpty) {
+        final marks =
+            await getIt<CircleRepository>().getHifz(circleId: id, dateIds: dateIds);
+        for (final s in marks.values) {
+          if (s.contains(widget.user.uid)) hifzDone++;
+        }
+      }
+    } catch (_) {/* hifz optional */}
+
     // --- latest announcement ---
     Announcement? ann;
     try {
@@ -193,6 +233,9 @@ class _StudentCirclePageState extends State<StudentCirclePage> {
       examAvg: examAvg,
       attendancePct: attendancePct,
       weekSessions: weekSessions,
+      hifzHeld: hifzHeld,
+      hifzDone: hifzDone,
+      hifzAmount: widget.circle.hifzAmount,
       announcement: ann,
     );
   }
@@ -276,6 +319,10 @@ class _StudentCirclePageState extends State<StudentCirclePage> {
                       label: const Text('انضمام لجلسة الحلقة'),
                     ),
                   ),
+                  if (d.hifzAmount.trim().isNotEmpty) ...[
+                    const SizedBox(height: AppSpacing.md),
+                    _hifzBanner(d.hifzAmount),
+                  ],
                   const SizedBox(height: AppSpacing.md),
                   _weekCard(d),
                   const SizedBox(height: AppSpacing.md),
@@ -534,6 +581,39 @@ class _StudentCirclePageState extends State<StudentCirclePage> {
         ),
       );
 
+  // --------------------------------------------------------------- hifz
+  Widget _hifzBanner(String amount) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: AppColors.sky,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.menu_book_rounded,
+                size: 20, color: AppColors.primary),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('مقدار الحفظ لكل جلسة',
+                      style: TextStyle(
+                          fontSize: 11, color: AppColors.textMuted)),
+                  const SizedBox(height: 2),
+                  Text(amount,
+                      style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.ink)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+
   // --------------------------------------------------------------- stats
   Widget _statsGrid(_CircleData d) {
     return GridView.count(
@@ -549,7 +629,8 @@ class _StudentCirclePageState extends State<StudentCirclePage> {
         _stat(d.examAvg == null ? '—' : '${d.examAvg}٪', 'متوسط اختباراتي',
             AppColors.warning),
         _stat('${d.weekSessions}', 'جلسات الأسبوع', AppColors.primaryDark),
-        _stat('${d.me?.memorizedPercent ?? 0}٪', 'تقدّمي', AppColors.primary),
+        _stat(d.hifzHeld == 0 ? '—' : '${d.hifzDone}/${d.hifzHeld}', 'حفظي',
+            AppColors.primary),
       ],
     );
   }

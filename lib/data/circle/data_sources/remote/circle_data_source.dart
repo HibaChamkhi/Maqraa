@@ -545,6 +545,53 @@ class CircleRemoteDataSource {
     return result;
   }
 
+  // --- حفظ (memorization marks, per day) ---
+
+  CollectionReference<Map<String, dynamic>> _hifz(String circleId) =>
+      _circles.doc(circleId).collection('hifz');
+
+  /// Mark whether a student memorized the day's حفظ. Stored at
+  /// circles/{id}/hifz/{dateId} as { records: { uid: true } }.
+  Future<void> markHifz({
+    required String circleId,
+    required String dateId,
+    required String uid,
+    required bool done,
+  }) async {
+    await _hifz(circleId).doc(dateId).set(<String, dynamic>{
+      'records': <String, dynamic>{
+        uid: done ? true : FieldValue.delete(),
+      },
+    }, SetOptions(merge: true));
+  }
+
+  /// Read حفظ marks for the given day ids → { dateId: set of uids done }.
+  Future<Map<String, Set<String>>> getHifz({
+    required String circleId,
+    required List<String> dateIds,
+  }) async {
+    final result = <String, Set<String>>{};
+    for (final dateId in dateIds) {
+      final doc = await _hifz(circleId).doc(dateId).get();
+      final records =
+          (doc.data()?['records'] as Map<String, dynamic>?) ?? const {};
+      final set = <String>{};
+      records.forEach((uid, v) {
+        if (v == true) set.add(uid);
+      });
+      result[dateId] = set;
+    }
+    return result;
+  }
+
+  /// Set the حلقة's «مقدار الحفظ» (free text, teacher's unit).
+  Future<void> updateHifzAmount({
+    required String circleId,
+    required String amount,
+  }) async {
+    await _circles.doc(circleId).update({'hifzAmount': amount});
+  }
+
   // --- schedule exceptions (cancel/move a single rule occurrence) ---
 
   CollectionReference<Map<String, dynamic>> _scheduleExceptions(

@@ -145,6 +145,26 @@ abstract class CircleRepository {
     required List<String> dateIds,
   });
 
+  /// Mark whether a student memorized («حفظت») the day's حفظ for [dateId].
+  Future<void> markHifz({
+    required String circleId,
+    required String dateId,
+    required String uid,
+    required bool done,
+  });
+
+  /// Read حفظ marks for the given day ids. Returns dateId → set of done uids.
+  Future<Map<String, Set<String>>> getHifz({
+    required String circleId,
+    required List<String> dateIds,
+  });
+
+  /// Set the حلقة's «مقدار الحفظ» (free text, the teacher's unit).
+  Future<void> updateHifzAmount({
+    required String circleId,
+    required String amount,
+  });
+
   /// Per-date exceptions to the fixed schedule. Returns dateId →
   /// (type: 'cancelled' | 'moved', time: 'HH:mm' when moved).
   Future<Map<String, ({String type, String? time})>> getScheduleExceptions(

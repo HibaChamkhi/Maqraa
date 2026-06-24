@@ -28,6 +28,7 @@ class CircleDto {
               (k, v) => MapEntry(k.toString(), v.toString()))) ??
           const {},
       durationMinutes: (map['durationMinutes'] as num?)?.toInt() ?? 60,
+      hifzAmount: (map['hifzAmount'] ?? '') as String,
       createdAt: (map['createdAt'] as Timestamp?)?.toDate(),
     );
   }
@@ -51,6 +52,7 @@ class CircleDto {
       'days': circle.days,
       'dayTimes': circle.dayTimes,
       'durationMinutes': circle.durationMinutes,
+      'hifzAmount': circle.hifzAmount,
       'createdAt': circle.createdAt != null
           ? Timestamp.fromDate(circle.createdAt!)
           : FieldValue.serverTimestamp(),

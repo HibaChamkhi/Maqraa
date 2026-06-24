@@ -11,6 +11,7 @@ import '../../../core/di/injection.dart';
 import '../../../core/model /ui_state.dart';
 import '../../../core/util/last_location_store.dart';
 import '../../../core/util/notify.dart';
+import '../../../core/util/session_occurrences.dart';
 import '../../../core/ui/styles/theme.dart';
 import '../../../core/ui/widgets/werd_widgets.dart';
 import '../../../domain/auth/models/app_user.dart';
@@ -2998,7 +2999,7 @@ class _StudentsToolbar extends StatelessWidget {
 //  Students table (wide screens)
 // ---------------------------------------------------------------------------
 
-class _StudentsTable extends StatelessWidget {
+class _StudentsTable extends StatefulWidget {
   final Circle circle;
   final List<CircleMember> students;
   final void Function(CircleMember)? onEdit;
@@ -3006,9 +3007,138 @@ class _StudentsTable extends StatelessWidget {
       {required this.circle, required this.students, required this.onEdit});
 
   @override
+  State<_StudentsTable> createState() => _StudentsTableState();
+}
+
+class _StudentsTableState extends State<_StudentsTable> {
+  late String _amount = widget.circle.hifzAmount;
+  int _heldCount = 0; // عدد الجلسات المنعقدة حتى اليوم
+  Map<String, int> _doneCount = const {}; // uid → كم جلسة حفِظت فيها
+  Set<String> _doneToday = {}; // uids حفِظت اليوم
+  String _todayId = '';
+  bool _loadingHifz = true;
+
+  bool get _canManage => widget.onEdit != null;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHifz();
+  }
+
+  Future<void> _loadHifz() async {
+    try {
+      final c = widget.circle;
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      _todayId = DateFormat('yyyy-MM-dd').format(today);
+      final from = c.createdAt ?? now.subtract(const Duration(days: 120));
+      // الجلسات المتوقّعة (القاعدة + الاستثناءات + المستندات) حتى اليوم.
+      Map<String, ({String type, String? time})> exc = const {};
+      try {
+        exc = await getIt<CircleRepository>().getScheduleExceptions(c.id);
+      } catch (_) {}
+      List<Session> docs = const [];
+      try {
+        docs = await getIt<SessionRepository>().getSessions(c.id);
+      } catch (_) {}
+      final occ = buildSessionOccurrences(
+        circle: c,
+        from: from,
+        to: today,
+        exceptions: exc,
+        docs: docs,
+      ).where((o) => !o.at.isAfter(now)).toList();
+      final dateIds = <String>{
+        for (final o in occ) DateFormat('yyyy-MM-dd').format(o.at),
+        _todayId,
+      }.toList();
+      final marks = await getIt<CircleRepository>()
+          .getHifz(circleId: c.id, dateIds: dateIds);
+      final held = <String>{
+        for (final o in occ) DateFormat('yyyy-MM-dd').format(o.at),
+      };
+      final counts = <String, int>{};
+      for (final id in held) {
+        final set = marks[id] ?? const {};
+        for (final uid in set) {
+          counts[uid] = (counts[uid] ?? 0) + 1;
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _heldCount = held.length;
+        _doneCount = counts;
+        _doneToday = {...(marks[_todayId] ?? const {})};
+        _loadingHifz = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loadingHifz = false);
+    }
+  }
+
+  Future<void> _toggleToday(CircleMember m) async {
+    final wasDone = _doneToday.contains(m.uid);
+    setState(() {
+      if (wasDone) {
+        _doneToday.remove(m.uid);
+      } else {
+        _doneToday.add(m.uid);
+      }
+    });
+    try {
+      await getIt<CircleRepository>().markHifz(
+        circleId: widget.circle.id,
+        dateId: _todayId,
+        uid: m.uid,
+        done: !wasDone,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        if (wasDone) {
+          _doneToday.add(m.uid);
+        } else {
+          _doneToday.remove(m.uid);
+        }
+      });
+    }
+  }
+
+  Future<void> _editAmount() async {
+    final controller = TextEditingController(text: _amount);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('مقدار الحفظ لكل جلسة'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'مثال: وجه، نصف صفحة، ٥ آيات…',
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+              child: const Text('حفظ')),
+        ],
+      ),
+    );
+    if (result == null) return;
+    setState(() => _amount = result);
+    try {
+      await getIt<CircleRepository>()
+          .updateHifzAmount(circleId: widget.circle.id, amount: result);
+    } catch (_) {}
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final names = {for (final s in students) s.uid: s.name};
+    final names = {for (final s in widget.students) s.uid: s.name};
     Widget head(String t, int flex) => Expanded(
           flex: flex,
           child: Text(t,
@@ -3018,50 +3148,157 @@ class _StudentsTable extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(
           AppSpacing.md, 0, AppSpacing.md, AppSpacing.md),
-      child: Container(
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(AppRadius.lg),
-          border: Border.all(color: AppColors.border),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          children: [
-            Container(
-              color: AppColors.gray,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              child: Row(
+      child: Column(
+        children: [
+          _HifzAmountBanner(
+            amount: _amount,
+            onEdit: _canManage ? _editAmount : null,
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(AppRadius.lg),
+                border: Border.all(color: AppColors.border),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Column(
                 children: [
-                  head('الطالبة', 3),
-                  head('تسميع اليوم', 2),
-                  head('تقدّم الحفظ', 3),
-                  head('التقييم', 2),
-                  head('الشريكة', 2),
-                  head('إجراءات', 1),
+                  Container(
+                    color: AppColors.gray,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
+                    child: Row(
+                      children: [
+                        head('الطالبة', 3),
+                        head('تسميع اليوم', 2),
+                        head('حفظ اليوم', 2),
+                        head('تقدّم الحفظ', 3),
+                        head('التقييم', 2),
+                        head('الشريكة', 2),
+                        head('إجراءات', 1),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  Expanded(
+                    child: ListView.separated(
+                      itemCount: widget.students.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (context, i) {
+                        final m = widget.students[i];
+                        return _StudentRow(
+                          circle: widget.circle,
+                          member: m,
+                          onEdit: widget.onEdit,
+                          partnerName:
+                              m.partnerId == null ? null : names[m.partnerId],
+                          hifzHeld: _heldCount,
+                          hifzDone: _doneCount[m.uid] ?? 0,
+                          hifzLoading: _loadingHifz,
+                          hifzDoneToday: _doneToday.contains(m.uid),
+                          onToggleHifzToday:
+                              _canManage ? () => _toggleToday(m) : null,
+                        );
+                      },
+                    ),
+                  ),
                 ],
               ),
             ),
-            const Divider(height: 1),
-            Expanded(
-              child: ListView.separated(
-                itemCount: students.length,
-                separatorBuilder: (_, __) => const Divider(height: 1),
-                itemBuilder: (context, i) {
-                  final m = students[i];
-                  return _StudentRow(
-                    circle: circle,
-                    member: m,
-                    onEdit: onEdit,
-                    partnerName:
-                        m.partnerId == null ? null : names[m.partnerId],
-                  );
-                },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Banner above the students table showing the حلقة's «مقدار الحفظ» with an
+/// edit affordance for managers.
+class _HifzAmountBanner extends StatelessWidget {
+  final String amount;
+  final VoidCallback? onEdit;
+  const _HifzAmountBanner({required this.amount, this.onEdit});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final has = amount.trim().isNotEmpty;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.sky,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.menu_book_rounded,
+              size: 18, color: AppColors.primary),
+          const SizedBox(width: 8),
+          Text('مقدار الحفظ لكل جلسة: ',
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: AppColors.textMuted)),
+          Expanded(
+            child: Text(
+              has ? amount : 'لم يُحدَّد بعد',
+              style: theme.textTheme.titleSmall?.copyWith(
+                color: has ? AppColors.ink : AppColors.textMuted,
+                fontWeight: FontWeight.w700,
               ),
             ),
-          ],
-        ),
+          ),
+          if (onEdit != null)
+            TextButton.icon(
+              onPressed: onEdit,
+              icon: const Icon(Icons.edit_outlined, size: 16),
+              label: Text(has ? 'تعديل' : 'تحديد'),
+              style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4)),
+            ),
+        ],
       ),
+    );
+  }
+}
+
+/// A compact tappable chip the teacher uses to mark «حفظت اليوم؟» per student.
+class _HifzTodayToggle extends StatelessWidget {
+  final bool done;
+  final VoidCallback? onTap;
+  const _HifzTodayToggle({required this.done, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = done ? AppColors.success : AppColors.textMuted;
+    final chip = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: done ? AppColors.success.withValues(alpha: .12) : AppColors.gray,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+            color: done ? AppColors.success : AppColors.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(done ? Icons.check_circle_rounded : Icons.circle_outlined,
+              size: 14, color: color),
+          const SizedBox(width: 4),
+          Text(done ? 'حفِظت' : 'لم تحفظ',
+              style: TextStyle(
+                  color: color, fontSize: 11, fontWeight: FontWeight.w700)),
+        ],
+      ),
+    );
+    if (onTap == null) return Opacity(opacity: .7, child: chip);
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: onTap,
+      child: chip,
     );
   }
 }
@@ -3071,11 +3308,21 @@ class _StudentRow extends StatefulWidget {
   final CircleMember member;
   final void Function(CircleMember)? onEdit;
   final String? partnerName;
+  final int hifzHeld;
+  final int hifzDone;
+  final bool hifzLoading;
+  final bool hifzDoneToday;
+  final VoidCallback? onToggleHifzToday;
   const _StudentRow({
     required this.circle,
     required this.member,
     required this.onEdit,
     this.partnerName,
+    this.hifzHeld = 0,
+    this.hifzDone = 0,
+    this.hifzLoading = false,
+    this.hifzDoneToday = false,
+    this.onToggleHifzToday,
   });
 
   @override
@@ -3158,30 +3405,54 @@ class _StudentRowState extends State<_StudentRow> {
                     ],
                   ),
                 ),
-                // تقدّم الحفظ
+                // حفظ اليوم (زر تبديل للمعلّمة)
+                Expanded(
+                  flex: 2,
+                  child: Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: _HifzTodayToggle(
+                      done: widget.hifzDoneToday,
+                      onTap: widget.onToggleHifzToday,
+                    ),
+                  ),
+                ),
+                // تقدّم الحفظ (حفِظت في X من Y جلسة)
                 Expanded(
                   flex: 3,
                   child: Padding(
                     padding: const EdgeInsets.only(left: 12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text('${member.memorizedPercent}%',
-                            style: theme.textTheme.bodySmall),
-                        const SizedBox(height: 3),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(999),
-                          child: LinearProgressIndicator(
-                            value: member.memorizedRatio,
-                            minHeight: 6,
-                            backgroundColor: AppColors.sky,
-                            valueColor: const AlwaysStoppedAnimation(
-                                AppColors.primary),
+                    child: widget.hifzLoading
+                        ? const SizedBox(
+                            height: 14,
+                            width: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                widget.hifzHeld == 0
+                                    ? 'لا جلسات بعد'
+                                    : '${widget.hifzDone} / ${widget.hifzHeld} جلسة',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                    fontWeight: FontWeight.w700),
+                              ),
+                              const SizedBox(height: 3),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(999),
+                                child: LinearProgressIndicator(
+                                  value: widget.hifzHeld == 0
+                                      ? 0
+                                      : (widget.hifzDone / widget.hifzHeld)
+                                          .clamp(0, 1),
+                                  minHeight: 6,
+                                  backgroundColor: AppColors.sky,
+                                  valueColor: const AlwaysStoppedAnimation(
+                                      AppColors.primary),
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                      ],
-                    ),
                   ),
                 ),
                 // التقييم

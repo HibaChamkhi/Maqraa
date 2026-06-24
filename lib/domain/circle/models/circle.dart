@@ -137,6 +137,10 @@ class Circle {
   /// Default meeting length in minutes (applies to every recurring day).
   final int durationMinutes;
 
+  /// «مقدار الحفظ» — the per-session memorization amount the teacher sets for
+  /// the whole حلقة, in her own unit (e.g. "وجه", "٥ آيات"). Free text.
+  final String hifzAmount;
+
   final DateTime? createdAt;
 
   const Circle({
@@ -158,6 +162,7 @@ class Circle {
     this.days = const [],
     this.dayTimes = const {},
     this.durationMinutes = 60,
+    this.hifzAmount = '',
     this.createdAt,
   });
 
@@ -179,6 +184,7 @@ class Circle {
     List<String>? days,
     Map<String, String>? dayTimes,
     int? durationMinutes,
+    String? hifzAmount,
     DateTime? createdAt,
   }) {
     return Circle(
@@ -200,6 +206,7 @@ class Circle {
       days: days ?? this.days,
       dayTimes: dayTimes ?? this.dayTimes,
       durationMinutes: durationMinutes ?? this.durationMinutes,
+      hifzAmount: hifzAmount ?? this.hifzAmount,
       createdAt: createdAt ?? this.createdAt,
     );
   }
