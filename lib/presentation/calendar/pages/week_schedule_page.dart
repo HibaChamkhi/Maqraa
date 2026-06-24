@@ -4,6 +4,7 @@ import 'package:intl/intl.dart' hide TextDirection;
 import '../../../core/di/injection.dart';
 import '../../../core/ui/styles/theme.dart';
 import '../../../core/util/notify.dart';
+import '../../../core/util/session_occurrences.dart';
 import '../../../domain/auth/models/app_user.dart';
 import '../../../domain/circle/models/circle.dart';
 import '../../../domain/circle/repositories/circle_repository.dart';
@@ -94,7 +95,10 @@ class _WeekSchedulePageState extends State<WeekSchedulePage> {
     final calRepo = getIt<CalendarRepository>();
     final taskRepo = getIt<TaskRepository>();
     final circles = await circleRepo.getMyCircles();
-    final todayId = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final now = DateTime.now();
+    final todayId = DateFormat('yyyy-MM-dd').format(now);
+    final from = now.subtract(const Duration(days: 60));
+    final to = now.add(const Duration(days: 180));
 
     final colored = <_CircleColor>[];
     final oneOff = <_Ev>[];
@@ -109,18 +113,30 @@ class _WeekSchedulePageState extends State<WeekSchedulePage> {
       } catch (_) {
         sessions = const [];
       }
-      for (final s in sessions) {
+      Map<String, ({String type, String? time})> exc = const {};
+      try {
+        exc = await circleRepo.getScheduleExceptions(c.id);
+      } catch (_) {}
+      final docByDate = {
+        for (final s in sessions)
+          DateFormat('yyyy-MM-dd').format(s.scheduledAt): s
+      };
+      // Expand the fixed rule (+exceptions) and merge real docs.
+      final occ = buildSessionOccurrences(
+          circle: c, from: from, to: to, exceptions: exc, docs: sessions);
+      for (final o in occ) {
+        final doc = docByDate[DateFormat('yyyy-MM-dd').format(o.at)];
         oneOff.add(_Ev(
-          start: s.scheduledAt,
-          durationMin: s.durationMinutes,
+          start: o.at,
+          durationMin: doc?.durationMinutes ?? c.durationMinutes,
           circleName: c.name,
-          title: s.title,
+          title: o.title ?? '',
           colorIndex: color,
-          status: s.status,
-          type: s.type,
+          status: o.status ?? SessionStatus.scheduled,
+          type: doc?.type,
           circleId: c.id,
-          sessionId: s.id,
-          link: s.link,
+          sessionId: doc?.id ?? '',
+          link: doc?.link ?? '',
         ));
       }
       try {
@@ -241,8 +257,20 @@ class _WeekSchedulePageState extends State<WeekSchedulePage> {
   Future<void> _startSession(BuildContext sheetCtx, _Ev e) async {
     Navigator.pop(sheetCtx);
     try {
+      var sid = e.sessionId;
+      if (sid.isEmpty) {
+        // Rule occurrence with no doc yet → materialize it first.
+        final s = await getIt<CalendarRepository>().addSession(
+          circleId: e.circleId,
+          title: e.title.isEmpty ? 'جلسة ${e.circleName}' : e.title,
+          scheduledAt: e.start,
+          durationMinutes: e.durationMin,
+          type: e.type ?? SessionType.tasmi3,
+        );
+        sid = s.id;
+      }
       await getIt<SessionRepository>()
-          .startSession(circleId: e.circleId, sessionId: e.sessionId);
+          .startSession(circleId: e.circleId, sessionId: sid);
       if (!mounted) return;
       _reload();
       Navigator.of(context).push(MaterialPageRoute(
@@ -260,8 +288,17 @@ class _WeekSchedulePageState extends State<WeekSchedulePage> {
   Future<void> _cancelSession(BuildContext sheetCtx, _Ev e) async {
     Navigator.pop(sheetCtx);
     try {
-      await getIt<CalendarRepository>()
-          .deleteSession(circleId: e.circleId, sessionId: e.sessionId);
+      if (e.sessionId.isEmpty) {
+        // Rule occurrence → record a cancellation exception for that date.
+        await getIt<CircleRepository>().setScheduleException(
+          circleId: e.circleId,
+          dateId: DateFormat('yyyy-MM-dd').format(e.start),
+          type: 'cancelled',
+        );
+      } else {
+        await getIt<CalendarRepository>()
+            .deleteSession(circleId: e.circleId, sessionId: e.sessionId);
+      }
       final d = DateFormat('EEEE d MMMM • HH:mm', 'ar').format(e.start);
       await notifyCircleStudents(
         circleId: e.circleId,
