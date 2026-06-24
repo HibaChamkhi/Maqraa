@@ -12,7 +12,6 @@ import '../../../domain/auth/models/app_user.dart';
 import '../../../domain/circle/models/circle.dart';
 import '../../../domain/circle/repositories/circle_repository.dart';
 import '../../../domain/homework/models/weekly_homework.dart';
-import '../../../domain/session/models/session.dart';
 import '../../../domain/session/repositories/session_repository.dart';
 import '../../auth/bloc/auth_bloc.dart';
 import 'create_circle_page.dart';
