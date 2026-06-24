@@ -1,0 +1,1488 @@
+import 'dart:ui' as ui;
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+
+import '../../../core/di/injection.dart';
+import '../../../data/homework/homework_repository.dart';
+import '../../../domain/homework/models/weekly_homework.dart';
+import '../../../core/ui/styles/theme.dart';
+import '../../../domain/auth/models/app_user.dart';
+import '../../../domain/circle/models/circle.dart';
+import '../../../domain/circle/repositories/circle_repository.dart';
+import '../../../domain/exam/models/exam.dart';
+import '../../../domain/exam/repositories/exam_repository.dart';
+import '../../../domain/session/models/session.dart';
+import '../../../domain/session/repositories/session_repository.dart';
+import '../../exam/pages/exam_analysis_page.dart';
+
+/// التقارير — per-circle reports with three sections:
+/// التسليم الأسبوعي (homework) · الحضور (sessions) · الاختبارات (exams).
+/// The الاختبارات tab is built; the other two are placeholders for now.
+class ReportsPage extends StatelessWidget {
+  final String circleId;
+  final AppUser user;
+  const ReportsPage({super.key, required this.circleId, required this.user});
+
+  @override
+  Widget build(BuildContext context) {
+    return DefaultTabController(
+      length: 3,
+      initialIndex: 2, // open on الاختبارات (the built one)
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('التقارير'),
+          bottom: const TabBar(
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
+            labelColor: AppColors.primary,
+            unselectedLabelColor: AppColors.textMuted,
+            indicatorColor: AppColors.primary,
+            tabs: [
+              Tab(text: 'التسليم الأسبوعي'),
+              Tab(text: 'الحضور'),
+              Tab(text: 'الاختبارات'),
+            ],
+          ),
+        ),
+        body: TabBarView(
+          children: [
+            _TaslimReport(circleId: circleId),
+            _HudurReport(circleId: circleId),
+            _ExamsReport(circleId: circleId, user: user),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ComingSoon extends StatelessWidget {
+  final String label;
+  const _ComingSoon({required this.label});
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.insights_outlined,
+              size: 48, color: AppColors.textMuted),
+          const SizedBox(height: AppSpacing.sm),
+          Text(label, style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: AppSpacing.xs),
+          Text('قريبًا',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: AppColors.textMuted)),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+//  Shared «سجل الأسابيع» strip: 5 two-line week cards + paging + date picker.
+// ---------------------------------------------------------------------------
+
+class _WeeksStrip extends StatefulWidget {
+  final DateTime selected;
+  final ValueChanged<DateTime> onSelect;
+  const _WeeksStrip({required this.selected, required this.onSelect});
+
+  @override
+  State<_WeeksStrip> createState() => _WeeksStripState();
+}
+
+class _WeeksStripState extends State<_WeeksStrip> {
+  final DateTime _thisWeek = WeeklyHomework.weekStartOf(DateTime.now());
+  late DateTime _anchor = WeeklyHomework.weekStartOf(widget.selected);
+
+  String _id(DateTime w) => DateFormat('yyyy-MM-dd').format(w);
+
+  void _pageOlder() =>
+      setState(() => _anchor = _anchor.subtract(const Duration(days: 7)));
+
+  void _pageNewer() {
+    final next = _anchor.add(const Duration(days: 7));
+    if (!next.isAfter(_thisWeek)) setState(() => _anchor = next);
+  }
+
+  Future<void> _pickWeek() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: widget.selected,
+      firstDate: DateTime(2020),
+      lastDate: _thisWeek.add(const Duration(days: 6)),
+    );
+    if (picked == null) return;
+    final wk = WeeklyHomework.weekStartOf(picked);
+    setState(() => _anchor = wk.isAfter(_thisWeek) ? _thisWeek : wk);
+    widget.onSelect(wk);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final monthYF = DateFormat('MMMM y', 'ar');
+    final monthF = DateFormat('MMMM', 'ar');
+    final dF = DateFormat('d', 'ar');
+    final weeks =
+        List.generate(5, (i) => _anchor.subtract(Duration(days: 7 * i)));
+    final canNewer = _anchor.isBefore(_thisWeek);
+
+    String title(DateTime w) {
+      final ago = (_thisWeek.difference(w).inDays / 7).round();
+      if (ago == 0) return 'الأسبوع الحالي';
+      if (ago == 1) return 'الأسبوع السابق';
+      if (ago == 2) return 'قبل أسبوعين';
+      return monthYF.format(w);
+    }
+
+    String range(DateTime w) {
+      final end = w.add(const Duration(days: 6));
+      return w.month == end.month
+          ? '${dF.format(w)} - ${dF.format(end)} ${monthYF.format(end)}'
+          : '${dF.format(w)} ${monthF.format(w)} - ${dF.format(end)} ${monthYF.format(end)}';
+    }
+
+    Widget card(DateTime w) {
+      final selected = _id(w) == _id(widget.selected);
+      return Expanded(
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          onTap: () => widget.onSelect(w),
+          child: Container(
+            height: 56,
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            decoration: BoxDecoration(
+              color: selected ? AppColors.sky : AppColors.surface,
+              borderRadius: BorderRadius.circular(AppRadius.lg),
+              border: Border.all(
+                  color: selected ? AppColors.primary : AppColors.border,
+                  width: selected ? 1.5 : 1),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(title(w),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color:
+                            selected ? AppColors.primaryDark : AppColors.ink)),
+                const SizedBox(height: 2),
+                Text(range(w),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 10, color: AppColors.textMuted)),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(
+          AppSpacing.md, AppSpacing.sm, AppSpacing.md, AppSpacing.md),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('سجل الأسابيع',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+              TextButton.icon(
+                onPressed: _pickWeek,
+                icon: const Icon(Icons.calendar_month_outlined, size: 16),
+                label: const Text('اختر أسبوعًا'),
+                style:
+                    TextButton.styleFrom(visualDensity: VisualDensity.compact),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Row(
+            children: [
+              // Rightmost (newest side): go newer — disabled at current week.
+              IconButton(
+                onPressed: canNewer ? _pageNewer : null,
+                icon: const Icon(Icons.chevron_right,
+                    textDirection: ui.TextDirection.ltr),
+                color: AppColors.textMuted,
+                visualDensity: VisualDensity.compact,
+              ),
+              for (var i = 0; i < weeks.length; i++) ...[
+                if (i > 0) const SizedBox(width: 8),
+                card(weeks[i]),
+              ],
+              // Leftmost (oldest side): go older / previous.
+              IconButton(
+                onPressed: _pageOlder,
+                icon: const Icon(Icons.chevron_left,
+                    textDirection: ui.TextDirection.ltr),
+                color: AppColors.textMuted,
+                visualDensity: VisualDensity.compact,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+//  التسليم الأسبوعي report (homework)
+// ---------------------------------------------------------------------------
+
+class _TaslimData {
+  final List<CircleMember> students;
+  final WeeklyHomework week;
+  final Map<String, HomeworkCompletion> byUid;
+  _TaslimData(this.students, this.week, this.byUid);
+}
+
+class _TaslimReport extends StatefulWidget {
+  final String circleId;
+  const _TaslimReport({required this.circleId});
+
+  @override
+  State<_TaslimReport> createState() => _TaslimReportState();
+}
+
+class _TaslimReportState extends State<_TaslimReport> {
+  late final DateTime _thisWeek = WeeklyHomework.weekStartOf(DateTime.now());
+  late DateTime _selected = _thisWeek; // week whose detail is shown
+  List<CircleMember>? _students; // loaded once
+
+  late Future<_TaslimData> _future = _load(_selected);
+
+  String _id(DateTime w) => DateFormat('yyyy-MM-dd').format(w);
+
+  Future<_TaslimData> _load(DateTime week) async {
+    _students ??= (await getIt<CircleRepository>().getMembers(widget.circleId))
+        .where((m) =>
+            m.role == UserRole.student && m.status == MemberStatus.active)
+        .toList();
+    final repo =
+        HomeworkRepository(getIt<FirebaseFirestore>(), getIt<FirebaseAuth>());
+    final weekId = _id(week);
+    final wk = await repo.weekStream(widget.circleId, weekId, week).first;
+    final comps = await repo.completionsStream(widget.circleId, weekId).first;
+    return _TaslimData(_students!, wk, {for (final c in comps) c.uid: c});
+  }
+
+  void _select(DateTime week) => setState(() {
+        _selected = week;
+        _future = _load(week);
+      });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Expanded(
+          child: FutureBuilder<_TaslimData>(
+            future: _future,
+            builder: (context, snap) {
+              if (snap.hasError) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text('تعذّر تحميل التقرير:\n${snap.error}',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                            color: AppColors.error, fontSize: 12)),
+                  ),
+                );
+              }
+              if (!snap.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              return _detail(snap.data!);
+            },
+          ),
+        ),
+        const Divider(height: 1),
+        _WeeksStrip(selected: _selected, onSelect: _select),
+      ],
+    );
+  }
+
+  /// 0 = no homework that day · 1 = submitted · 2 = late · 3 = pending.
+  int _status(_TaslimData d, String uid, String code, DateTime today) {
+    if (d.week.planOf(code).isEmpty) return 0;
+    if (d.byUid[uid]?.isDone(code) ?? false) return 1;
+    return d.week.dateOf(code).isBefore(today) ? 2 : 3;
+  }
+
+  Widget _detail(_TaslimData d) {
+    final days = WeeklyHomework.dayOrder
+        .where((c) => !d.week.planOf(c).isEmpty)
+        .toList();
+    if (days.isEmpty) {
+      return const _ComingSoon(label: 'لا واجب مُسجّل لهذا الأسبوع');
+    }
+    if (d.students.isEmpty) {
+      return Center(
+        child: Text('لا توجد طالبات في الحلقة',
+            style: Theme.of(context).textTheme.bodyMedium),
+      );
+    }
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    var done = 0, late = 0;
+    for (final m in d.students) {
+      for (final c in days) {
+        final s = _status(d, m.uid, c, today);
+        if (s == 1) done++;
+        if (s == 2) late++;
+      }
+    }
+    final pct = (done + late) == 0 ? 0 : (done / (done + late) * 100).round();
+
+    return ListView(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      children: [
+        Row(children: [
+          _miniKpi('$done', 'تم التسليم', filled: true),
+          const SizedBox(width: AppSpacing.sm),
+          _miniKpi('$late', 'متأخرون', danger: true),
+          const SizedBox(width: AppSpacing.sm),
+          _miniKpi('$pct٪', 'نسبة الإنجاز'),
+        ]),
+        const SizedBox(height: AppSpacing.md),
+        _dailyChart(d, days, today),
+        const SizedBox(height: AppSpacing.md),
+        _grid(d, days, today),
+        const SizedBox(height: AppSpacing.sm),
+        _legend(),
+      ],
+    );
+  }
+
+  Widget _miniKpi(String v, String l, {bool filled = false, bool danger = false}) {
+    final bg = danger
+        ? const Color(0xFFFCEBEB)
+        : (filled ? AppColors.sky : AppColors.surface);
+    final fg = danger
+        ? const Color(0xFFA32D2D)
+        : (filled ? AppColors.primaryDark : AppColors.ink);
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border: (filled || danger)
+              ? null
+              : Border.all(color: AppColors.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(v,
+                style: TextStyle(
+                    fontSize: 20, fontWeight: FontWeight.w700, color: fg)),
+            const SizedBox(height: 2),
+            Text(l,
+                style: TextStyle(
+                    fontSize: 11,
+                    color: danger ? const Color(0xFFA32D2D) : AppColors.textMuted)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _dailyChart(_TaslimData d, List<String> days, DateTime today) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('التقدّم اليومي',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 90,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                for (final c in days)
+                  Expanded(
+                    child: _bar(d, c, today),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _bar(_TaslimData d, String code, DateTime today) {
+    final total = d.students.length;
+    final doneCount =
+        d.students.where((m) => _status(d, m.uid, code, today) == 1).length;
+    final ratio = total == 0 ? 0.0 : doneCount / total;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          Text('${(ratio * 100).round()}٪',
+              style: const TextStyle(fontSize: 9, color: AppColors.textMuted)),
+          const SizedBox(height: 2),
+          Container(
+            height: (60 * ratio).clamp(2, 60).toDouble(),
+            decoration: BoxDecoration(
+              color: AppColors.primary,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(WeeklyHomework.dayLabels[code] ?? code,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 9, color: AppColors.textMuted)),
+        ],
+      ),
+    );
+  }
+
+  Widget _grid(_TaslimData d, List<String> days, DateTime today) {
+    Widget head(String t, int flex, {bool center = false}) => Expanded(
+          flex: flex,
+          child: Text(t,
+              textAlign: center ? TextAlign.center : TextAlign.start,
+              style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textMuted)),
+        );
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.border),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          Container(
+            color: AppColors.gray,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            child: Row(
+              children: [
+                head('الطالبة', 3),
+                for (final c in days)
+                  head(WeeklyHomework.dayLabels[c] ?? c, 2, center: true),
+                head('النسبة', 2, center: true),
+              ],
+            ),
+          ),
+          for (final m in d.students) _row(d, m, days, today),
+        ],
+      ),
+    );
+  }
+
+  Widget _row(
+      _TaslimData d, CircleMember m, List<String> days, DateTime today) {
+    var done = 0, due = 0;
+    final cells = <Widget>[];
+    for (final c in days) {
+      final s = _status(d, m.uid, c, today);
+      if (s == 1) {
+        done++;
+        due++;
+      } else if (s == 2) {
+        due++;
+      }
+      cells.add(Expanded(flex: 2, child: Center(child: _mark(s))));
+    }
+    final pct = due == 0 ? null : (done / due * 100).round();
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: AppColors.border, width: .5)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 3,
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 13,
+                  backgroundColor: AppColors.sky,
+                  child: Text(
+                      m.name.isNotEmpty ? m.name.characters.first : '؟',
+                      style: const TextStyle(
+                          color: AppColors.primary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700)),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(m.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w700)),
+                ),
+              ],
+            ),
+          ),
+          ...cells,
+          Expanded(
+            flex: 2,
+            child: Center(
+              child: Text(pct == null ? '—' : '$pct٪',
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color:
+                          pct == null ? AppColors.textMuted : AppColors.primary)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _mark(int s) {
+    switch (s) {
+      case 1:
+        return const Icon(Icons.check_circle, size: 20, color: AppColors.success);
+      case 2:
+        return const Icon(Icons.cancel, size: 20, color: AppColors.error);
+      case 3:
+        return const Icon(Icons.schedule, size: 20, color: AppColors.warning);
+      default:
+        return const Text('—', style: TextStyle(color: AppColors.textMuted));
+    }
+  }
+
+  Widget _legend() {
+    Widget item(IconData ic, Color c, String t) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(ic, size: 14, color: c),
+          const SizedBox(width: 4),
+          Text(t,
+              style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
+        ]);
+    return Wrap(spacing: 14, runSpacing: 6, children: [
+      item(Icons.check_circle, AppColors.success, 'سلّمت'),
+      item(Icons.cancel, AppColors.error, 'متأخرة'),
+      item(Icons.schedule, AppColors.warning, 'بانتظار'),
+      const Text('— لا واجب',
+          style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
+    ]);
+  }
+}
+
+// ---------------------------------------------------------------------------
+//  الاختبارات report
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+//  الحضور report (live sessions)
+// ---------------------------------------------------------------------------
+
+class _HudurData {
+  final List<CircleMember> students;
+  final List<Session> sessions; // in the selected week, sorted by time
+  final Map<String, Set<String>> presentBySession; // sessionId -> present uids
+  _HudurData(this.students, this.sessions, this.presentBySession);
+
+  bool isPresent(String sessionId, String uid) =>
+      presentBySession[sessionId]?.contains(uid) ?? false;
+}
+
+class _HudurReport extends StatefulWidget {
+  final String circleId;
+  const _HudurReport({required this.circleId});
+
+  @override
+  State<_HudurReport> createState() => _HudurReportState();
+}
+
+class _HudurReportState extends State<_HudurReport> {
+  late final DateTime _thisWeek = WeeklyHomework.weekStartOf(DateTime.now());
+  late DateTime _selected = _thisWeek;
+  List<CircleMember>? _students;
+  List<Session>? _allSessions;
+
+  late Future<_HudurData> _future = _load(_selected);
+
+  Future<_HudurData> _load(DateTime week) async {
+    _students ??= (await getIt<CircleRepository>().getMembers(widget.circleId))
+        .where((m) =>
+            m.role == UserRole.student && m.status == MemberStatus.active)
+        .toList();
+    final repo = getIt<SessionRepository>();
+    _allSessions ??= await repo.getSessions(widget.circleId);
+    final end = week.add(const Duration(days: 7));
+    final wk = _allSessions!
+        .where((s) =>
+            !s.scheduledAt.isBefore(week) && s.scheduledAt.isBefore(end))
+        .toList()
+      ..sort((a, b) => a.scheduledAt.compareTo(b.scheduledAt));
+    final present = <String, Set<String>>{};
+    for (final s in wk) {
+      final att =
+          await repo.getAttendance(circleId: widget.circleId, sessionId: s.id);
+      present[s.id] = att.where((a) => a.present).map((a) => a.uid).toSet();
+    }
+    return _HudurData(_students!, wk, present);
+  }
+
+  void _select(DateTime week) => setState(() {
+        _selected = week;
+        _future = _load(week);
+      });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Expanded(
+          child: FutureBuilder<_HudurData>(
+            future: _future,
+            builder: (context, snap) {
+              if (snap.hasError) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text('تعذّر تحميل التقرير:\n${snap.error}',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                            color: AppColors.error, fontSize: 12)),
+                  ),
+                );
+              }
+              if (!snap.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              return _detail(snap.data!);
+            },
+          ),
+        ),
+        const Divider(height: 1),
+        _WeeksStrip(selected: _selected, onSelect: _select),
+      ],
+    );
+  }
+
+  /// A session "happened" if it's live, ended, or its start time has passed.
+  bool _happened(Session s) =>
+      s.status == SessionStatus.ended ||
+      s.status == SessionStatus.live ||
+      s.scheduledAt.isBefore(DateTime.now());
+
+  String _sessionLabel(Session s) {
+    final day = DateFormat('EEE', 'ar').format(s.scheduledAt);
+    final time = DateFormat('h:mm', 'ar').format(s.scheduledAt);
+    return '$day\n$time';
+  }
+
+  Widget _detail(_HudurData d) {
+    if (d.sessions.isEmpty) {
+      return const _ComingSoon(label: 'لا جلسات في هذا الأسبوع');
+    }
+    if (d.students.isEmpty) {
+      return Center(
+        child: Text('لا توجد طالبات في الحلقة',
+            style: Theme.of(context).textTheme.bodyMedium),
+      );
+    }
+    // Only sessions that already took place count toward attendance numbers.
+    final held = d.sessions.where(_happened).toList();
+    final cells = d.students.length * held.length;
+    var present = 0;
+    for (final s in held) {
+      for (final m in d.students) {
+        if (d.isPresent(s.id, m.uid)) present++;
+      }
+    }
+    final pct = cells == 0 ? 0 : (present / cells * 100).round();
+    // Students who missed at least one *held* session this week.
+    final missing = d.students
+        .where((m) => held.any((s) => !d.isPresent(s.id, m.uid)))
+        .length;
+
+    return ListView(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      children: [
+        Row(children: [
+          _kpi('${held.length}', 'الجلسات', filled: true),
+          const SizedBox(width: AppSpacing.sm),
+          _kpi('$pct٪', 'نسبة الحضور'),
+          const SizedBox(width: AppSpacing.sm),
+          _kpi('$missing', 'طالبات متغيبات', danger: true),
+        ]),
+        const SizedBox(height: AppSpacing.md),
+        _chart(d),
+        const SizedBox(height: AppSpacing.md),
+        _grid(d),
+        const SizedBox(height: AppSpacing.sm),
+        _legend(),
+      ],
+    );
+  }
+
+  Widget _kpi(String v, String l, {bool filled = false, bool danger = false}) {
+    final bg = danger
+        ? const Color(0xFFFCEBEB)
+        : (filled ? AppColors.sky : AppColors.surface);
+    final fg = danger
+        ? const Color(0xFFA32D2D)
+        : (filled ? AppColors.primaryDark : AppColors.ink);
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border:
+              (filled || danger) ? null : Border.all(color: AppColors.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(v,
+                style: TextStyle(
+                    fontSize: 20, fontWeight: FontWeight.w700, color: fg)),
+            const SizedBox(height: 2),
+            Text(l,
+                style: TextStyle(
+                    fontSize: 11,
+                    color:
+                        danger ? const Color(0xFFA32D2D) : AppColors.textMuted)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _chart(_HudurData d) {
+    final total = d.students.length;
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('الحضور لكل جلسة',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 96,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                for (final s in d.sessions)
+                  Expanded(
+                    child: _bar(d.presentBySession[s.id]?.length ?? 0, total, s,
+                        _happened(s)),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _bar(int count, int total, Session s, bool held) {
+    final ratio = total == 0 ? 0.0 : count / total;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          Text(held ? '$count/$total' : '—',
+              style: const TextStyle(fontSize: 9, color: AppColors.textMuted)),
+          const SizedBox(height: 2),
+          Container(
+            height: held ? (60 * ratio).clamp(2, 60).toDouble() : 4,
+            decoration: BoxDecoration(
+              color: held ? AppColors.primary : const Color(0xFFE3E6EB),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(6)),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(DateFormat('EEE', 'ar').format(s.scheduledAt),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 9, color: AppColors.textMuted)),
+        ],
+      ),
+    );
+  }
+
+  Widget _grid(_HudurData d) {
+    Widget head(String t, int flex, {bool center = false}) => Expanded(
+          flex: flex,
+          child: Text(t,
+              textAlign: center ? TextAlign.center : TextAlign.start,
+              maxLines: 2,
+              style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textMuted)),
+        );
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.border),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          Container(
+            color: AppColors.gray,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            child: Row(
+              children: [
+                head('الطالبة', 3),
+                for (final s in d.sessions) head(_sessionLabel(s), 2, center: true),
+                head('النسبة', 2, center: true),
+              ],
+            ),
+          ),
+          for (final m in d.students) _row(d, m),
+        ],
+      ),
+    );
+  }
+
+  Widget _row(_HudurData d, CircleMember m) {
+    var present = 0;
+    var held = 0;
+    final cells = <Widget>[];
+    for (final s in d.sessions) {
+      if (!_happened(s)) {
+        cells.add(const Expanded(
+          flex: 2,
+          child: Center(
+            child: Text('-',
+                style: TextStyle(
+                    fontSize: 14,
+                    color: AppColors.textMuted,
+                    fontWeight: FontWeight.w700)),
+          ),
+        ));
+        continue;
+      }
+      held++;
+      final p = d.isPresent(s.id, m.uid);
+      if (p) present++;
+      cells.add(Expanded(flex: 2, child: Center(child: _mark(p))));
+    }
+    final pct = held == 0 ? null : (present / held * 100).round();
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: AppColors.border, width: .5)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 3,
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 13,
+                  backgroundColor: AppColors.sky,
+                  child: Text(
+                      m.name.isNotEmpty ? m.name.characters.first : '؟',
+                      style: const TextStyle(
+                          color: AppColors.primary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700)),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(m.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w700)),
+                ),
+              ],
+            ),
+          ),
+          ...cells,
+          Expanded(
+            flex: 2,
+            child: Center(
+              child: Text(pct == null ? '—' : '$pct٪',
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: pct == null
+                          ? AppColors.textMuted
+                          : (pct >= 50 ? AppColors.success : AppColors.error))),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _mark(bool present) => Icon(
+        present ? Icons.check_circle : Icons.cancel,
+        size: 18,
+        color: present ? AppColors.success : const Color(0xFFD8DCE2),
+      );
+
+  Widget _legend() {
+    Widget item(IconData ic, Color c, String t) => Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(ic, size: 14, color: c),
+            const SizedBox(width: 4),
+            Text(t,
+                style:
+                    const TextStyle(fontSize: 11, color: AppColors.textMuted)),
+          ],
+        );
+    return Wrap(
+      spacing: 16,
+      runSpacing: 6,
+      children: [
+        item(Icons.check_circle, AppColors.success, 'حاضرة'),
+        item(Icons.cancel, const Color(0xFFD8DCE2), 'غائبة'),
+      ],
+    );
+  }
+}
+
+class _RepData {
+  final List<CircleMember> students; // sorted lowest-average first
+  final List<Exam> exams; // newest first
+  final Map<String, Map<String, ExamResult>> byExam; // examId -> uid -> result
+  _RepData(this.students, this.exams, this.byExam);
+}
+
+class _ExamsReport extends StatefulWidget {
+  final String circleId;
+  final AppUser user;
+  const _ExamsReport({required this.circleId, required this.user});
+
+  @override
+  State<_ExamsReport> createState() => _ExamsReportState();
+}
+
+class _ExamsReportState extends State<_ExamsReport> {
+  late Future<_RepData> _future = _load();
+
+  Future<_RepData> _load() async {
+    final members = await getIt<CircleRepository>().getMembers(widget.circleId);
+    final students = members
+        .where((m) =>
+            m.role == UserRole.student && m.status == MemberStatus.active)
+        .toList();
+    final exams =
+        await getIt<ExamRepository>().getExams(widget.circleId);
+    exams.sort((a, b) => b.date.compareTo(a.date)); // newest first
+    final byExam = <String, Map<String, ExamResult>>{};
+    for (final e in exams) {
+      final rs = await getIt<ExamRepository>()
+          .getResults(circleId: widget.circleId, examId: e.id);
+      byExam[e.id] = {for (final r in rs) r.uid: r};
+    }
+    students.sort((a, b) {
+      final aa = _avg(exams, byExam, a.uid);
+      final bb = _avg(exams, byExam, b.uid);
+      if (aa == null && bb == null) return a.name.compareTo(b.name);
+      if (aa == null) return 1;
+      if (bb == null) return -1;
+      return aa.compareTo(bb);
+    });
+    return _RepData(students, exams, byExam);
+  }
+
+  /// A student's average percent over exams she actually sat (absent excluded).
+  static double? _avg(List<Exam> exams,
+      Map<String, Map<String, ExamResult>> byExam, String uid) {
+    final pcts = <double>[];
+    for (final e in exams) {
+      final r = byExam[e.id]?[uid];
+      if (r == null || r.attendance != ExamAttendance.present) continue;
+      if (e.totalMarks > 0) pcts.add(r.score / e.totalMarks * 100);
+    }
+    if (pcts.isEmpty) return null;
+    return pcts.reduce((a, b) => a + b) / pcts.length;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<_RepData>(
+      future: _future,
+      builder: (context, snap) {
+        if (!snap.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final d = snap.data!;
+        if (d.exams.isEmpty) {
+          return const _ComingSoon(label: 'لا توجد اختبارات بعد');
+        }
+        if (d.students.isEmpty) {
+          return Center(
+            child: Text('لا توجد طالبات في الحلقة',
+                style: Theme.of(context).textTheme.bodyMedium),
+          );
+        }
+        return ListView(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          children: [
+            _kpis(context, d),
+            const SizedBox(height: AppSpacing.md),
+            const Padding(
+              padding: EdgeInsets.only(bottom: AppSpacing.sm),
+              child: Row(
+                children: [
+                  Icon(Icons.touch_app_outlined,
+                      size: 14, color: AppColors.textMuted),
+                  SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                        'اضغطي على عنوان الاختبار لعرض تحليله، وعلى اسم الطالبة لسجلّها',
+                        style: TextStyle(
+                            fontSize: 11, color: AppColors.textMuted)),
+                  ),
+                ],
+              ),
+            ),
+            _Matrix(
+              data: d,
+              onStudent: (m) => _showStudent(context, d, m),
+              onExam: _editExam,
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            _legend(context),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _kpis(BuildContext context, _RepData d) {
+    final present = <double>[]; // all present results as percent
+    var passed = 0, recorded = 0, attended = 0;
+    for (final e in d.exams) {
+      for (final m in d.students) {
+        final r = d.byExam[e.id]?[m.uid];
+        if (r == null) continue;
+        recorded++;
+        if (r.attendance == ExamAttendance.present) {
+          attended++;
+          if (e.totalMarks > 0) present.add(r.score / e.totalMarks * 100);
+          if (r.score >= e.passMark) passed++;
+        }
+      }
+    }
+    final avg = present.isEmpty
+        ? 0
+        : (present.reduce((a, b) => a + b) / present.length).round();
+    final passRate =
+        attended == 0 ? 0 : (passed / attended * 100).round();
+    final attRate = recorded == 0 ? 0 : (attended / recorded * 100).round();
+    return Row(
+      children: [
+        _kpi('${d.exams.length}', 'عدد الاختبارات', filled: true),
+        const SizedBox(width: AppSpacing.sm),
+        _kpi('$avg٪', 'متوسط الدرجات'),
+        const SizedBox(width: AppSpacing.sm),
+        _kpi('$passRate٪', 'نسبة النجاح'),
+        const SizedBox(width: AppSpacing.sm),
+        _kpi('$attRate٪', 'حضور الاختبارات'),
+      ],
+    );
+  }
+
+  Widget _kpi(String value, String label, {bool filled = false}) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        decoration: BoxDecoration(
+          color: filled ? AppColors.sky : AppColors.surface,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border: filled ? null : Border.all(color: AppColors.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(value,
+                style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: filled ? AppColors.primaryDark : AppColors.ink)),
+            const SizedBox(height: 2),
+            Text(label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    fontSize: 11, color: AppColors.textMuted)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _legend(BuildContext context) {
+    Widget item(Color c, String t) => Row(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+              width: 10,
+              height: 10,
+              margin: const EdgeInsetsDirectional.only(end: 4),
+              decoration: BoxDecoration(
+                  color: c, borderRadius: BorderRadius.circular(3))),
+          Text(t,
+              style:
+                  const TextStyle(fontSize: 11, color: AppColors.textMuted)),
+        ]);
+    return Wrap(spacing: 14, runSpacing: 6, children: [
+      item(const Color(0xFFE1F5EE), 'ناجحة'),
+      item(const Color(0xFFFCEBEB), 'راسبة'),
+      item(AppColors.gray, 'غائبة / معذورة / لم تُرصد'),
+    ]);
+  }
+
+  void _showStudent(BuildContext context, _RepData d, CircleMember m) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(m.name),
+        content: SizedBox(
+          width: 360,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final e in d.exams)
+                _historyRow(e, d.byExam[e.id]?[m.uid]),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('إغلاق')),
+        ],
+      ),
+    );
+  }
+
+  Widget _historyRow(Exam e, ExamResult? r) {
+    final fmt = DateFormat('d MMM y', 'ar');
+    String trailing;
+    Color color;
+    if (r == null) {
+      trailing = 'لم تُرصد';
+      color = AppColors.textMuted;
+    } else if (r.attendance != ExamAttendance.present) {
+      trailing = r.attendance.arabicLabel;
+      color = AppColors.textMuted;
+    } else {
+      trailing = '${r.score}/${e.totalMarks}';
+      color = r.score >= e.passMark ? AppColors.success : AppColors.error;
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(e.title, style: const TextStyle(fontSize: 13)),
+                Text(fmt.format(e.date),
+                    style: const TextStyle(
+                        fontSize: 10, color: AppColors.textMuted)),
+              ],
+            ),
+          ),
+          Text(trailing,
+              style: TextStyle(
+                  color: color, fontSize: 13, fontWeight: FontWeight.w700)),
+        ],
+      ),
+    );
+  }
+
+  /// Tap an exam header → open its analysis (with edit/publish actions inside).
+  Future<void> _editExam(Exam e) async {
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ExamAnalysisPage(
+          circleId: widget.circleId, exam: e, user: widget.user),
+    ));
+    if (mounted) setState(() => _future = _load());
+  }
+}
+
+class _Matrix extends StatelessWidget {
+  final _RepData data;
+  final void Function(CircleMember) onStudent;
+  final void Function(Exam) onExam;
+  const _Matrix(
+      {required this.data, required this.onStudent, required this.onExam});
+
+  @override
+  Widget build(BuildContext context) {
+    final fmt = DateFormat('d MMM', 'ar');
+    const examW = 86.0, avgW = 70.0, baseNameW = 140.0;
+    return LayoutBuilder(builder: (context, c) {
+      final content = examW * data.exams.length + avgW;
+      final avail = c.maxWidth.isFinite ? c.maxWidth : 640.0;
+      // boxW = the bordered container's outer width; its inner content area is
+      // boxW - 2 (1px border each side), so the columns must sum to boxW - 2.
+      final boxW = (baseNameW + content + 2) < avail
+          ? avail
+          : baseNameW + content + 2;
+      final nameW = boxW - 2 - content;
+      return SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: SizedBox(
+          width: boxW,
+          child: Container(
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(AppRadius.lg),
+              border: Border.all(color: AppColors.border),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                // header
+                Container(
+                  color: AppColors.gray,
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: nameW,
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 12),
+                          child: Text('الطالبة',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.textMuted)),
+                        ),
+                      ),
+                      for (final e in data.exams)
+                        SizedBox(
+                          width: examW,
+                          child: InkWell(
+                            onTap: () => onExam(e),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(e.title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppColors.primary)),
+                                Text('${fmt.format(e.date)} · ${e.totalMarks}',
+                                    style: const TextStyle(
+                                        fontSize: 9,
+                                        color: AppColors.textMuted)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      const SizedBox(
+                        width: avgW,
+                        child: Center(
+                          child: Text('المعدل',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.textMuted)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                for (final m in data.students)
+                  _RowTile(
+                    data: data,
+                    member: m,
+                    nameW: nameW,
+                    examW: examW,
+                    avgW: avgW,
+                    onTap: () => onStudent(m),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      );
+    });
+  }
+}
+
+class _RowTile extends StatelessWidget {
+  final _RepData data;
+  final CircleMember member;
+  final double nameW, examW, avgW;
+  final VoidCallback onTap;
+  const _RowTile({
+    required this.data,
+    required this.member,
+    required this.nameW,
+    required this.examW,
+    required this.avgW,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final avg = _ExamsReportState._avg(data.exams, data.byExam, member.uid);
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        decoration: const BoxDecoration(
+          border: Border(top: BorderSide(color: AppColors.border, width: .5)),
+        ),
+        padding: const EdgeInsets.symmetric(vertical: 9),
+        child: Row(
+          children: [
+            SizedBox(
+              width: nameW,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 13,
+                      backgroundColor: AppColors.sky,
+                      child: Text(
+                          member.name.isNotEmpty
+                              ? member.name.characters.first
+                              : '؟',
+                          style: const TextStyle(
+                              color: AppColors.primary,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700)),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(member.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 13, fontWeight: FontWeight.w700)),
+                    ),
+                    const Icon(Icons.chevron_left,
+                        size: 16, color: AppColors.textMuted),
+                  ],
+                ),
+              ),
+            ),
+            for (final e in data.exams)
+              SizedBox(
+                width: examW,
+                child: Center(child: _cell(e, data.byExam[e.id]?[member.uid])),
+              ),
+            SizedBox(
+              width: avgW,
+              child: Center(
+                child: Text(avg == null ? '—' : '${avg.round()}٪',
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: avg == null
+                            ? AppColors.textMuted
+                            : AppColors.primary)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _cell(Exam e, ExamResult? r) {
+    // Graded + present → raw score with the percent under it (comparable
+    // across exams with different totals).
+    if (r != null && r.attendance == ExamAttendance.present) {
+      final pass = r.score >= e.passMark;
+      final color = pass ? AppColors.success : AppColors.error;
+      final pct = e.totalMarks > 0 ? (r.score / e.totalMarks * 100).round() : 0;
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(AppRadius.md),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('${r.score}',
+                style: TextStyle(
+                    color: color,
+                    fontSize: 12,
+                    height: 1.1,
+                    fontWeight: FontWeight.w700)),
+            Text('$pct٪',
+                style: TextStyle(
+                    color: color.withValues(alpha: 0.75),
+                    fontSize: 9,
+                    height: 1.1)),
+          ],
+        ),
+      );
+    }
+    final text = r == null
+        ? '—'
+        : (r.attendance == ExamAttendance.absent ? 'غائبة' : 'معذورة');
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: AppColors.gray,
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+      ),
+      child: Text(text,
+          style: const TextStyle(
+              color: AppColors.textMuted,
+              fontSize: 10,
+              fontWeight: FontWeight.w600)),
+    );
+  }
+}

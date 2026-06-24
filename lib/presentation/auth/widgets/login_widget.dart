@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:google_fonts/google_fonts.dart';
 
-import '../../../core/input_validation/validate_email.dart';
-import '../../../core/input_validation/validate_password.dart';
-import '../bloc/login_bloc/login_bloc.dart';
+import '../../../core/model /ui_state.dart';
+import '../bloc/auth_bloc.dart';
+import '../pages/register_page.dart';
 
 class LoginWidget extends StatefulWidget {
   const LoginWidget({super.key});
@@ -13,105 +14,191 @@ class LoginWidget extends StatefulWidget {
 }
 
 class _LoginWidgetState extends State<LoginWidget> {
-  final _formKey = GlobalKey<FormState>();
+  static const Color _green = Color(0xFF2E7D52);
+  static const Color _ink = Color(0xFF1F2937);
+  static const Color _muted = Color(0xFF7C8A86);
 
-  final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  final _identifierController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _obscure = true;
 
   @override
   void dispose() {
-    _emailController.dispose();
+    _identifierController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
   void _onLogin() {
     if (_formKey.currentState!.validate()) {
-      BlocProvider.of<LoginBloc>(context).add(
-        LoginUserEvent(
-          email: _emailController.text,
-          password: _passwordController.text,
-        ),
-      );
+      context.read<AuthBloc>().add(
+            AuthLoginRequested(
+              email: _identifierController.text.trim(),
+              password: _passwordController.text,
+            ),
+          );
     }
   }
 
+  InputDecoration _field(String hint) => InputDecoration(
+        hintText: hint,
+        filled: true,
+        fillColor: Colors.white,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+        hintStyle:
+            GoogleFonts.tajawal(color: _muted, fontWeight: FontWeight.w500),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Color(0xFFE9E4DA)),
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Color(0xFFE9E4DA)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: _green, width: 1.6),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      // Center and constrain the form so it looks good on wide web/desktop
-      // screens instead of stretching edge to edge.
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(
-                        'Sign in',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.headlineSmall,
-                      ),
-                      const SizedBox(height: 24),
+    final loading = context.select<AuthBloc, bool>(
+      (b) => b.state.status == UIStatus.loading,
+    );
 
-                      // Email input field
-                      TextFormField(
-                        controller: _emailController,
-                        decoration: const InputDecoration(
-                          labelText: 'Email',
-                          hintText: 'Enter your email',
-                          border: OutlineInputBorder(),
-                        ),
-                        keyboardType: TextInputType.emailAddress,
-                        validator: (value) =>
-                            validateEmail(value ?? '', context),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Password input field
-                      TextFormField(
-                        controller: _passwordController,
-                        decoration: const InputDecoration(
-                          labelText: 'Password',
-                          hintText: 'Enter your password',
-                          border: OutlineInputBorder(),
-                        ),
-                        obscureText: true,
-                        onFieldSubmitted: (_) => _onLogin(),
-                        validator: (value) =>
-                            validatePassword(value ?? '', context),
-                      ),
-                      const SizedBox(height: 24),
-
-                      // Login button
-                      SizedBox(
-                        height: 48,
-                        child: ElevatedButton(
-                          onPressed: _onLogin,
-                          style: ElevatedButton.styleFrom(
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(50),
-                            ),
-                          ),
-                          child: const Text('Login'),
-                        ),
-                      ),
-                    ],
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 440),
+          child: Form(
+            key: _formKey,
+            autovalidateMode: AutovalidateMode.onUserInteraction,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SizedBox(height: 8),
+                Text(
+                  'مرحباً بك مجدداً',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.cairo(
+                    fontSize: 26,
+                    fontWeight: FontWeight.w800,
+                    color: _ink,
                   ),
                 ),
-              ),
+                const SizedBox(height: 10),
+                Text(
+                  'سجّل الدخول لمتابعة رحلتك',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.tajawal(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: _muted,
+                  ),
+                ),
+                const SizedBox(height: 32),
+                TextFormField(
+                  controller: _identifierController,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: _field('البريد الإلكتروني أو رقم الجوال'),
+                  validator: (v) => (v == null || v.trim().isEmpty)
+                      ? 'أدخل بريدك أو رقم جوالك'
+                      : null,
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _passwordController,
+                  obscureText: _obscure,
+                  onFieldSubmitted: (_) => _onLogin(),
+                  decoration: _field('كلمة المرور').copyWith(
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscure ? Icons.visibility_off : Icons.visibility,
+                        color: _muted,
+                        size: 20,
+                      ),
+                      onPressed: () => setState(() => _obscure = !_obscure),
+                    ),
+                  ),
+                  validator: (v) =>
+                      (v == null || v.length < 6) ? 'كلمة المرور قصيرة' : null,
+                ),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: TextButton(
+                    style: TextButton.styleFrom(
+                      foregroundColor: _green,
+                      padding: EdgeInsets.zero,
+                      minimumSize: const Size(0, 32),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      textStyle: GoogleFonts.tajawal(
+                          fontSize: 13, fontWeight: FontWeight.w700),
+                    ),
+                    onPressed: () {
+                      ScaffoldMessenger.of(context)
+                        ..hideCurrentSnackBar()
+                        ..showSnackBar(const SnackBar(
+                          content:
+                              Text('سيتم تفعيل استعادة كلمة المرور قريبًا'),
+                        ));
+                    },
+                    child: const Text('نسيت كلمة المرور؟'),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  height: 54,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _green,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      textStyle: GoogleFonts.tajawal(
+                          fontSize: 16, fontWeight: FontWeight.w700),
+                    ),
+                    onPressed: loading ? null : _onLogin,
+                    child: loading
+                        ? const SizedBox(
+                            height: 22,
+                            width: 22,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Text('تسجيل الدخول'),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'ليس لديك حساب؟ ',
+                      style: GoogleFonts.tajawal(
+                          color: _muted, fontWeight: FontWeight.w500),
+                    ),
+                    GestureDetector(
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const RegisterPage()),
+                      ),
+                      child: Text(
+                        'إنشاء حساب',
+                        style: GoogleFonts.tajawal(
+                          color: _green,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
         ),

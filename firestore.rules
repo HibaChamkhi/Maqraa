@@ -1,0 +1,49 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // --- User profiles ---
+    // Any signed-in user can READ a profile. This is what lets a teacher look
+    // up a student by email/phone when adding her to a حلقة. A user can only
+    // create/modify their OWN profile document.
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow create, update, delete: if signedIn() && request.auth.uid == uid;
+
+      // Per-user daily stats used by the home overview chart.
+      match /dailyStats/{dateId} {
+        allow read, write: if signedIn() && request.auth.uid == uid;
+      }
+
+      // Notifications feed: the owner reads & marks them read; any signed-in
+      // user may create one (so teachers can notify circle members).
+      match /notifications/{notifId} {
+        allow read, update, delete: if signedIn() && request.auth.uid == uid;
+        allow create: if signedIn();
+      }
+    }
+
+    // --- Circles and everything scoped under a circle ---
+    match /circles/{circleId} {
+      allow read: if signedIn();
+      // Only the creating teacher can create the circle.
+      allow create: if signedIn()
+        && request.resource.data.teacherId == request.auth.uid;
+      // Only the owning teacher can edit/delete the circle document itself.
+      allow update, delete: if signedIn()
+        && resource.data.teacherId == request.auth.uid;
+
+      // members / sessions / tasks / schedules / assignments / announcements /
+      // exams ... — readable & writable by any signed-in user for now.
+      // NOTE: this is intentionally permissive for the research-preview phase;
+      // tighten per-collection (e.g. teacher-or-member only) before production.
+      match /{document=**} {
+        allow read, write: if signedIn();
+      }
+    }
+  }
+}

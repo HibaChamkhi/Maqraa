@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "173216165827",
+    "project_id": "maqraa-1add5",
+    "storage_bucket": "maqraa-1add5.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:173216165827:android:bb67b838dec899614cd776",
+        "android_client_info": {
+          "package_name": "com.example.maqraa"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAthsPL2MKtMv0BA9fqhdW91SC3KIlb3lM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
