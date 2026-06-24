@@ -36,12 +36,18 @@ class WebShell extends StatelessWidget {
     required this.breadcrumb,
     required this.child,
     this.current = 'الإعدادات',
+    this.showBack = false,
   });
 
   final AppUser user;
   final String breadcrumb;
   final String current;
   final Widget child;
+
+  /// Whether the embedded title bar shows a back arrow. Top-level rail
+  /// destinations leave this false (you navigate via the rail); only true
+  /// sub-pages (e.g. a help article opened from the list) set it.
+  final bool showBack;
 
   @override
   Widget build(BuildContext context) {
@@ -52,7 +58,7 @@ class WebShell extends StatelessWidget {
         color: ProfileTheme.bg,
         child: Column(
           children: [
-            _EmbeddedHeader(breadcrumb: breadcrumb),
+            _EmbeddedHeader(breadcrumb: breadcrumb, showBack: showBack),
             Expanded(child: child),
           ],
         ),
@@ -92,9 +98,10 @@ class WebShell extends StatelessWidget {
 /// Slim title bar used when the page is embedded inside the home shell's
 /// content area (the rail + global top bar are already shown by the home).
 class _EmbeddedHeader extends StatelessWidget {
-  const _EmbeddedHeader({required this.breadcrumb});
+  const _EmbeddedHeader({required this.breadcrumb, this.showBack = false});
 
   final String breadcrumb;
+  final bool showBack;
 
   @override
   Widget build(BuildContext context) {
@@ -108,10 +115,13 @@ class _EmbeddedHeader extends StatelessWidget {
         ),
         child: Row(
           children: [
-            IconButton(
-              icon: const Icon(Icons.arrow_back, color: ProfileTheme.ink),
-              onPressed: () => Navigator.of(context).maybePop(),
-            ),
+            if (showBack)
+              IconButton(
+                icon: const Icon(Icons.arrow_back, color: ProfileTheme.ink),
+                onPressed: () => Navigator.of(context).maybePop(),
+              )
+            else
+              const SizedBox(width: 48),
             Expanded(
               child: Text(
                 breadcrumb,

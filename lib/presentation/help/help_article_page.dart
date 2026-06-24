@@ -29,6 +29,7 @@ class HelpArticlePage extends StatelessWidget {
           user: user,
           current: 'المساعدة',
           breadcrumb: 'مقال المساعدة',
+          showBack: true,
           child: Align(
             alignment: Alignment.topCenter,
             child: ConstrainedBox(
