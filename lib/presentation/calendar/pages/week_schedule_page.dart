@@ -320,7 +320,9 @@ class _WeekSchedulePageState extends State<WeekSchedulePage> {
     final isTeacher = widget.user.role == UserRole.teacher ||
         widget.user.role == UserRole.supervisor;
     return Scaffold(
-      appBar: AppBar(title: const Text('الجدول الأسبوعي والجلسات')),
+      appBar: AppBar(
+          automaticallyImplyLeading: false,
+          title: const Text('الجدول الأسبوعي والجلسات')),
       body: FutureBuilder<_Data>(
         future: _future,
         builder: (context, snap) {

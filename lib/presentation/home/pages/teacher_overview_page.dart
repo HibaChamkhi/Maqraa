@@ -15,7 +15,6 @@ import '../../../domain/exam/repositories/exam_repository.dart';
 import '../../../domain/session/models/session.dart';
 import '../../../domain/task/models/daily_task.dart';
 import '../../../domain/task/repositories/task_repository.dart';
-import '../../notification/pages/notifications_page.dart';
 
 const Color _green = AppColors.primary;
 
@@ -192,8 +191,6 @@ class _TeacherOverviewPageState extends State<TeacherOverviewPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _header(),
-                  const SizedBox(height: 18),
                   _kpis(d, wide),
                   const SizedBox(height: 16),
                   _DeliveryCard(rows: d.delivery),
@@ -224,42 +221,6 @@ class _TeacherOverviewPageState extends State<TeacherOverviewPage> {
           );
         });
       },
-    );
-  }
-
-  Widget _header() {
-    final u = widget.user;
-    return Row(
-      children: [
-        IconButton(
-          icon: const Icon(Icons.notifications_none_rounded),
-          onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const NotificationsPage())),
-        ),
-        const Spacer(),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text('أ. ${u.name}',
-                style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.ink)),
-            const Text('معلمة',
-                style: TextStyle(fontSize: 12.5, color: AppColors.textMuted)),
-          ],
-        ),
-        const SizedBox(width: 12),
-        CircleAvatar(
-          radius: 24,
-          backgroundColor: AppColors.sky,
-          backgroundImage:
-              u.photoUrl != null ? NetworkImage(u.photoUrl!) : null,
-          child: u.photoUrl == null
-              ? const Icon(Icons.person, color: _green)
-              : null,
-        ),
-      ],
     );
   }
 

@@ -113,7 +113,9 @@ class _HomePageState extends State<HomePage> {
       if (c.maxWidth >= 900) {
         return Scaffold(
           body: Column(children: [
-            _TopBar(onMenu: () => setState(() => _railOpen = !_railOpen)),
+            _TopBar(
+                user: user,
+                onMenu: () => setState(() => _railOpen = !_railOpen)),
             Expanded(
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -151,7 +153,7 @@ class _HomePageState extends State<HomePage> {
           onSelect: (l) => setState(() => _section = l),
         ),
         body: Column(children: [
-          const _TopBar(),
+          _TopBar(user: user),
           Expanded(child: content),
         ]),
       );
@@ -211,7 +213,10 @@ class _TopBar extends StatelessWidget {
   /// If provided, the ≡ button calls this (used to toggle the permanent rail)
   /// instead of opening the pop-over drawer.
   final VoidCallback? onMenu;
-  const _TopBar({this.menu = true, this.onMenu});
+
+  /// The signed-in user — shows their name/role/avatar on the right.
+  final AppUser? user;
+  const _TopBar({this.menu = true, this.onMenu, this.user});
 
   @override
   Widget build(BuildContext context) {
@@ -241,47 +246,64 @@ class _TopBar extends StatelessWidget {
               const SizedBox(width: 6),
               const Icon(Icons.spa_outlined, color: AppColors.primary),
               const Spacer(),
-              IconButton(
-                  onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => const NotificationsPage())),
-                  icon: const Icon(Icons.notifications_outlined)),
-              IconButton(
-                  onPressed: () {},
-                  icon: const Icon(Icons.chat_bubble_outline)),
+              if (user != null) ...[
+                Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      (user!.role == UserRole.teacher ||
+                              user!.role == UserRole.supervisor)
+                          ? 'أ. ${user!.name}'
+                          : user!.name,
+                      style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.ink),
+                    ),
+                    Text(
+                      user!.role == UserRole.teacher
+                          ? 'معلمة'
+                          : user!.role == UserRole.supervisor
+                              ? 'مشرفة'
+                              : 'طالبة',
+                      style: const TextStyle(
+                          fontSize: 11, color: AppColors.textMuted),
+                    ),
+                  ],
+                ),
+                const SizedBox(width: 10),
+              ],
               PopupMenuButton<String>(
-                icon: const CircleAvatar(
-                  radius: 15,
+                icon: CircleAvatar(
+                  radius: 16,
                   backgroundColor: AppColors.sky,
-                  child: Icon(
-                    Icons.person,
-                    size: 18,
-                    color: AppColors.primary,
-                  ),
+                  backgroundImage: user?.photoUrl != null
+                      ? NetworkImage(user!.photoUrl!)
+                      : null,
+                  child: user?.photoUrl == null
+                      ? const Icon(Icons.person,
+                          size: 18, color: AppColors.primary)
+                      : null,
                 ),
                 onSelected: (v) {
                   if (v == 'profile') {
                     Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const ProfilePage(),
-                      ),
+                      MaterialPageRoute(builder: (_) => const ProfilePage()),
                     );
                   } else if (v == 'logout') {
-                    context.read<AuthBloc>().add(
-                      const AuthLogoutRequested(),
-                    );
+                    context.read<AuthBloc>().add(const AuthLogoutRequested());
                   }
                 },
                 itemBuilder: (_) => const [
-                  PopupMenuItem(
-                    value: 'profile',
-                    child: Text('الملف الشخصي'),
-                  ),
-                  PopupMenuItem(
-                    value: 'logout',
-                    child: Text('تسجيل الخروج'),
-                  ),
+                  PopupMenuItem(value: 'profile', child: Text('الملف الشخصي')),
+                  PopupMenuItem(value: 'logout', child: Text('تسجيل الخروج')),
                 ],
               ),
+              IconButton(
+                  onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const NotificationsPage())),
+                  icon: const Icon(Icons.notifications_outlined)),
               const SizedBox(width: 6),
             ],
           ),

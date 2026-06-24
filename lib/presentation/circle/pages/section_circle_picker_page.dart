@@ -35,7 +35,8 @@ class _SectionCirclePickerPageState extends State<SectionCirclePickerPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.title)),
+      appBar: AppBar(
+          automaticallyImplyLeading: false, title: Text(widget.title)),
       body: FutureBuilder<List<Circle>>(
         future: _future,
         builder: (context, snap) {

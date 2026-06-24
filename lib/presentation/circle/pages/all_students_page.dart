@@ -87,7 +87,8 @@ class _AllStudentsPageState extends State<AllStudentsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('الطالبات')),
+      appBar: AppBar(
+          automaticallyImplyLeading: false, title: const Text('الطالبات')),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : Builder(builder: (context) {

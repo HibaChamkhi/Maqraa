@@ -82,7 +82,8 @@ class _CirclesListPageState extends State<CirclesListPage> {
         (user.role == UserRole.teacher || user.role == UserRole.supervisor);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('الحلقات')),
+      appBar: AppBar(
+          automaticallyImplyLeading: false, title: const Text('الحلقات')),
       body: FutureBuilder<List<_CircleStat>>(
         future: _future,
         builder: (context, snap) {
