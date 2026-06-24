@@ -115,7 +115,7 @@ class _StudentProfileViewState extends State<_StudentProfileView> {
     return LayoutBuilder(builder: (context, c) {
       // Web: keep the permanent rail so navigating here doesn't make the
       // sidebar vanish (which made page changes feel jumpy).
-      if (c.maxWidth >= 900) {
+      if (c.maxWidth >= 900 || ShellScope.of(context)) {
         return WebShell(
           user: user,
           current: 'الملف الشخصي',

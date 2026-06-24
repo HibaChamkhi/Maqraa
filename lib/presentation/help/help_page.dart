@@ -29,7 +29,7 @@ class _HelpPageState extends State<HelpPage> {
   Widget build(BuildContext context) {
     final user = context.select<AuthBloc, AppUser?>((b) => b.state.user);
     return LayoutBuilder(builder: (context, c) {
-      if (c.maxWidth >= 900 && user != null) {
+      if ((c.maxWidth >= 900 || ShellScope.of(context)) && user != null) {
         // Web: reuse the exact same (proven) content list inside the rail
         // shell, capped to a comfortable reading width.
         return WebShell(

@@ -146,8 +146,10 @@ class WardDrawer extends StatelessWidget {
               icon: Icons.person_outline,
               onTap: () {
                 _closeIfDrawer(context);
-                // Full-screen (own shell) so we don't draw a rail inside a rail.
-                Navigator.of(context).push(
+                // Into the content area so the rail stays put (smooth swap).
+                final nav = _nav(context);
+                nav.popUntil((r) => r.isFirst);
+                nav.push(
                     MaterialPageRoute(builder: (_) => const ProfilePage()));
               },
             ),
@@ -215,27 +217,21 @@ class WardDrawer extends StatelessWidget {
         ));
         break;
       case 'الإشعارات':
-        // Full-screen (its own shell) to avoid a rail inside the content rail.
-        Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const NotificationsPage()));
+        // Into the content area (WebShell renders embedded) so the rail stays.
+        push(const NotificationsPage());
         break;
       case 'الإعدادات':
-        // Full-screen (own shell): user's settings — personal data, photo,
-        // password, notifications, sessions.
-        Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => SettingsPage(user: user)));
+        push(SettingsPage(user: user));
         break;
       case 'المساعدة':
-        Navigator.of(context)
-            .push(MaterialPageRoute(builder: (_) => const HelpPage()));
+        push(const HelpPage());
         break;
       case 'واجب اليوم':
         // Aggregated واجبات across all her halaqat (no picker) — keep the rail.
         push(TodayWajibPage(user: user));
         break;
       case 'تقدّمي':
-        Navigator.of(context)
-            .push(MaterialPageRoute(builder: (_) => const MyProgressPage()));
+        push(const MyProgressPage());
         break;
       default:
         break;

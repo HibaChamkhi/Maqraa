@@ -23,7 +23,7 @@ class HelpArticlePage extends StatelessWidget {
   Widget build(BuildContext context) {
     final user = context.select<AuthBloc, AppUser?>((b) => b.state.user);
     return LayoutBuilder(builder: (context, c) {
-      if (c.maxWidth >= 900 && user != null) {
+      if ((c.maxWidth >= 900 || ShellScope.of(context)) && user != null) {
         // Web: keep the same rail shell as the rest of the app.
         return WebShell(
           user: user,

@@ -5,6 +5,27 @@ import '../../../domain/auth/models/app_user.dart';
 import '../../notification/pages/notifications_page.dart';
 import 'profile_theme.dart';
 
+/// Marks the subtree that lives INSIDE the home shell's content navigator.
+/// When present, [WebShell] renders "embedded" (no duplicate rail / top bar)
+/// because the persistent home rail already surrounds it — so navigating
+/// between rail destinations only swaps the content and never rebuilds the
+/// rail (smooth page changes).
+class ShellScope extends InheritedWidget {
+  const ShellScope({super.key, required this.inShell, required super.child});
+
+  final bool inShell;
+
+  static bool of(BuildContext context) =>
+      context
+          .dependOnInheritedWidgetOfExactType<ShellScope>()
+          ?.inShell ??
+      false;
+
+  @override
+  bool updateShouldNotify(ShellScope oldWidget) =>
+      oldWidget.inShell != inShell;
+}
+
 /// Shared chrome for the web teacher pages: green side rail (permanent on wide
 /// screens, pop-over drawer on narrow), a cream canvas, and a top bar with the
 /// breadcrumb on the left and the notification bell + user chip on the right.
@@ -24,6 +45,19 @@ class WebShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Inside the home shell's content area the rail + top bar already exist, so
+    // render just a slim title bar + the content (no second rail).
+    if (ShellScope.of(context)) {
+      return Container(
+        color: ProfileTheme.bg,
+        child: Column(
+          children: [
+            _EmbeddedHeader(breadcrumb: breadcrumb),
+            Expanded(child: child),
+          ],
+        ),
+      );
+    }
     return LayoutBuilder(builder: (context, c) {
       final wide = c.maxWidth >= 900;
       final body = Container(
@@ -52,6 +86,44 @@ class WebShell extends StatelessWidget {
         body: body,
       );
     });
+  }
+}
+
+/// Slim title bar used when the page is embedded inside the home shell's
+/// content area (the rail + global top bar are already shown by the home).
+class _EmbeddedHeader extends StatelessWidget {
+  const _EmbeddedHeader({required this.breadcrumb});
+
+  final String breadcrumb;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      child: Container(
+        height: 56,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: ProfileTheme.border)),
+        ),
+        child: Row(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.chevron_right, color: ProfileTheme.ink),
+              onPressed: () => Navigator.of(context).maybePop(),
+            ),
+            Expanded(
+              child: Text(
+                breadcrumb,
+                textAlign: TextAlign.center,
+                style: ProfileTheme.appBarTitle,
+              ),
+            ),
+            const SizedBox(width: 48),
+          ],
+        ),
+      ),
+    );
   }
 }
 

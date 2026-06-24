@@ -81,7 +81,7 @@ class _NotificationsViewState extends State<_NotificationsView> {
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (context, c) {
-      final wide = c.maxWidth >= 900;
+      final wide = c.maxWidth >= 900 || ShellScope.of(context);
       return wide ? _web(context) : _mobile(context);
     });
   }
