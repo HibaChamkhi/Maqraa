@@ -33,7 +33,9 @@ class HelpArticlePage extends StatelessWidget {
             alignment: Alignment.topCenter,
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 760),
-              child: _body(context),
+              // The shell already shows a title bar + back button, so don't
+              // draw the page's own header here (it caused a duplicate bar).
+              child: _body(context, showHeader: false),
             ),
           ),
         );
@@ -45,27 +47,28 @@ class HelpArticlePage extends StatelessWidget {
     });
   }
 
-  Widget _body(BuildContext context) {
+  Widget _body(BuildContext context, {bool showHeader = true}) {
     return Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              child: Row(
-                children: [
-                  const SizedBox(width: 48),
-                  Expanded(
-                    child: Text('مقال المساعدة',
-                        textAlign: TextAlign.center,
-                        style: ProfileTheme.appBarTitle),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.chevron_right,
-                        color: ProfileTheme.ink),
-                    onPressed: () => Navigator.of(context).maybePop(),
-                  ),
-                ],
+            if (showHeader)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                child: Row(
+                  children: [
+                    const SizedBox(width: 48),
+                    Expanded(
+                      child: Text('مقال المساعدة',
+                          textAlign: TextAlign.center,
+                          style: ProfileTheme.appBarTitle),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.chevron_right,
+                          color: ProfileTheme.ink),
+                      onPressed: () => Navigator.of(context).maybePop(),
+                    ),
+                  ],
+                ),
               ),
-            ),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(24, 12, 24, 28),
