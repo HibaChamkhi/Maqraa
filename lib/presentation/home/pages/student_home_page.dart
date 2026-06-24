@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart' hide Badge;
 import 'package:hijri/hijri_calendar.dart';
 import 'package:intl/intl.dart';
@@ -6,6 +8,7 @@ import '../../../core/di/injection.dart';
 import '../../../core/ui/styles/theme.dart';
 import '../../../core/ui/widgets/werd_widgets.dart';
 import '../../../core/util/session_occurrences.dart';
+import '../../../data/homework/homework_repository.dart';
 import '../../../domain/achievement/models/achievement.dart';
 import '../../../domain/achievement/repositories/achievement_repository.dart';
 import '../../../domain/auth/models/app_user.dart';
@@ -37,6 +40,7 @@ typedef _HomeData = ({
   List<SessionOccurrence> upcoming,
   List<_WeekSession> weekSessions,
   Achievement achievement,
+  List<_WajibItem> wajibToday,
 });
 
 /// One session occurrence in the current week, tagged with its حلقة (for the
@@ -45,6 +49,15 @@ class _WeekSession {
   final SessionOccurrence occ;
   final String circle;
   const _WeekSession(this.occ, this.circle);
+}
+
+/// One حلقة's واجب for today (from the homework plan, the teacher's source).
+class _WajibItem {
+  final String circleId;
+  final String circleName;
+  final DayPlan plan;
+  final bool done;
+  const _WajibItem(this.circleId, this.circleName, this.plan, this.done);
 }
 
 class StudentHomeTab extends StatefulWidget {
@@ -58,6 +71,12 @@ class StudentHomeTab extends StatefulWidget {
 
 class StudentHomeTabState extends State<StudentHomeTab> {
   late Future<_HomeData> _future;
+
+  /// Optimistic overlay for today's واجب ticks, keyed by circleId.
+  final Map<String, bool> _wajibOverride = {};
+
+  HomeworkRepository get _hw =>
+      HomeworkRepository(getIt<FirebaseFirestore>(), getIt<FirebaseAuth>());
 
   @override
   void initState() {
@@ -111,14 +130,25 @@ class StudentHomeTabState extends State<StudentHomeTab> {
       ach = await getIt<AchievementRepository>().getAchievement();
     } catch (_) {/* achievements optional */}
 
-    // This week's sessions across ALL her halaqat (rule + exceptions + docs),
-    // each tagged with its حلقة (for the «جدول الأسبوع» card).
+    // Across ALL her halaqat: today's واجبات (homework plan) + this week's
+    // sessions (rule + exceptions + docs), each tagged with its حلقة.
+    final wajibToday = <_WajibItem>[];
     final weekSessions = <_WeekSession>[];
     final ws = WeeklyHomework.weekStartOf(now);
     final weekEnd = ws.add(const Duration(days: 6));
+    final wid = _ymd(ws);
+    final code = _todayCode();
     try {
       final circles = await getIt<CircleRepository>().getMyCircles();
       for (final c in circles) {
+        try {
+          final wk = await _hw.weekStream(c.id, wid, ws).first;
+          final plan = wk.planOf(code);
+          if (!plan.isEmpty) {
+            final comp = await _hw.myCompletion(c.id, wid);
+            wajibToday.add(_WajibItem(c.id, c.name, plan, comp.isDone(code)));
+          }
+        } catch (_) {/* skip this circle */}
         try {
           final ss = await getIt<SessionRepository>().getSessions(c.id);
           Map<String, ({String type, String? time})> cExc = const {};
@@ -148,6 +178,37 @@ class StudentHomeTabState extends State<StudentHomeTab> {
       upcoming: upcoming,
       weekSessions: weekSessions,
       achievement: ach,
+      wajibToday: wajibToday,
+    );
+  }
+
+  Future<void> _toggleWajib(_WajibItem item) async {
+    final cur = _wajibOverride[item.circleId] ?? item.done;
+    setState(() => _wajibOverride[item.circleId] = !cur);
+    var ok = true;
+    try {
+      await _hw.setDayDone(
+        circleId: item.circleId,
+        weekId: _ymd(WeeklyHomework.weekStartOf(DateTime.now())),
+        dayCode: _todayCode(),
+        done: !cur,
+        studentName: widget.user.name,
+      );
+    } catch (_) {
+      ok = false;
+      if (mounted) setState(() => _wajibOverride[item.circleId] = cur);
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 2),
+        backgroundColor: ok
+            ? (!cur ? AppColors.success : AppColors.textMuted)
+            : AppColors.error,
+        content: Text(ok
+            ? (!cur ? 'تم تسجيل التسليم — ستراه المعلّمة' : 'أُلغي التسليم')
+            : 'تعذّر حفظ التسليم، حاولي مجددًا'),
+      ),
     );
   }
 
@@ -157,7 +218,10 @@ class StudentHomeTabState extends State<StudentHomeTab> {
   @override
   Widget build(BuildContext context) {
     return RefreshIndicator(
-      onRefresh: () async => setState(() => _future = _load()),
+      onRefresh: () async => setState(() {
+        _wajibOverride.clear();
+        _future = _load();
+      }),
       child: FutureBuilder<_HomeData>(
         future: _future,
         builder: (context, snap) {
@@ -171,10 +235,7 @@ class StudentHomeTabState extends State<StudentHomeTab> {
               return SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
                 physics: const AlwaysScrollableScrollPhysics(),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1180),
-                  child: wide ? _wide(d) : _narrow(d),
-                ),
+                child: wide ? _wide(d) : _narrow(d),
               );
             },
           );
@@ -237,54 +298,162 @@ class StudentHomeTabState extends State<StudentHomeTab> {
     );
   }
 
+  // ── header ─────────────────────────────────────────────────
+
   // ── واجب اليوم ─────────────────────────────────────────────
 
   Widget _todayCard(_HomeData d) {
-    final parts = _splitRange(d.todayRange);
-    final has = d.todayRange.trim().isNotEmpty;
     final now = DateTime.now();
+    final items = d.wajibToday;
+    final doneCount = items
+        .where((it) => _wajibOverride[it.circleId] ?? it.done)
+        .length;
     return _card(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Image.asset('assets/images/quran_icon.png',
-              width: 104, height: 104, fit: BoxFit.contain),
-          const SizedBox(width: 14),
+          Row(
+            children: [
+              Image.asset('assets/images/quran_icon.png',
+                  width: 64, height: 64, fit: BoxFit.contain),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Text('واجبات اليوم',
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.ink)),
+                        const Spacer(),
+                        if (items.isNotEmpty)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 3),
+                            decoration: BoxDecoration(
+                                color: _green,
+                                borderRadius: BorderRadius.circular(20)),
+                            child: Text('$doneCount / ${items.length} مكتمل',
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700)),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${DateFormat('EEEE d MMMM yyyy', 'ar').format(now)} م'
+                      '${_hijri(now).isEmpty ? '' : '  •  ${_hijri(now)}'}',
+                      style: const TextStyle(
+                          fontSize: 11.5, color: AppColors.textMuted),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          if (items.isEmpty) ...[
+            const Text('لا يوجد تكليف لهذا اليوم',
+                style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.ink)),
+            const SizedBox(height: 12),
+            _pillButton(
+              label: d.taskDone ? 'تم الحفظ' : 'سجّلي الحفظ',
+              icon: d.taskDone ? Icons.check_circle : Icons.menu_book_rounded,
+              onTap: () => _open(
+                  TodayTaskPage(circleId: widget.circle.id, user: widget.user)),
+            ),
+          ] else
+            for (var i = 0; i < items.length; i++) ...[
+              if (i > 0)
+                const Divider(height: 1, color: AppColors.border),
+              _wajibRow(items[i]),
+            ],
+        ],
+      ),
+    );
+  }
+
+  Widget _wajibRow(_WajibItem item) {
+    final done = _wajibOverride[item.circleId] ?? item.done;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            onTap: () => _toggleWajib(item),
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(
+                color: done ? AppColors.success : Colors.transparent,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                    color: done ? AppColors.success : _green, width: 2),
+              ),
+              child: done
+                  ? const Icon(Icons.check, size: 17, color: Colors.white)
+                  : null,
+            ),
+          ),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('واجب اليوم',
-                    style:
-                        TextStyle(fontSize: 13.5, color: AppColors.textMuted)),
-                const SizedBox(height: 6),
-                Text(has ? parts.$1 : 'لا يوجد تكليف لهذا اليوم',
-                    style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.ink)),
-                if (has && parts.$2.isNotEmpty) ...[
-                  const SizedBox(height: 3),
-                  Text('من الآية ${parts.$2}',
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text('حلقة ${item.circleName}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: _green)),
+                    ),
+                    if (item.plan.type.isNotEmpty) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 1),
+                        decoration: BoxDecoration(
+                            color: AppColors.sky,
+                            borderRadius: BorderRadius.circular(20)),
+                        child: Text(item.plan.type,
+                            style: const TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.primaryDark)),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Text(item.plan.wajib.isNotEmpty ? item.plan.wajib : 'واجب اليوم',
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.ink,
+                        decoration: done ? TextDecoration.lineThrough : null,
+                        decorationColor: AppColors.textMuted)),
+                if (item.plan.notes.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text('ملاحظة: ${item.plan.notes}',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                          fontSize: 13.5, color: AppColors.textMuted)),
+                          fontSize: 11, color: AppColors.textMuted)),
                 ],
-                const SizedBox(height: 6),
-                Text(
-                  '${DateFormat('EEEE d MMMM yyyy', 'ar').format(now)} م'
-                  '${_hijri(now).isEmpty ? '' : '  •  ${_hijri(now)}'}',
-                  style:
-                      const TextStyle(fontSize: 11.5, color: AppColors.textMuted),
-                ),
-                const SizedBox(height: 12),
-                _pillButton(
-                  label: d.taskDone ? 'تم الحفظ' : 'سجّلي الحفظ',
-                  icon: d.taskDone
-                      ? Icons.check_circle
-                      : Icons.menu_book_rounded,
-                  onTap: () => _open(
-                      TodayTaskPage(circleId: widget.circle.id, user: widget.user)),
-                ),
               ],
             ),
           ),
@@ -719,9 +888,10 @@ class StudentHomeTabState extends State<StudentHomeTab> {
     required String label,
     required IconData icon,
     required VoidCallback onTap,
+    bool filled = false,
   }) {
     return Material(
-      color: _green,
+      color: filled ? AppColors.success : _green,
       borderRadius: BorderRadius.circular(AppRadius.pill),
       child: InkWell(
         borderRadius: BorderRadius.circular(AppRadius.pill),
@@ -773,19 +943,6 @@ String _ymd(DateTime d) =>
 
 bool _sameDay(DateTime a, DateTime b) =>
     a.year == b.year && a.month == b.month && a.day == b.day;
-
-/// Splits «سورة الملك ١-١٠» into (surah, ayahRange) best-effort.
-(String, String) _splitRange(String raw) {
-  final r = raw.trim();
-  if (r.isEmpty) return ('', '');
-  final m = RegExp(r'([\d٠-٩][\d٠-٩\s\-–—,]*)$').firstMatch(r);
-  if (m != null) {
-    final ayah = m.group(0)!.trim();
-    final surah = r.substring(0, m.start).trim();
-    if (surah.isNotEmpty) return (surah, _arDigits(ayah).replaceAll('-', ' إلى '));
-  }
-  return (r, '');
-}
 
 String _hijri(DateTime now) {
   try {
