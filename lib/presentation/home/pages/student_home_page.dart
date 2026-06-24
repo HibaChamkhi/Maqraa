@@ -40,10 +40,18 @@ typedef _HomeData = ({
   bool taskDone,
   SessionOccurrence? nextSession,
   List<SessionOccurrence> upcoming,
-  List<SessionOccurrence> todaySessions,
+  List<_WeekSession> weekSessions,
   Achievement achievement,
   List<_WajibItem> wajibToday,
 });
+
+/// One session occurrence in the current week, tagged with its حلقة (for the
+/// aggregated «جدول الأسبوع» card).
+class _WeekSession {
+  final SessionOccurrence occ;
+  final String circle;
+  const _WeekSession(this.occ, this.circle);
+}
 
 /// One حلقة's واجب for today (from the homework plan, the teacher's source).
 class _WajibItem {
@@ -118,21 +126,22 @@ class StudentHomeTabState extends State<StudentHomeTab> {
       docs: sessions,
     );
     final upcoming = occ.where((o) => o.at.isAfter(now)).toList();
-    final todaySessions = occ.where((o) => _sameDay(o.at, now)).toList();
 
     Achievement ach = const Achievement();
     try {
       ach = await getIt<AchievementRepository>().getAchievement();
     } catch (_) {/* achievements optional */}
 
-    // Today's واجبات across ALL her halaqat, from the homework plan (the same
-    // source the teacher writes to / the تسليم report reads).
+    // Across ALL her halaqat: today's واجبات (homework plan) + this week's
+    // sessions (rule + exceptions + docs), each tagged with its حلقة.
     final wajibToday = <_WajibItem>[];
+    final weekSessions = <_WeekSession>[];
+    final ws = WeeklyHomework.weekStartOf(now);
+    final weekEnd = ws.add(const Duration(days: 6));
+    final wid = _ymd(ws);
+    final code = _todayCode();
     try {
       final circles = await getIt<CircleRepository>().getMyCircles();
-      final ws = WeeklyHomework.weekStartOf(now);
-      final wid = _ymd(ws);
-      final code = _todayCode();
       for (final c in circles) {
         try {
           final wk = await _hw.weekStream(c.id, wid, ws).first;
@@ -142,8 +151,26 @@ class StudentHomeTabState extends State<StudentHomeTab> {
             wajibToday.add(_WajibItem(c.id, c.name, plan, comp.isDone(code)));
           }
         } catch (_) {/* skip this circle */}
+        try {
+          final ss = await getIt<SessionRepository>().getSessions(c.id);
+          Map<String, ({String type, String? time})> cExc = const {};
+          try {
+            cExc = await getIt<CircleRepository>().getScheduleExceptions(c.id);
+          } catch (_) {}
+          final occs = buildSessionOccurrences(
+            circle: c,
+            from: ws,
+            to: weekEnd,
+            exceptions: cExc,
+            docs: ss,
+          );
+          for (final o in occs) {
+            weekSessions.add(_WeekSession(o, c.name));
+          }
+        } catch (_) {/* skip this circle */}
       }
     } catch (_) {/* circles optional */}
+    weekSessions.sort((a, b) => a.occ.at.compareTo(b.occ.at));
 
     return (
       progress: progress,
@@ -151,7 +178,7 @@ class StudentHomeTabState extends State<StudentHomeTab> {
       taskDone: task?.status == TaskStatus.done,
       nextSession: upcoming.isEmpty ? null : upcoming.first,
       upcoming: upcoming,
-      todaySessions: todaySessions,
+      weekSessions: weekSessions,
       achievement: ach,
       wajibToday: wajibToday,
     );
@@ -244,7 +271,7 @@ class StudentHomeTabState extends State<StudentHomeTab> {
             children: [
               Expanded(flex: 3, child: _remindersCard(d.upcoming)),
               const SizedBox(width: 16),
-              Expanded(flex: 4, child: _weekCard(d.todaySessions)),
+              Expanded(flex: 4, child: _weekCard(d.weekSessions)),
               const SizedBox(width: 16),
               Expanded(flex: 3, child: _nextSessionCard(d.nextSession)),
             ],
@@ -268,7 +295,7 @@ class StudentHomeTabState extends State<StudentHomeTab> {
         const SizedBox(height: 14),
         _nextSessionCard(d.nextSession),
         const SizedBox(height: 14),
-        _weekCard(d.todaySessions),
+        _weekCard(d.weekSessions),
         const SizedBox(height: 14),
         _remindersCard(d.upcoming),
         const SizedBox(height: 14),
@@ -595,10 +622,12 @@ class StudentHomeTabState extends State<StudentHomeTab> {
 
   // ── جدول الأسبوع ───────────────────────────────────────────
 
-  Widget _weekCard(List<SessionOccurrence> todaySessions) {
+  Widget _weekCard(List<_WeekSession> week) {
     final now = DateTime.now();
     final saturday = now.subtract(Duration(days: now.weekday % 7));
     final days = List.generate(7, (i) => saturday.add(Duration(days: i)));
+    final daysWithSession = week.map((w) => _ymd(w.occ.at)).toSet();
+    final todays = week.where((w) => _sameDay(w.occ.at, now)).toList();
     return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -612,26 +641,28 @@ class StudentHomeTabState extends State<StudentHomeTab> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              for (final day in days) _dayChip(day, _sameDay(day, now)),
+              for (final day in days)
+                _dayChip(day, _sameDay(day, now),
+                    daysWithSession.contains(_ymd(day))),
             ],
           ),
           const SizedBox(height: 14),
           const Divider(height: 1, color: AppColors.border),
           const SizedBox(height: 10),
-          if (todaySessions.isEmpty)
+          if (todays.isEmpty)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 8),
-              child: Text('لا أنشطة مجدولة اليوم',
+              child: Text('لا جلسات مجدولة اليوم',
                   style: TextStyle(fontSize: 12.5, color: AppColors.textMuted)),
             )
           else
-            for (final s in todaySessions) _scheduleRow(s),
+            for (final w in todays) _scheduleRow(w),
         ],
       ),
     );
   }
 
-  Widget _dayChip(DateTime day, bool today) {
+  Widget _dayChip(DateTime day, bool today, bool hasSession) {
     return Column(
       children: [
         Text(DateFormat('EEEE', 'ar').format(day),
@@ -654,12 +685,24 @@ class StudentHomeTabState extends State<StudentHomeTab> {
                   fontWeight: FontWeight.w700,
                   color: today ? Colors.white : AppColors.ink)),
         ),
+        const SizedBox(height: 4),
+        Container(
+          width: 5,
+          height: 5,
+          decoration: BoxDecoration(
+            color: hasSession
+                ? (today ? _green : AppColors.pink)
+                : Colors.transparent,
+            shape: BoxShape.circle,
+          ),
+        ),
       ],
     );
   }
 
-  Widget _scheduleRow(SessionOccurrence s) {
-    final title = s.title?.trim() ?? '';
+  Widget _scheduleRow(_WeekSession w) {
+    final t = w.occ.title?.trim() ?? '';
+    final label = t.isEmpty ? 'حلقة ${w.circle}' : '$t — حلقة ${w.circle}';
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
@@ -667,16 +710,23 @@ class StudentHomeTabState extends State<StudentHomeTab> {
           Container(
               width: 8,
               height: 8,
-              decoration: const BoxDecoration(
-                  color: _green, shape: BoxShape.circle)),
+              decoration: BoxDecoration(
+                  color: w.occ.isLive ? AppColors.error : _green,
+                  shape: BoxShape.circle)),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(title.isEmpty ? 'جلسة' : title,
+            child: Text(label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontSize: 13.5, color: AppColors.ink)),
           ),
-          Text(DateFormat('h:mm a', 'ar').format(s.at),
-              style:
-                  const TextStyle(fontSize: 12.5, color: AppColors.textMuted)),
+          Text(
+              w.occ.isLive
+                  ? 'مباشرة'
+                  : DateFormat('h:mm a', 'ar').format(w.occ.at),
+              style: TextStyle(
+                  fontSize: 12.5,
+                  color: w.occ.isLive ? AppColors.error : AppColors.textMuted)),
         ],
       ),
     );
