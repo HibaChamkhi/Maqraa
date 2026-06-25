@@ -147,7 +147,7 @@ class WardDrawer extends StatelessWidget {
               onTap: () {
                 _closeIfDrawer(context);
                 // Full-screen (own shell) so we don't draw a rail inside a rail.
-                Navigator.of(context).push(
+                Navigator.of(context, rootNavigator: true).push(
                     MaterialPageRoute(builder: (_) => const ProfilePage()));
               },
             ),
@@ -174,7 +174,7 @@ class WardDrawer extends StatelessWidget {
 
   /// The navigator to drive: the content-area one on wide screens, else root.
   NavigatorState _nav(BuildContext context) =>
-      contentNavigator?.currentState ?? Navigator.of(context);
+      contentNavigator?.currentState ?? Navigator.of(context, rootNavigator: true);
 
   void _go(BuildContext context, String label) {
     _closeIfDrawer(context);
@@ -216,17 +216,17 @@ class WardDrawer extends StatelessWidget {
         break;
       case 'الإشعارات':
         // Full-screen (its own shell) to avoid a rail inside the content rail.
-        Navigator.of(context).push(
+        Navigator.of(context, rootNavigator: true).push(
             MaterialPageRoute(builder: (_) => const NotificationsPage()));
         break;
       case 'الإعدادات':
         // Full-screen (own shell): user's settings — personal data, photo,
         // password, notifications, sessions.
-        Navigator.of(context).push(
+        Navigator.of(context, rootNavigator: true).push(
             MaterialPageRoute(builder: (_) => SettingsPage(user: user)));
         break;
       case 'المساعدة':
-        Navigator.of(context)
+        Navigator.of(context, rootNavigator: true)
             .push(MaterialPageRoute(builder: (_) => const HelpPage()));
         break;
       case 'واجب اليوم':
@@ -234,7 +234,7 @@ class WardDrawer extends StatelessWidget {
         push(TodayWajibPage(user: user));
         break;
       case 'تقدّمي':
-        Navigator.of(context)
+        Navigator.of(context, rootNavigator: true)
             .push(MaterialPageRoute(builder: (_) => const MyProgressPage()));
         break;
       default:

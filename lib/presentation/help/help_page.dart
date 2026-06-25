@@ -147,15 +147,13 @@ class _HelpPageState extends State<HelpPage> {
             );
             final grid = _TopicsGrid(topics: topics, onOpen: _openArticle);
             if (c.maxWidth >= 760) {
-              return IntrinsicHeight(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(width: 320, child: contact),
-                    const SizedBox(width: 16),
-                    Expanded(child: grid),
-                  ],
-                ),
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(width: 320, child: contact),
+                  const SizedBox(width: 16),
+                  Expanded(child: grid),
+                ],
               );
             }
             return Column(
